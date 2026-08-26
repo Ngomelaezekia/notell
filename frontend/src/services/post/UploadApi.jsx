@@ -17,11 +17,6 @@ export const uploadAPI = {
           },
         }
       );
-    return { 
-      ...response.data,
-       
-      url:
-      `${import.meta.env.REACT_API_URL}${response.data.url}`
-    };
+    return response.data;
   }
 };
