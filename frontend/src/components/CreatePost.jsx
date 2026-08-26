@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { X, UploadCloud, Loader2,} from "lucide-react";
 import { usePostActions } from "../hooks/usePosts";
-import { uploadAPI } from "../services/post/uploadApi";
+import { uploadAPI } from "../services/post/UploadApi";
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
 
@@ -128,7 +128,9 @@ export const CreatePost = () => {
         );
       }
 
-  const mediaURL = uploadResponse.url.startswith("http") ? uploadResponse.url : `${import.meta.env.REACT_API_URL}${uploadResponse.url}`;
+      const mediaURL = uploadResponse.url.startsWith("http")
+        ? uploadResponse.url
+        : `${import.meta.env.VITE_SERVER_URL ?? "http://localhost:8080"}${uploadResponse.url}`;
       await createPost({
         contentType,
         contentUrl:

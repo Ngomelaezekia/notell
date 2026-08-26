@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 
 import { useAuth } from "../context/AuthContext";
-import GoogleButton from "../components/GoogleButton";
+import GoogleButton from "../components/googleButton";
 
 
 const initialForm = {
