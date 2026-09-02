@@ -3,6 +3,7 @@ import { AuthProvider } from "../context/AuthContext";
 import { ProtectedRoute, PublicOnlyRoute } from "../components/RoutGuards";
 import AuthPage from "../pages/AuthPage";
 import Posts from "../pages/PostPage";
+import PostDetailPage from "../pages/PostDetailPage";
 import { CreatePost } from "../components/CreatePost";
 import UserManage from "../components/userManager/UserManager";
 import UserPage from "../pages/UserPage";
@@ -30,6 +31,7 @@ const router = createBrowserRouter([
               { path: "create-post", element: <CreatePost /> },
               { path: "profile", element: <UserManage /> },
               { path: "search", element: <SearchPage /> },
+              { path: "posts/:id", element: <PostDetailPage /> },
               { path: "users/:id", element: <UserPage /> },
               { path: "users/:id/followers", element: <FollowersPage /> },
               { path: "users/:id/following", element: <FollowingPage /> },
