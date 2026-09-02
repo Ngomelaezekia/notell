@@ -323,7 +323,19 @@ export default function SearchPage() {
                 )}
               </div>
 
-              <div>{posts.map((post) => <PostCard key={post.postId} post={post} />)}</div>
+              <div className="space-y-4">
+                {posts.map((post) => (
+                  <div key={post.postId} className="relative">
+                    <PostCard post={post} />
+                    <Link
+                      to={`/posts/${post.postId}`}
+                      className="mt-2 inline-flex rounded-xl px-3 py-2 text-sm font-bold text-indigo-600 transition hover:bg-indigo-50 hover:text-indigo-800"
+                    >
+                      Open post
+                    </Link>
+                  </div>
+                ))}
+              </div>
 
               {postHasMore && (
                 <button
