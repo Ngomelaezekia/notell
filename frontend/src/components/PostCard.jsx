@@ -1,5 +1,5 @@
 import { MoreHorizontal, Trash2, Loader2, Heart, MessageSquare } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePostActions } from "../hooks/usePosts";
 import { useAuth } from "../context/AuthContext";
 import { getFileUrl } from "../utils/api";
@@ -11,6 +11,8 @@ export const PostCard = ({ post, onPostDeleted }) => {
   const [showMenu, setShowMenu] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [liked, setLiked] = useState(post?.liked ?? false);
+  const [likeCount, setLikeCount] = useState(post?.likeCount ?? 0);
+  const [likeLoading, setLikeLoading] = useState(false);
 
   const postId = post?.postId;
   const author = post?.user ?? {};
@@ -18,6 +20,11 @@ export const PostCard = ({ post, onPostDeleted }) => {
   const mediaUrl = getFileUrl(post?.contentUrl);
   const username = author?.username || "Anonymous";
   const isOwner = Boolean(currentUser?.id && currentUser.id === post?.userId);
+
+  useEffect(() => {
+    setLiked(Boolean(post?.liked));
+    setLikeCount(Number(post?.likeCount ?? 0));
+  }, [post?.postId, post?.liked, post?.likeCount]);
 
   const handleDelete = async () => {
     if (!postId || !window.confirm("Delete this post?")) return;
@@ -32,12 +39,16 @@ export const PostCard = ({ post, onPostDeleted }) => {
   };
 
   const handleLike = async () => {
-    if (!postId) return;
+    if (!postId || likeLoading) return;
+    setLikeLoading(true);
     try {
       const response = await toggleLike(postId);
       setLiked(Boolean(response?.liked));
+      setLikeCount(Number(response?.likeCount ?? 0));
     } catch (error) {
       console.error(error);
+    } finally {
+      setLikeLoading(false);
     }
   };
 
@@ -77,9 +88,10 @@ export const PostCard = ({ post, onPostDeleted }) => {
       )}
 
       <section className="px-5 py-4">
-        <div className="flex gap-5">
-          <button type="button" onClick={handleLike} className={`flex items-center gap-2 text-sm transition ${liked ? "text-red-500" : "text-slate-600 hover:text-red-500"}`}>
-            <Heart size={19} fill={liked ? "currentColor" : "none"} /> Like
+        <div className="flex items-center gap-5">
+          <button type="button" onClick={handleLike} disabled={likeLoading} aria-pressed={liked} className={`flex items-center gap-2 text-sm transition disabled:opacity-60 ${liked ? "text-red-500" : "text-slate-600 hover:text-red-500"}`}>
+            {likeLoading ? <Loader2 size={19} className="animate-spin" /> : <Heart size={19} fill={liked ? "currentColor" : "none"} />}
+            <span>{likeCount} {likeCount === 1 ? "Like" : "Likes"}</span>
           </button>
           <button type="button" onClick={() => setShowComments((previous) => !previous)} className="flex items-center gap-2 text-sm text-slate-600 hover:text-indigo-600" aria-expanded={showComments}>
             <MessageSquare size={19} /> Comment
