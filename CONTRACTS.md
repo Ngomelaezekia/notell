@@ -23,6 +23,7 @@ Posts store the returned absolute URL in `contentUrl`.
 - `POST /api/posts`
 - `GET /api/posts/feed?page=&limit=`
 - `GET /api/posts/:id`
+- `GET /api/posts/search?q=&page=&limit=` — authenticated; searches post captions; returns `data.posts` plus `data.pagination` (`page`, `limit`, `total`, `hasMore`).
 - `DELETE /api/posts/:id`
 - `POST /api/posts/:id/like`
 - `GET /api/posts/:id/comments`
@@ -31,11 +32,19 @@ Posts store the returned absolute URL in `contentUrl`.
 ## Users and relationships
 - `GET /api/users/:id`
 - `PUT /api/users/profile`
+- `GET /api/users/search?q=&page=&limit=` — authenticated; searches username, bio, city, and country; returns `data` plus pagination metadata (`page`, `limit`, `total`, `hasMore`).
 - `POST /api/users/:id/follow`
 - `DELETE /api/users/:id/unfollow`
+- `GET /api/users/:id/relationship`
 - `DELETE /api/users/followers/:id`
 - `GET /api/users/:id/followers`
 - `GET /api/users/:id/following`
+
+## Search frontend contract
+- Frontend search page: `/search?q=&type=`.
+- Supported tabs: `all`, `people`, `posts`.
+- Search results use canonical User/Post JSON names.
+- People and Posts support incremental pagination through their respective `hasMore` metadata.
 
 ## Routes
 Current frontend routes must correspond to actual pages. Do not expose `/explore` or `/settings` navigation until their routes/pages exist.
