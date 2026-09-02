@@ -21,7 +21,7 @@ Posts store the returned absolute URL in `contentUrl`.
 
 ## Posts
 - `POST /api/posts`
-- `GET /api/posts/feed?page=&limit=`
+- `GET /api/posts/feed?page=&limit=` — authenticated; returns `data` plus `pagination` (`page`, `limit`, `hasMore`). Feed pagination uses a one-record lookahead so `hasMore` does not require a separate count query.
 - `GET /api/posts/:id`
 - `GET /api/posts/search?q=&page=&limit=` — authenticated; searches post captions; returns `data.posts` plus `data.pagination` (`page`, `limit`, `total`, `hasMore`).
 - `DELETE /api/posts/:id`
