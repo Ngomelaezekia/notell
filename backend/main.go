@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"net/http"
 	"time"
 
 	"notell/config"
@@ -17,15 +18,39 @@ import (
 
 func main() {
 	cfg := config.Load()
-	if cfg.AppEnv == "production" { gin.SetMode(gin.ReleaseMode) }
+	if cfg.AppEnv == "production" {
+		gin.SetMode(gin.ReleaseMode)
+	}
+
 	db, err := gorm.Open(postgres.Open(cfg.GetDBDSN()), &gorm.Config{})
-	if err != nil { log.Fatalf("Failed to connect to PostgreSQL database: %v", err) }
+	if err != nil {
+		log.Fatalf("Failed to connect to PostgreSQL database: %v", err)
+	}
 	log.Println("Database connection established successfully")
-	if err := db.AutoMigrate(&models.User{}, &models.Post{}, &models.Comment{}, &models.Like{}, &models.Relationship{}, &models.Channel{}, &models.Notification{}); err != nil { log.Fatalf("Database auto-migration failed: %v", err) }
+
+	if err := db.AutoMigrate(
+		&models.User{},
+		&models.Post{},
+		&models.Comment{},
+		&models.Like{},
+		&models.Relationship{},
+		&models.Channel{},
+		&models.Notification{},
+	); err != nil {
+		log.Fatalf("Database auto-migration failed: %v", err)
+	}
 
 	r := gin.Default()
-	r.Use(cors.New(cors.Config{AllowOrigins:[]string{cfg.FrontendURL}, AllowMethods:[]string{"GET","POST","PUT","PATCH","DELETE","OPTIONS"}, AllowHeaders:[]string{"Origin","Content-Type","Accept","Authorization"}, ExposeHeaders:[]string{"Content-Length"}, AllowCredentials:true, MaxAge:12*time.Hour}))
+	r.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{cfg.FrontendURL},
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}))
 	r.Static("/uploads", "./uploads")
+
 	auth := handlers.NewAuthHandler(db, cfg)
 	post := handlers.NewPostHandler(db)
 	userHandler := handlers.NewUserHandler(db)
@@ -67,7 +92,19 @@ func main() {
 			protected.POST("/notifications/read-all", notificationHandler.MarkAllRead)
 		}
 	}
-	serverAddress := ":" + cfg.Port
+
+	server := &http.Server{
+		Addr:              ":" + cfg.Port,
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       2 * time.Minute,
+		WriteTimeout:      2 * time.Minute,
+		IdleTimeout:       2 * time.Minute,
+		MaxHeaderBytes:    1 << 20,
+	}
+
 	log.Printf("Server running in %s mode on port %s...", cfg.AppEnv, cfg.Port)
-	if err := r.Run(serverAddress); err != nil { log.Fatalf("Server failed to start: %v", err) }
+	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Fatalf("Server failed to start: %v", err)
+	}
 }
