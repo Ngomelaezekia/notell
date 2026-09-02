@@ -3,9 +3,9 @@ package models
 import "time"
 
 type Relationship struct {
-	FollowerID  uint      `gorm:"primaryKey;index:idx_relationships_following_status" json:"followerId"`
-	FollowingID uint      `gorm:"primaryKey;index:idx_relationships_following_status" json:"followingId"`
-	Status      string    `gorm:"type:varchar(20);default:'accepted';index:idx_relationships_following_status" json:"status"`
+	FollowerID  uint      `gorm:"primaryKey;index:idx_relationships_follower_status,priority:1" json:"followerId"`
+	FollowingID uint      `gorm:"primaryKey;index:idx_relationships_following_status,priority:1" json:"followingId"`
+	Status      string    `gorm:"type:varchar(20);default:'accepted';index:idx_relationships_follower_status,priority:2;index:idx_relationships_following_status,priority:2" json:"status"`
 	CreatedAt   time.Time `json:"createdAt"`
 
 	Follower  User `gorm:"foreignKey:FollowerID;references:ID;constraint:OnDelete:CASCADE" json:"follower,omitempty"`
