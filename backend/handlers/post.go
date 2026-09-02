@@ -37,7 +37,7 @@ func (h *PostHandler) GetFeed(c *gin.Context) {
 	if err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"message":"failed to fetch feed"});return};c.JSON(http.StatusOK,gin.H{"data":posts,"page":page,"limit":limit})
 }
 
-// SearchPosts searches captions and returns public post data with authors.
+// SearchPosts searches captions and author usernames and returns public post data.
 func (h *PostHandler) SearchPosts(c *gin.Context) {
 	query := strings.TrimSpace(c.Query("q"))
 	if len(query) < 2 {
@@ -53,7 +53,9 @@ func (h *PostHandler) SearchPosts(c *gin.Context) {
 
 	pattern := "%" + query + "%"
 	var total int64
-	base := h.DB.Model(&models.Post{}).Where("caption ILIKE ?", pattern)
+	base := h.DB.Model(&models.Post{}).
+		Joins("JOIN users ON users.id = posts.user_id").
+		Where("posts.caption ILIKE ? OR users.username ILIKE ?", pattern, pattern)
 	if err := base.Count(&total).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "database error"})
 		return
@@ -66,7 +68,7 @@ func (h *PostHandler) SearchPosts(c *gin.Context) {
 	}
 	err := base.Select(postEngagementSelect, authUserID).
 		Preload("User", func(db *gorm.DB) *gorm.DB { return db.Select("id", "username", "profile_picture") }).
-		Order("created_at DESC").Offset((page - 1) * limit).Limit(limit).Find(&posts).Error
+		Order("posts.created_at DESC").Offset((page - 1) * limit).Limit(limit).Find(&posts).Error
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "database error"})
 		return
