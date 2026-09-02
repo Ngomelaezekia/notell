@@ -5,15 +5,18 @@ export const usePosts = (page = 1, limit = 10) => {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [currentPage, setCurrentPage] = useState(page);
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState(null);
 
   const fetchPosts = useCallback(async () => {
     setLoading(true);
     setError(null);
+
     try {
       const response = await postsAPI.getFeed(page, limit);
       setPosts(response.data || []);
+      setCurrentPage(response.pagination?.page ?? page);
       setHasMore(response.pagination?.hasMore ?? false);
     } catch (err) {
       setError(err.response?.data?.message || "Failed to fetch posts");
@@ -23,13 +26,14 @@ export const usePosts = (page = 1, limit = 10) => {
   }, [page, limit]);
 
   const loadMore = useCallback(async () => {
-    if (loading || loadingMore || !hasMore || posts.length === 0) return;
+    if (loading || loadingMore || !hasMore) return;
 
     setLoadingMore(true);
     setError(null);
 
+    const nextPage = currentPage + 1;
+
     try {
-      const nextPage = Math.floor(posts.length / limit) + 1;
       const response = await postsAPI.getFeed(nextPage, limit);
       const incomingPosts = response.data || [];
 
@@ -40,13 +44,15 @@ export const usePosts = (page = 1, limit = 10) => {
         );
         return [...current, ...uniquePosts];
       });
+
+      setCurrentPage(response.pagination?.page ?? nextPage);
       setHasMore(response.pagination?.hasMore ?? false);
     } catch (err) {
       setError(err.response?.data?.message || "Failed to load more posts");
     } finally {
       setLoadingMore(false);
     }
-  }, [hasMore, limit, loading, loadingMore, posts.length]);
+  }, [currentPage, hasMore, limit, loading, loadingMore]);
 
   useEffect(() => {
     fetchPosts();
