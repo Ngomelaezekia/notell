@@ -27,15 +27,20 @@ func NewAuthHandler(db *gorm.DB, cfg *config.Config) *AuthHandler { return &Auth
 
 const sessionLifetime = 72 * time.Hour
 
+func (h *AuthHandler) setSessionCookie(c *gin.Context, name, value string, maxAge int) {
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie(name, value, maxAge, "/", "", h.Config.AppEnv == "production", true)
+}
+
 func (h *AuthHandler) createSession(c *gin.Context, user models.User) error {
 	token, err := services.GenerateToken(user.ID, user.Email, h.Config.JWTSecret)
 	if err != nil { return err }
-	c.SetCookie("auth_token", token, int(sessionLifetime.Seconds()), "/", "", h.Config.AppEnv == "production", true)
+	h.setSessionCookie(c, "auth_token", token, int(sessionLifetime.Seconds()))
 	return nil
 }
 
 func (h *AuthHandler) clearSession(c *gin.Context) {
-	c.SetCookie("auth_token", "", -1, "/", "", h.Config.AppEnv == "production", true)
+	h.setSessionCookie(c, "auth_token", "", -1)
 }
 
 type registerInput struct {
@@ -90,7 +95,7 @@ func (h *AuthHandler) googleOAuthConfig() *oauth2.Config {
 
 func (h *AuthHandler) GoogleLogin(c *gin.Context) {
 	state := generateStateToken()
-	c.SetCookie("oauth_state", state, 300, "/", "", h.Config.AppEnv == "production", true)
+	h.setSessionCookie(c, "oauth_state", state, 300)
 	c.Redirect(http.StatusTemporaryRedirect, h.googleOAuthConfig().AuthCodeURL(state, oauth2.AccessTypeOffline))
 }
 
@@ -131,7 +136,7 @@ func (h *AuthHandler) findOrCreateGoogleUser(googleUser *GoogleUser) (*models.Us
 func (h *AuthHandler) GoogleCallback(c *gin.Context) {
 	cookieState, err := c.Cookie("oauth_state")
 	if err != nil || cookieState != c.Query("state") { c.Redirect(http.StatusTemporaryRedirect, h.Config.FrontendURL+"/auth?error=invalid_state"); return }
-	c.SetCookie("oauth_state", "", -1, "/", "", h.Config.AppEnv == "production", true)
+	h.setSessionCookie(c, "oauth_state", "", -1)
 	code := c.Query("code")
 	if code == "" { c.Redirect(http.StatusTemporaryRedirect, h.Config.FrontendURL+"/auth?error=no_code"); return }
 	oauthToken, err := h.googleOAuthConfig().Exchange(context.Background(), code)
