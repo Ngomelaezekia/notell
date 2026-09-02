@@ -111,8 +111,17 @@ func (h *PostHandler) ToggleLike(c *gin.Context) {
 	var post models.Post;if err:=h.DB.First(&post,uint(postID)).Error;err!=nil{if errors.Is(err,gorm.ErrRecordNotFound){c.JSON(http.StatusNotFound,gin.H{"message":"post not found"})}else{c.JSON(http.StatusInternalServerError,gin.H{"message":"failed to find post"})};return}
 	var like models.Like;err=h.DB.Where("user_id=? AND post_id=?",userID,uint(postID)).First(&like).Error
 	liked:=false
-	if err==nil{if err:=h.DB.Delete(&like).Error;err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"message":"failed to remove like"});return}}
-	if errors.Is(err,gorm.ErrRecordNotFound){if err:=h.DB.Create(&models.Like{UserID:userID,PostID:uint(postID)}).Error;err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"message":"failed to like post"});return};liked=true}
+	if err==nil{
+		if err:=h.DB.Delete(&like).Error;err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"message":"failed to remove like"});return}
+		// Remove the corresponding unread/read like notification so an unlike
+		// does not leave a stale activity item behind.
+		h.DB.Where("user_id = ? AND actor_id = ? AND post_id = ? AND type = ?", post.UserID, userID, uint(postID), "like").Delete(&models.Notification{})
+	}
+	if errors.Is(err,gorm.ErrRecordNotFound){
+		if err:=h.DB.Create(&models.Like{UserID:userID,PostID:uint(postID)}).Error;err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"message":"failed to like post"});return}
+		liked=true
+		_ = CreateNotification(h.DB, post.UserID, userID, "like", func() *uint { id:=uint(postID); return &id }(), nil)
+	}
 	if err!=nil && !errors.Is(err,gorm.ErrRecordNotFound){c.JSON(http.StatusInternalServerError,gin.H{"message":"failed to check like"});return}
 	var likeCount int64;if err:=h.DB.Model(&models.Like{}).Where("post_id=?",uint(postID)).Count(&likeCount).Error;err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"message":"failed to count likes"});return}
 	c.JSON(http.StatusOK,gin.H{"liked":liked,"likeCount":likeCount})
@@ -122,8 +131,14 @@ func (h *PostHandler) AddComment(c *gin.Context) {
 	userID:=c.MustGet("userId").(uint);postID,err:=strconv.ParseUint(c.Param("id"),10,32);if err!=nil{c.JSON(http.StatusBadRequest,gin.H{"message":"invalid post ID"});return}
 	var input createCommentInput;if err:=c.ShouldBindJSON(&input);err!=nil{c.JSON(http.StatusBadRequest,gin.H{"message":err.Error()});return};content:=strings.TrimSpace(input.Content);if content==""{c.JSON(http.StatusBadRequest,gin.H{"message":"comment cannot be empty"});return}
 	var post models.Post;if err:=h.DB.First(&post,uint(postID)).Error;err!=nil{if errors.Is(err,gorm.ErrRecordNotFound){c.JSON(http.StatusNotFound,gin.H{"message":"post not found"})}else{c.JSON(http.StatusInternalServerError,gin.H{"message":"failed to find post"})};return}
-	if input.ParentID!=nil{var parent models.Comment;if err:=h.DB.Where("id=? AND post_id=?",*input.ParentID,uint(postID)).First(&parent).Error;err!=nil{if errors.Is(err,gorm.ErrRecordNotFound){c.JSON(http.StatusBadRequest,gin.H{"message":"parent comment not found for this post"})}else{c.JSON(http.StatusInternalServerError,gin.H{"message":"failed to validate parent comment"})};return}}
+	var parent models.Comment
+	if input.ParentID!=nil{if err:=h.DB.Where("id=? AND post_id=?",*input.ParentID,uint(postID)).First(&parent).Error;err!=nil{if errors.Is(err,gorm.ErrRecordNotFound){c.JSON(http.StatusBadRequest,gin.H{"message":"parent comment not found for this post"})}else{c.JSON(http.StatusInternalServerError,gin.H{"message":"failed to validate parent comment"})};return}}
 	comment:=models.Comment{UserID:userID,PostID:uint(postID),Content:content,ParentID:input.ParentID};if err:=h.DB.Create(&comment).Error;err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"message":"failed to add comment"});return}
+	if input.ParentID != nil {
+		_ = CreateNotification(h.DB, parent.UserID, userID, "reply", func() *uint { id:=uint(postID); return &id }(), &comment.ID)
+	} else {
+		_ = CreateNotification(h.DB, post.UserID, userID, "comment", func() *uint { id:=uint(postID); return &id }(), &comment.ID)
+	}
 	if err:=h.DB.Preload("User",func(db *gorm.DB)*gorm.DB{return db.Select("id","username","profile_picture")}).First(&comment,comment.ID).Error;err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"message":"comment created but failed to load author"});return};c.JSON(http.StatusCreated,gin.H{"message":"comment added","data":comment})
 }
 
