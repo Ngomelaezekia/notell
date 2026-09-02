@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -39,9 +38,13 @@ func randomFilename(ext string) (string, error) {
 
 // UploadMedia handles image/video uploads.
 func (h *UploadHandler) UploadMedia(c *gin.Context) {
+	// Cap the entire multipart request so oversized bodies are rejected before
+	// they can consume unbounded memory or temporary disk space.
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxUploadSize+(1<<20))
+
 	file, err := c.FormFile("file")
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "file is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"message": "file is required or request is too large"})
 		return
 	}
 
@@ -67,15 +70,11 @@ func (h *UploadHandler) UploadMedia(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "failed to inspect uploaded file"})
 		return
 	}
+
 	contentType := http.DetectContentType(header[:n])
 	ext, allowed := allowedUploadTypes[contentType]
 	if !allowed {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "unsupported file type"})
-		return
-	}
-
-	if _, err := input.Seek(0, io.SeekStart); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "failed to read uploaded file"})
 		return
 	}
 
@@ -107,6 +106,5 @@ func (h *UploadHandler) UploadMedia(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "upload successful",
 		"url":     fileURL,
-		"type":    strings.TrimPrefix(contentType, ""),
 	})
 }
