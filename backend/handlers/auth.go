@@ -87,14 +87,19 @@ func (h *AuthHandler) Me(c *gin.Context) {
 
 func (h *AuthHandler) Logout(c *gin.Context) { h.clearSession(c); c.JSON(http.StatusOK, gin.H{"message": "logged out successfully"}) }
 
-func generateStateToken() string { b := make([]byte, 16); _, _ = rand.Read(b); return hex.EncodeToString(b) }
+func generateStateToken() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil { return "", fmt.Errorf("failed to generate oauth state: %w", err) }
+	return hex.EncodeToString(b), nil
+}
 
 func (h *AuthHandler) googleOAuthConfig() *oauth2.Config {
 	return &oauth2.Config{ClientID: h.Config.GoogleClientID, ClientSecret: h.Config.GoogleClientSecret, RedirectURL: h.Config.GoogleRedirectURL, Scopes: []string{"https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile"}, Endpoint: google.Endpoint}
 }
 
 func (h *AuthHandler) GoogleLogin(c *gin.Context) {
-	state := generateStateToken()
+	state, err := generateStateToken()
+	if err != nil { c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to start Google authentication"}); return }
 	h.setSessionCookie(c, "oauth_state", state, 300)
 	c.Redirect(http.StatusTemporaryRedirect, h.googleOAuthConfig().AuthCodeURL(state, oauth2.AccessTypeOffline))
 }
@@ -106,8 +111,10 @@ func (h *AuthHandler) getGoogleUser(token *oauth2.Token) (*GoogleUser, error) {
 	resp, err := client.Get("https://www.googleapis.com/oauth2/v2/userinfo")
 	if err != nil { return nil, err }
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK { return nil, fmt.Errorf("google userinfo returned status %d", resp.StatusCode) }
 	var googleUser GoogleUser
 	if err := json.NewDecoder(resp.Body).Decode(&googleUser); err != nil { return nil, err }
+	if googleUser.ID == "" || googleUser.Email == "" { return nil, fmt.Errorf("google userinfo response is missing required fields") }
 	return &googleUser, nil
 }
 
@@ -126,7 +133,7 @@ func (h *AuthHandler) findOrCreateGoogleUser(googleUser *GoogleUser) (*models.Us
 	if baseUsername == "" { baseUsername = strings.Split(googleUser.Email, "@")[0] }
 	username := baseUsername
 	var count int64
-	h.DB.Model(&models.User{}).Where("username = ?", username).Count(&count)
+	if err := h.DB.Model(&models.User{}).Where("username = ?", username).Count(&count).Error; err != nil { return nil, err }
 	if count > 0 { username = fmt.Sprintf("%s_%d", baseUsername, time.Now().Unix()%10000) }
 	user = models.User{Username: username, Email: googleUser.Email, GoogleID: &googleUser.ID, ProfilePicture: &googleUser.Picture}
 	if err := h.DB.Create(&user).Error; err != nil { return nil, err }
