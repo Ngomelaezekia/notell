@@ -3,7 +3,6 @@ package services
 import (
 	"errors"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -18,6 +17,13 @@ type Claims struct {
 const tokenLifetime = 72 * time.Hour
 
 func GenerateToken(userID uint, email, secret string) (string, error) {
+	if userID == 0 {
+		return "", errors.New("invalid user ID")
+	}
+	if secret == "" {
+		return "", errors.New("JWT secret is required")
+	}
+
 	now := time.Now()
 	claims := Claims{
 		UserID: userID,
@@ -40,6 +46,13 @@ func GenerateToken(userID uint, email, secret string) (string, error) {
 }
 
 func ValidateToken(tokenString, secret string) (*Claims, error) {
+	if tokenString == "" {
+		return nil, errors.New("token is required")
+	}
+	if secret == "" {
+		return nil, errors.New("JWT secret is required")
+	}
+
 	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(t *jwt.Token) (interface{}, error) {
 		if t.Method != jwt.SigningMethodHS256 {
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
@@ -48,12 +61,11 @@ func ValidateToken(tokenString, secret string) (*Claims, error) {
 	}, jwt.WithIssuer("notell-api"))
 
 	if err != nil {
-		log.Printf("JWT validation failed: %v", err)
 		return nil, err
 	}
 
 	claims, ok := token.Claims.(*Claims)
-	if !ok || !token.Valid {
+	if !ok || !token.Valid || claims.UserID == 0 {
 		return nil, errors.New("invalid or expired token claims")
 	}
 	return claims, nil
