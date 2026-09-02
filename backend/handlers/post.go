@@ -37,7 +37,8 @@ func (h *PostHandler) GetFeed(c *gin.Context) {
 	if err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"message":"failed to fetch feed"});return};c.JSON(http.StatusOK,gin.H{"data":posts,"page":page,"limit":limit})
 }
 
-// SearchPosts searches captions and author usernames and returns public post data.
+// SearchPosts searches captions and author usernames. Results prioritize exact
+// username matches, username prefixes, caption prefixes, then recency.
 func (h *PostHandler) SearchPosts(c *gin.Context) {
 	query := strings.TrimSpace(c.Query("q"))
 	if len(query) < 2 {
@@ -52,6 +53,7 @@ func (h *PostHandler) SearchPosts(c *gin.Context) {
 	if limit > 50 { limit = 50 }
 
 	pattern := "%" + query + "%"
+	prefix := query + "%"
 	var total int64
 	base := h.DB.Model(&models.Post{}).
 		Joins("JOIN users ON users.id = posts.user_id").
@@ -68,7 +70,14 @@ func (h *PostHandler) SearchPosts(c *gin.Context) {
 	}
 	err := base.Select(postEngagementSelect, authUserID).
 		Preload("User", func(db *gorm.DB) *gorm.DB { return db.Select("id", "username", "profile_picture") }).
-		Order("posts.created_at DESC").Offset((page - 1) * limit).Limit(limit).Find(&posts).Error
+		Order(gorm.Expr(`CASE
+			WHEN LOWER(users.username) = LOWER(?) THEN 0
+			WHEN LOWER(users.username) LIKE LOWER(?) THEN 1
+			WHEN LOWER(posts.caption) LIKE LOWER(?) THEN 2
+			ELSE 3
+		END`, query, prefix, prefix)).
+		Order("posts.created_at DESC").
+		Offset((page - 1) * limit).Limit(limit).Find(&posts).Error
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "database error"})
 		return
