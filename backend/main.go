@@ -48,6 +48,7 @@ func main() {
 			protected.GET("/auth/me", auth.Me)
 			protected.POST("/auth/logout", auth.Logout)
 			protected.PUT("/users/profile", userHandler.UpdateProfile)
+			protected.GET("/users/search", userHandler.SearchUsers)
 			protected.POST("/posts", post.CreatePost)
 			protected.GET("/posts/feed", post.GetFeed)
 			protected.DELETE("/posts/:id", post.DeletePost)
