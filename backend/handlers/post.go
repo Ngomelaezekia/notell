@@ -25,7 +25,7 @@ func (h *PostHandler) CreatePost(c *gin.Context) {
 	var input createPostInput; if err:=c.ShouldBindJSON(&input);err!=nil { c.JSON(http.StatusBadRequest,gin.H{"message":err.Error()}); return }
 	post:=models.Post{UserID:userID,ContentType:input.ContentType,ContentURL:input.ContentURL,Caption:strings.TrimSpace(input.Caption)}
 	if err:=h.DB.Create(&post).Error;err!=nil { c.JSON(http.StatusInternalServerError,gin.H{"message":"failed to create post"});return }
-	if err:=h.DB.Preload("User",func(db *gorm.DB)*gorm.DB{return db.Select("id","username","profile_picture")}).First(&post,post.ID).Error;err!=nil { c.JSON(http.StatusInternalServerError,gin.H{"message":"post created but failed to load author"});return }
+	h.DB.Preload("User",func(db *gorm.DB)*gorm.DB{return db.Select("id","username","profile_picture")}).First(&post,post.ID)
 	post.LikeCount = 0; post.Liked = false
 	c.JSON(http.StatusCreated,gin.H{"message":"post created successfully","data":post})
 }
@@ -80,7 +80,6 @@ func (h *PostHandler) SearchPosts(c *gin.Context) {
 			ELSE 3
 		END`, query, prefix, prefix)).
 		Order("posts.created_at DESC").
-		Order("posts.id DESC").
 		Offset((page - 1) * limit).Limit(limit).Find(&posts).Error
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "database error"})
@@ -107,7 +106,17 @@ func (h *PostHandler) GetPostByID(c *gin.Context) {
 
 func (h *PostHandler) DeletePost(c *gin.Context) {
 	userID:=c.MustGet("userId").(uint);postID,err:=strconv.ParseUint(c.Param("id"),10,32);if err!=nil{c.JSON(http.StatusBadRequest,gin.H{"message":"invalid post ID"});return}
-	result:=h.DB.Where("id=? AND user_id=?",uint(postID),userID).Delete(&models.Post{});if result.Error!=nil{c.JSON(http.StatusInternalServerError,gin.H{"message":"failed to delete post"});return};if result.RowsAffected==0{c.JSON(http.StatusNotFound,gin.H{"message":"post not found"});return};c.JSON(http.StatusOK,gin.H{"message":"post deleted successfully"})
+	postIDUint:=uint(postID)
+	err = h.DB.Transaction(func(tx *gorm.DB) error {
+		result:=tx.Where("id=? AND user_id=?",postIDUint,userID).Delete(&models.Post{})
+		if result.Error!=nil{return result.Error}
+		if result.RowsAffected==0{return gorm.ErrRecordNotFound}
+		if err:=tx.Where("post_id=?",postIDUint).Delete(&models.Notification{}).Error;err!=nil{return err}
+		return nil
+	})
+	if errors.Is(err,gorm.ErrRecordNotFound){c.JSON(http.StatusNotFound,gin.H{"message":"post not found"});return}
+	if err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"message":"failed to delete post"});return}
+	c.JSON(http.StatusOK,gin.H{"message":"post deleted successfully"})
 }
 
 func (h *PostHandler) ToggleLike(c *gin.Context) {
@@ -136,16 +145,15 @@ func (h *PostHandler) AddComment(c *gin.Context) {
 	var input createCommentInput;if err:=c.ShouldBindJSON(&input);err!=nil{c.JSON(http.StatusBadRequest,gin.H{"message":err.Error()});return}
 	var post models.Post;if err:=h.DB.Select("id,user_id").First(&post,uint(postID)).Error;err!=nil{if errors.Is(err,gorm.ErrRecordNotFound){c.JSON(http.StatusNotFound,gin.H{"message":"post not found"});return};c.JSON(http.StatusInternalServerError,gin.H{"message":"failed to find post"});return}
 	content:=strings.TrimSpace(input.Content);if content==""{c.JSON(http.StatusBadRequest,gin.H{"message":"comment cannot be empty"});return}
-	var parent models.Comment
-	if input.ParentID!=nil{if err:=h.DB.Select("id,post_id,user_id").First(&parent,*input.ParentID).Error;err!=nil{if errors.Is(err,gorm.ErrRecordNotFound){c.JSON(http.StatusBadRequest,gin.H{"message":"parent comment not found"});return};c.JSON(http.StatusInternalServerError,gin.H{"message":"failed to validate parent comment"});return};if parent.PostID!=uint(postID){c.JSON(http.StatusBadRequest,gin.H{"message":"parent comment belongs to another post"});return}}
+	if input.ParentID!=nil{var parent models.Comment;if err:=h.DB.Select("id,post_id").First(&parent,*input.ParentID).Error;err!=nil{if errors.Is(err,gorm.ErrRecordNotFound){c.JSON(http.StatusBadRequest,gin.H{"message":"parent comment not found"});return};c.JSON(http.StatusInternalServerError,gin.H{"message":"failed to validate parent comment"});return};if parent.PostID!=uint(postID){c.JSON(http.StatusBadRequest,gin.H{"message":"parent comment belongs to another post"});return}}
 	comment:=models.Comment{PostID:uint(postID),UserID:userID,Content:content,ParentID:input.ParentID};if err:=h.DB.Create(&comment).Error;err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"message":"failed to add comment"});return}
 	if err:=h.DB.Preload("User",func(db *gorm.DB)*gorm.DB{return db.Select("id","username","profile_picture")}).First(&comment,comment.ID).Error;err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"message":"failed to load comment"});return}
-	targetUserID:=post.UserID;notificationType:="comment";if input.ParentID!=nil{targetUserID=parent.UserID;notificationType="reply"}
-	_ = CreateNotification(h.DB,targetUserID,userID,notificationType,func()*uint{id:=uint(postID);return &id}(),&comment.ID)
-	c.JSON(http.StatusCreated,gin.H{"message":"comment added","data":comment})
+	targetUserID:=post.UserID;if input.ParentID!=nil{var parent models.Comment;if h.DB.Select("user_id").First(&parent,*input.ParentID).Error==nil{targetUserID=parent.UserID}}
+	_ = CreateNotification(h.DB,targetUserID,userID,"comment",func()*uint{id:=uint(postID);return &id}(),&comment.ID)
+	c.JSON(http.StatusCreated,gin.H{"data":comment})
 }
 
 func (h *PostHandler) GetComments(c *gin.Context) {
 	postID,err:=strconv.ParseUint(c.Param("id"),10,32);if err!=nil{c.JSON(http.StatusBadRequest,gin.H{"message":"invalid post ID"});return}
-	var comments []models.Comment;if err:=h.DB.Where("post_id=? AND parent_id IS NULL",uint(postID)).Preload("User",func(db *gorm.DB)*gorm.DB{return db.Select("id","username","profile_picture")}).Preload("Replies",func(db *gorm.DB)*gorm.DB{return db.Order("created_at ASC").Order("id ASC")}).Preload("Replies.User",func(db *gorm.DB)*gorm.DB{return db.Select("id","username","profile_picture")}).Order("created_at ASC").Order("id ASC").Find(&comments).Error;err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"message":"failed to fetch comments"});return};c.JSON(http.StatusOK,gin.H{"data":comments})
+	var comments []models.Comment;if err:=h.DB.Where("post_id=? AND parent_id IS NULL",uint(postID)).Preload("User",func(db *gorm.DB)*gorm.DB{return db.Select("id","username","profile_picture")}).Preload("Replies",func(db *gorm.DB)*gorm.DB{return db.Order("created_at ASC")}).Preload("Replies.User",func(db *gorm.DB)*gorm.DB{return db.Select("id","username","profile_picture")}).Order("created_at ASC").Order("id ASC").Find(&comments).Error;err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"message":"failed to fetch comments"});return};c.JSON(http.StatusOK,gin.H{"data":comments})
 }
