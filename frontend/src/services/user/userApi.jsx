@@ -11,6 +11,13 @@ export const userAPI = {
     return response.data;
   },
 
+  searchUsers: async (query, page = 1, limit = 20) => {
+    const response = await API.get("/users/search", {
+      params: { q: query, page, limit },
+    });
+    return response.data;
+  },
+
   updateProfile: async (userData) => {
     const response = await API.put("/users/profile", userData);
     return response.data;
