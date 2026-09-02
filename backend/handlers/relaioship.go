@@ -35,6 +35,7 @@ func (h *RelationshipHandler) FollowUser(c *gin.Context) {
 
 	relationship := models.Relationship{FollowerID:followerID, FollowingID:followingID, Status:"accepted"}
 	if err := h.DB.Create(&relationship).Error; err != nil { c.JSON(http.StatusInternalServerError, gin.H{"message":"failed to follow user"}); return }
+	_ = CreateNotification(h.DB, followingID, followerID, "follow", nil, nil)
 	c.JSON(http.StatusOK, gin.H{"message":"successfully followed user", "data":gin.H{"following":true, "status":"accepted"}})
 }
 
