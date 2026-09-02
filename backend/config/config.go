@@ -1,9 +1,10 @@
 package config
 
 import (
+	"errors"
 	"fmt"
-	"log"
 	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -24,10 +25,7 @@ type Config struct {
 }
 
 func Load() *Config {
-	// Attempt to load .env file (ignore error if file doesn't exist, e.g. in container environments)
-	if err := godotenv.Load(); err != nil {
-		log.Println("Config: No .env file found, relying on environment variables.")
-	}
+	_ = godotenv.Load()
 
 	cfg := &Config{
 		AppEnv:             getEnv("APP_ENV", "development"),
@@ -44,23 +42,38 @@ func Load() *Config {
 		FrontendURL:        getEnv("FRONTEND_URL", "http://localhost:5173"),
 	}
 
-	cfg.Validate()
+	if err := cfg.Validate(); err != nil {
+		panic(err)
+	}
 	return cfg
 }
 
-// Validate checks for critical configuration values in non-development environments.
-func (c *Config) Validate() {
+func (c *Config) Validate() error {
+	if strings.TrimSpace(c.AppEnv) == "" {
+		return errors.New("APP_ENV must not be empty")
+	}
+	if c.Port == "" || c.DBHost == "" || c.DBPort == "" || c.DBUser == "" || c.DBName == "" {
+		return errors.New("database and server configuration must not be empty")
+	}
+
 	if c.AppEnv == "production" {
-		if c.JWTSecret == "super-secret-key-change-me" || c.JWTSecret == "" {
-			log.Fatal("CRITICAL: JWT_SECRET must be set to a secure string in production")
+		if c.JWTSecret == "" || c.JWTSecret == "super-secret-key-change-me" {
+			return errors.New("JWT_SECRET must be set to a secure value in production")
 		}
-		if c.GoogleClientID == "" || c.GoogleClientSecret == "" {
-			log.Fatal("CRITICAL: GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set in production")
+		if c.DBPassword == "" || c.DBPassword == "postgres" {
+			return errors.New("DB_PASSWORD must be set to a secure value in production")
+		}
+		if c.GoogleClientID == "" || c.GoogleClientSecret == "" || c.GoogleRedirectURL == "" {
+			return errors.New("Google OAuth configuration must be set in production")
+		}
+		if c.FrontendURL == "" {
+			return errors.New("FRONTEND_URL must be set in production")
 		}
 	}
+
+	return nil
 }
 
-// GetDBDSN builds and returns the PostgreSQL connection string.
 func (c *Config) GetDBDSN() string {
 	sslMode := "disable"
 	if c.AppEnv == "production" {
