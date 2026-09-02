@@ -22,7 +22,7 @@ const postEngagementSelect = `posts.*, (SELECT COUNT(*) FROM likes WHERE likes.p
 
 func (h *PostHandler) CreatePost(c *gin.Context) {
 	authUserID, exists := c.Get("userId"); if !exists { c.JSON(http.StatusUnauthorized, gin.H{"message":"unauthorized"}); return }; userID := authUserID.(uint)
-	var input createPostInput; if err:=c.ShouldBindJSON(&input); err!=nil { c.JSON(http.StatusBadRequest,gin.H{"message":err.Error()}); return }
+	var input createPostInput; if err:=c.ShouldBindJSON(&input);err!=nil { c.JSON(http.StatusBadRequest,gin.H{"message":err.Error()}); return }
 	post:=models.Post{UserID:userID,ContentType:input.ContentType,ContentURL:input.ContentURL,Caption:strings.TrimSpace(input.Caption)}
 	if err:=h.DB.Create(&post).Error;err!=nil { c.JSON(http.StatusInternalServerError,gin.H{"message":"failed to create post"});return }
 	h.DB.Preload("User",func(db *gorm.DB)*gorm.DB{return db.Select("id","username","profile_picture")}).First(&post,post.ID)
@@ -33,8 +33,11 @@ func (h *PostHandler) CreatePost(c *gin.Context) {
 func (h *PostHandler) GetFeed(c *gin.Context) {
 	userID:=c.MustGet("userId").(uint); page,_:=strconv.Atoi(c.DefaultQuery("page","1")); limit,_:=strconv.Atoi(c.DefaultQuery("limit","10")); if page<1{page=1};if limit<1||limit>50{limit=10}
 	var posts []models.Post
-	err:=h.DB.Model(&models.Post{}).Select(postEngagementSelect,userID).Joins(`LEFT JOIN user_relationships ON user_relationships.following_id = posts.user_id AND user_relationships.follower_id = ? AND user_relationships.status = ?`, userID, "accepted").Where(`posts.user_id = ? OR user_relationships.follower_id IS NOT NULL`, userID).Preload("User",func(db *gorm.DB)*gorm.DB{return db.Select("id","username","profile_picture")}).Order("posts.created_at DESC").Limit(limit).Offset((page-1)*limit).Find(&posts).Error
-	if err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"message":"failed to fetch feed"});return};c.JSON(http.StatusOK,gin.H{"data":posts,"page":page,"limit":limit})
+	err:=h.DB.Model(&models.Post{}).Select(postEngagementSelect,userID).Joins(`LEFT JOIN user_relationships ON user_relationships.following_id = posts.user_id AND user_relationships.follower_id = ? AND user_relationships.status = ?`, userID, "accepted").Where(`posts.user_id = ? OR user_relationships.follower_id IS NOT NULL`, userID).Preload("User",func(db *gorm.DB)*gorm.DB{return db.Select("id","username","profile_picture")}).Order("posts.created_at DESC").Limit(limit+1).Offset((page-1)*limit).Find(&posts).Error
+	if err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"message":"failed to fetch feed"});return}
+	hasMore:=len(posts)>limit
+	if hasMore { posts=posts[:limit] }
+	c.JSON(http.StatusOK,gin.H{"data":posts,"pagination":gin.H{"page":page,"limit":limit,"hasMore":hasMore}})
 }
 
 // SearchPosts searches captions and author usernames. Results prioritize exact
@@ -113,8 +116,6 @@ func (h *PostHandler) ToggleLike(c *gin.Context) {
 	liked:=false
 	if err==nil{
 		if err:=h.DB.Delete(&like).Error;err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"message":"failed to remove like"});return}
-		// Remove the corresponding unread/read like notification so an unlike
-		// does not leave a stale activity item behind.
 		h.DB.Where("user_id = ? AND actor_id = ? AND post_id = ? AND type = ?", post.UserID, userID, uint(postID), "like").Delete(&models.Notification{})
 	}
 	if errors.Is(err,gorm.ErrRecordNotFound){
