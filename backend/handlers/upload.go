@@ -1,151 +1,112 @@
 package handlers
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
-	"time"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
 
 type UploadHandler struct{}
 
+const maxUploadSize int64 = 100 << 20 // 100 MiB
+
+var allowedUploadTypes = map[string]string{
+	"image/jpeg":      ".jpg",
+	"image/png":       ".png",
+	"image/webp":      ".webp",
+	"video/mp4":       ".mp4",
+	"video/quicktime": ".mov",
+}
+
 func NewUploadHandler() *UploadHandler {
 	return &UploadHandler{}
 }
 
-// UploadMedia handles image/video uploads
+func randomFilename(ext string) (string, error) {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buf) + ext, nil
+}
+
+// UploadMedia handles image/video uploads.
 func (h *UploadHandler) UploadMedia(c *gin.Context) {
-
 	file, err := c.FormFile("file")
-
 	if err != nil {
-
-		c.JSON(
-			http.StatusBadRequest,
-			gin.H{
-				"message": "file is required",
-			},
-		)
-
+		c.JSON(http.StatusBadRequest, gin.H{"message": "file is required"})
 		return
 	}
 
-
-	// Validate file type
-
-	allowedTypes := map[string]bool{
-
-		"image/jpeg": true,
-		"image/png":  true,
-		"image/webp": true,
-
-		"video/mp4":       true,
-		"video/quicktime": true,
+	if file.Size <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "file is empty"})
+		return
 	}
-
-
-	if !allowedTypes[file.Header.Get("Content-Type")] {
-
-		c.JSON(
-			http.StatusBadRequest,
-			gin.H{
-				"message": "unsupported file type",
-			},
-		)
-
+	if file.Size > maxUploadSize {
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"message": "file exceeds the 100 MiB limit"})
 		return
 	}
 
+	input, err := file.Open()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "failed to inspect uploaded file"})
+		return
+	}
+	defer input.Close()
 
-
-	// Create upload directory
-
-	uploadDir := "./uploads/"
-
-
-	if err := os.MkdirAll(
-		uploadDir,
-		0755,
-	); err != nil {
-
-		c.JSON(
-			http.StatusInternalServerError,
-			gin.H{
-				"message": "failed creating upload directory",
-			},
-		)
-
+	header := make([]byte, 512)
+	n, err := io.ReadFull(input, header)
+	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "failed to inspect uploaded file"})
+		return
+	}
+	contentType := http.DetectContentType(header[:n])
+	ext, allowed := allowedUploadTypes[contentType]
+	if !allowed {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "unsupported file type"})
 		return
 	}
 
-
-
-	// Generate unique filename
-
-	filename :=
-		time.Now().
-			Format("20060102150405") +
-			"_" +
-			file.Filename
-
-
-
-	filePath :=
-		filepath.Join(
-			uploadDir,
-			filename,
-		)
-
-
-
-	// Save file
-
-	if err :=
-		c.SaveUploadedFile(
-			file,
-			filePath,
-		); err != nil {
-
-		c.JSON(
-			http.StatusInternalServerError,
-			gin.H{
-				"message": "failed uploading file",
-			},
-		)
-
+	if _, err := input.Seek(0, io.SeekStart); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "failed to read uploaded file"})
 		return
 	}
 
+	uploadDir := filepath.Join(".", "uploads")
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed creating upload directory"})
+		return
+	}
 
+	filename, err := randomFilename(ext)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed generating upload name"})
+		return
+	}
 
-
-	// Generate public URL
+	filePath := filepath.Join(uploadDir, filename)
+	if err := c.SaveUploadedFile(file, filePath); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed uploading file"})
+		return
+	}
 
 	scheme := "http"
-
 	if c.Request.TLS != nil {
 		scheme = "https"
 	}
 
+	fileURL := fmt.Sprintf("%s://%s/uploads/%s", scheme, c.Request.Host, filename)
 
-	fileURL :=
-		scheme +
-			"://" +
-			c.Request.Host +
-			"/uploads/" +
-			filename
-
-
-
-
-	c.JSON(
-		http.StatusOK,
-		gin.H{
-			"message": "upload successful",
-			"url":     fileURL,
-		},
-	)
-
+	c.JSON(http.StatusOK, gin.H{
+		"message": "upload successful",
+		"url":     fileURL,
+		"type":    strings.TrimPrefix(contentType, ""),
+	})
 }
