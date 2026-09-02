@@ -15,13 +15,15 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
+const tokenLifetime = 72 * time.Hour
+
 func GenerateToken(userID uint, email, secret string) (string, error) {
 	now := time.Now()
 	claims := Claims{
 		UserID: userID,
 		Email:  email,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(now.Add(72 * time.Hour)),
+			ExpiresAt: jwt.NewNumericDate(now.Add(tokenLifetime)),
 			IssuedAt:  jwt.NewNumericDate(now),
 			NotBefore: jwt.NewNumericDate(now),
 			Issuer:    "notell-api",
@@ -34,34 +36,25 @@ func GenerateToken(userID uint, email, secret string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to sign token: %w", err)
 	}
-
 	return tokenString, nil
 }
 
 func ValidateToken(tokenString, secret string) (*Claims, error) {
-	fmt.Println("JWT Secret:", secret)
-
 	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(t *jwt.Token) (interface{}, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+		if t.Method != jwt.SigningMethodHS256 {
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 		}
 		return []byte(secret), nil
-	})
+	}, jwt.WithIssuer("notell-api"))
 
 	if err != nil {
-		log.Printf("JWT validation error: %v\n", err)
-		log.Printf("Secret length: %d\n", len(secret))
-		fmt.Println("JWT Parse Error:", err)
+		log.Printf("JWT validation failed: %v", err)
 		return nil, err
 	}
 
 	claims, ok := token.Claims.(*Claims)
 	if !ok || !token.Valid {
-		fmt.Println("Token invalid")
 		return nil, errors.New("invalid or expired token claims")
 	}
-
-	fmt.Println("Authenticated User:", claims.UserID)
-
 	return claims, nil
 }
