@@ -2,21 +2,36 @@ import { Link, Outlet, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { Bell, Search } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { useNotifications } from "../hooks/useNotifications";
 import MobileNavbar from "../components/navigation/MobileNavigation";
 import MobileDrawer from "../components/navigation/MobileDrawer";
 import UserMenu from "../components/navigation/UserMenu";
+import NotificationsPanel from "../components/NotificationsPanel";
 
 export default function AppLayout() {
   const { user } = useAuth();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [query, setQuery] = useState("");
   const navigate = useNavigate();
+  const {
+    notifications,
+    unreadCount,
+    loading: notificationsLoading,
+    error: notificationsError,
+    markRead,
+    markAllRead,
+  } = useNotifications(Boolean(user));
 
   const submitSearch = (event) => {
     event.preventDefault();
     const value = query.trim();
     if (value.length < 2) return;
     navigate(`/search?q=${encodeURIComponent(value)}`);
+  };
+
+  const toggleNotifications = () => {
+    setNotificationsOpen((open) => !open);
   };
 
   return (
@@ -57,10 +72,32 @@ export default function AppLayout() {
           >
             <Search size={19} />
           </Link>
-          <button type="button" aria-label="Notifications" className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white">
-            <Bell size={19} />
-            <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-red-500" />
-          </button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={toggleNotifications}
+              aria-label="Notifications"
+              aria-expanded={notificationsOpen}
+              className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white"
+            >
+              <Bell size={19} />
+              {unreadCount > 0 && (
+                <span className="absolute -right-1 -top-1 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
+              )}
+            </button>
+            {notificationsOpen && (
+              <NotificationsPanel
+                notifications={notifications}
+                unreadCount={unreadCount}
+                loading={notificationsLoading}
+                error={notificationsError}
+                onMarkRead={markRead}
+                onMarkAllRead={markAllRead}
+              />
+            )}
+          </div>
           <UserMenu user={user} />
         </div>
       </header>
