@@ -11,6 +11,13 @@ export const postsAPI = {
     return response.data;
   },
 
+  searchPosts: async (query, page = 1, limit = 20) => {
+    const response = await API.get("/posts/search", {
+      params: { q: query, page, limit },
+    });
+    return response.data;
+  },
+
   create: async (postData) => {
     const response = await API.post("/posts", {
       contentType: postData.contentType,
