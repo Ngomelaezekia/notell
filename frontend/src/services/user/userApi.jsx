@@ -1,27 +1,38 @@
 import API from "../../utils/api";
 
 export const userAPI = {
-  // Matches: api.GET("/users/:id")
   getProfile: async (userId) => {
     const response = await API.get(`/users/${userId}`);
     return response.data;
   },
 
-  // Matches: protected.PUT("/users/profile")
+  getRelationship: async (userId) => {
+    const response = await API.get(`/users/${userId}/relationship`);
+    return response.data;
+  },
+
   updateProfile: async (userData) => {
     const response = await API.put("/users/profile", userData);
     return response.data;
   },
 
-  // Matches: protected.POST("/users/:id/follow")
   followUser: async (userId) => {
     const response = await API.post(`/users/${userId}/follow`);
     return response.data;
   },
 
-  // Matches: protected.DELETE("/users/:id/unfollow")
   unfollowUser: async (userId) => {
     const response = await API.delete(`/users/${userId}/unfollow`);
+    return response.data;
+  },
+
+  getFollowers: async (userId) => {
+    const response = await API.get(`/users/${userId}/followers`);
+    return response.data;
+  },
+
+  getFollowing: async (userId) => {
+    const response = await API.get(`/users/${userId}/following`);
     return response.data;
   },
 };
