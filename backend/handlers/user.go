@@ -22,6 +22,7 @@ func NewUserHandler(db *gorm.DB) *UserHandler {
 
 type updateProfileInput struct {
 	Username       *string `json:"username" binding:"omitempty,gt=0"`
+	Email          *string `json:"email" binding:"omitempty,email"`
 	Country        *string `json:"country"`
 	City           *string `json:"city"`
 	Bio            *string `json:"bio"`
@@ -48,18 +49,40 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 
 	if input.Username != nil {
 		trimmedUsername := strings.TrimSpace(*input.Username)
-		if trimmedUsername != "" {
-			var existingUser models.User
-			err := h.DB.Where("username = ? AND id != ?", trimmedUsername, userID).First(&existingUser).Error
-			if err == nil {
-				c.JSON(http.StatusConflict, gin.H{"message": "username is already taken"})
-				return
-			} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-				c.JSON(http.StatusInternalServerError, gin.H{"message": "database error"})
-				return
-			}
-			updates["username"] = trimmedUsername
+		if trimmedUsername == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "username cannot be empty"})
+			return
 		}
+
+		var existingUser models.User
+		err := h.DB.Where("username = ? AND id != ?", trimmedUsername, userID).First(&existingUser).Error
+		if err == nil {
+			c.JSON(http.StatusConflict, gin.H{"message": "username is already taken"})
+			return
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusInternalServerError, gin.H{"message": "database error"})
+			return
+		}
+		updates["username"] = trimmedUsername
+	}
+
+	if input.Email != nil {
+		trimmedEmail := strings.TrimSpace(strings.ToLower(*input.Email))
+		if trimmedEmail == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "email cannot be empty"})
+			return
+		}
+
+		var existingUser models.User
+		err := h.DB.Where("email = ? AND id != ?", trimmedEmail, userID).First(&existingUser).Error
+		if err == nil {
+			c.JSON(http.StatusConflict, gin.H{"message": "email is already in use"})
+			return
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusInternalServerError, gin.H{"message": "database error"})
+			return
+		}
+		updates["email"] = trimmedEmail
 	}
 
 	if input.Country != nil {
