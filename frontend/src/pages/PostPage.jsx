@@ -6,17 +6,22 @@ import { PostCard } from "../components/PostCard";
 
 const Posts = () => {
   const { posts, loading, loadingMore, hasMore, error, refetch, loadMore } = usePosts();
+  const scrollContainerRef = useRef(null);
   const loadMoreRef = useRef(null);
 
   useEffect(() => {
     const sentinel = loadMoreRef.current;
-    if (!sentinel || !hasMore) return;
+    const scrollContainer = scrollContainerRef.current;
+    if (!sentinel || !scrollContainer || !hasMore) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0]?.isIntersecting) loadMore();
       },
-      { rootMargin: "500px 0px" }
+      {
+        root: scrollContainer,
+        rootMargin: "500px 0px",
+      }
     );
 
     observer.observe(sentinel);
@@ -27,7 +32,7 @@ const Posts = () => {
     <div className="h-screen w-screen overflow-hidden bg-neutral-950 text-neutral-100 flex">
       <main className="mx-auto flex h-full w-full max-w-2xl flex-col border-x border-neutral-800">
         <Headerposts title="Feed" />
-        <section className="no-scrollbar flex-1 overflow-y-auto">
+        <section ref={scrollContainerRef} className="no-scrollbar flex-1 overflow-y-auto">
           <div className="divide-y divide-neutral-800 px-4">
             {loading && (
               <div className="flex h-64 items-center justify-center text-sm text-neutral-500">
