@@ -21,7 +21,7 @@ func main() {
 	db, err := gorm.Open(postgres.Open(cfg.GetDBDSN()), &gorm.Config{})
 	if err != nil { log.Fatalf("Failed to connect to PostgreSQL database: %v", err) }
 	log.Println("Database connection established successfully")
-	if err := db.AutoMigrate(&models.User{}, &models.Post{}, &models.Comment{}, &models.Like{}, &models.Relationship{}, &models.Channel{}); err != nil { log.Fatalf("Database auto-migration failed: %v", err) }
+	if err := db.AutoMigrate(&models.User{}, &models.Post{}, &models.Comment{}, &models.Like{}, &models.Relationship{}, &models.Channel{}, &models.Notification{}); err != nil { log.Fatalf("Database auto-migration failed: %v", err) }
 
 	r := gin.Default()
 	r.Use(cors.New(cors.Config{AllowOrigins:[]string{cfg.FrontendURL}, AllowMethods:[]string{"GET","POST","PUT","PATCH","DELETE","OPTIONS"}, AllowHeaders:[]string{"Origin","Content-Type","Accept","Authorization"}, ExposeHeaders:[]string{"Content-Length"}, AllowCredentials:true, MaxAge:12*time.Hour}))
@@ -30,6 +30,7 @@ func main() {
 	post := handlers.NewPostHandler(db)
 	userHandler := handlers.NewUserHandler(db)
 	relationshipHandler := handlers.NewRelationshipHandler(db)
+	notificationHandler := handlers.NewNotificationHandler(db)
 	uploadHandler := handlers.NewUploadHandler()
 
 	api := r.Group("/api")
@@ -61,6 +62,9 @@ func main() {
 			protected.DELETE("/users/followers/:id", relationshipHandler.RemoveFollower)
 			protected.GET("/users/:id/followers", relationshipHandler.GetFollowers)
 			protected.GET("/users/:id/following", relationshipHandler.GetFollowing)
+			protected.GET("/notifications", notificationHandler.List)
+			protected.POST("/notifications/:id/read", notificationHandler.MarkRead)
+			protected.POST("/notifications/read-all", notificationHandler.MarkAllRead)
 		}
 	}
 	serverAddress := ":" + cfg.Port
