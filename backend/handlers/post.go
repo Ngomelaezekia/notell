@@ -26,21 +26,61 @@ func (h *PostHandler) CreatePost(c *gin.Context) {
 	post:=models.Post{UserID:userID,ContentType:input.ContentType,ContentURL:input.ContentURL,Caption:strings.TrimSpace(input.Caption)}
 	if err:=h.DB.Create(&post).Error;err!=nil { c.JSON(http.StatusInternalServerError,gin.H{"message":"failed to create post"});return }
 	h.DB.Preload("User",func(db *gorm.DB)*gorm.DB{return db.Select("id","username","profile_picture")}).First(&post,post.ID)
-	post.LikeCount = 0
-	post.Liked = false
+	post.LikeCount = 0; post.Liked = false
 	c.JSON(http.StatusCreated,gin.H{"message":"post created successfully","data":post})
 }
 
 func (h *PostHandler) GetFeed(c *gin.Context) {
 	userID:=c.MustGet("userId").(uint); page,_:=strconv.Atoi(c.DefaultQuery("page","1")); limit,_:=strconv.Atoi(c.DefaultQuery("limit","10")); if page<1{page=1};if limit<1||limit>50{limit=10}
 	var posts []models.Post
-	err:=h.DB.Model(&models.Post{}).
-		Select(postEngagementSelect, userID).
-		Joins(`LEFT JOIN user_relationships ON user_relationships.following_id = posts.user_id AND user_relationships.follower_id = ? AND user_relationships.status = ?`, userID, "accepted").
-		Where(`posts.user_id = ? OR user_relationships.follower_id IS NOT NULL`, userID).
-		Preload("User",func(db *gorm.DB)*gorm.DB{return db.Select("id","username","profile_picture")} ).
-		Order("posts.created_at DESC").Limit(limit).Offset((page-1)*limit).Find(&posts).Error
+	err:=h.DB.Model(&models.Post{}).Select(postEngagementSelect,userID).Joins(`LEFT JOIN user_relationships ON user_relationships.following_id = posts.user_id AND user_relationships.follower_id = ? AND user_relationships.status = ?`, userID, "accepted").Where(`posts.user_id = ? OR user_relationships.follower_id IS NOT NULL`, userID).Preload("User",func(db *gorm.DB)*gorm.DB{return db.Select("id","username","profile_picture")}).Order("posts.created_at DESC").Limit(limit).Offset((page-1)*limit).Find(&posts).Error
 	if err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"message":"failed to fetch feed"});return};c.JSON(http.StatusOK,gin.H{"data":posts,"page":page,"limit":limit})
+}
+
+// SearchPosts searches captions and returns public post data with authors.
+func (h *PostHandler) SearchPosts(c *gin.Context) {
+	query := strings.TrimSpace(c.Query("q"))
+	if len(query) < 2 {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "search query must be at least 2 characters"})
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	if page < 1 { page = 1 }
+	if limit < 1 { limit = 20 }
+	if limit > 50 { limit = 50 }
+
+	pattern := "%" + query + "%"
+	var total int64
+	base := h.DB.Model(&models.Post{}).Where("caption ILIKE ?", pattern)
+	if err := base.Count(&total).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "database error"})
+		return
+	}
+
+	var posts []models.Post
+	authUserID := uint(0)
+	if value, ok := c.Get("userId"); ok {
+		if id, ok := value.(uint); ok { authUserID = id }
+	}
+	err := base.Select(postEngagementSelect, authUserID).
+		Preload("User", func(db *gorm.DB) *gorm.DB { return db.Select("id", "username", "profile_picture") }).
+		Order("created_at DESC").Offset((page - 1) * limit).Limit(limit).Find(&posts).Error
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "database error"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": gin.H{
+			"posts": posts,
+			"pagination": gin.H{
+				"page": page, "limit": limit, "total": total,
+				"hasMore": int64(page*limit) < total,
+			},
+		},
+	})
 }
 
 func (h *PostHandler) GetPostByID(c *gin.Context) {
