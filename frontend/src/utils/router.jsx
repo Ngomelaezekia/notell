@@ -7,6 +7,7 @@ import { CreatePost } from "../components/CreatePost";
 import UserManage from "../components/userManager/UserManager";
 import UserPage from "../pages/UserPage";
 import { FollowersPage, FollowingPage } from "../pages/RelationshipListPage";
+import SearchPage from "../pages/SearchPage";
 import AppLayout from "../layout/AppLayout";
 
 const RootLayout = () => (
@@ -28,6 +29,7 @@ const router = createBrowserRouter([
               { path: "/", element: <Posts /> },
               { path: "create-post", element: <CreatePost /> },
               { path: "profile", element: <UserManage /> },
+              { path: "search", element: <SearchPage /> },
               { path: "users/:id", element: <UserPage /> },
               { path: "users/:id/followers", element: <FollowersPage /> },
               { path: "users/:id/following", element: <FollowingPage /> },
