@@ -284,6 +284,7 @@ func (h *PostHandler) SearchPosts(c *gin.Context) {
 		}
 	}
 
+	var err error
 	err = base.Select(postEngagementSelect, authUserID).
 		Preload("User", func(db *gorm.DB) *gorm.DB {
 			return db.Select("id", "username", "profile_picture")
