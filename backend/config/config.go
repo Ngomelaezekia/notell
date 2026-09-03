@@ -83,7 +83,11 @@ func (c *Config) Validate() error {
 		return errors.New("DB_PORT must be a valid TCP port")
 	}
 
-	if !strings.EqualFold(c.StorageDriver, "local") && !strings.EqualFold(c.StorageDriver, "r2") {
+	storageDriver := strings.ToLower(strings.TrimSpace(c.StorageDriver))
+	if storageDriver == "" {
+		storageDriver = "local"
+	}
+	if storageDriver != "local" && storageDriver != "r2" {
 		return errors.New("STORAGE_DRIVER must be local or r2")
 	}
 
@@ -109,7 +113,7 @@ func (c *Config) Validate() error {
 		if err := validatePublicURL(c.PublicURL); err != nil {
 			return fmt.Errorf("SERVER_URL: %w", err)
 		}
-		if !strings.EqualFold(c.StorageDriver, "r2") {
+		if storageDriver != "r2" {
 			return errors.New("STORAGE_DRIVER must be r2 in production")
 		}
 		if err := validatePublicURL(c.MediaPublicURL); err != nil {
