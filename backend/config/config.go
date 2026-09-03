@@ -3,7 +3,6 @@ package config
 import (
 	"errors"
 	"fmt"
-	"net"
 	"net/url"
 	"os"
 	"strconv"
@@ -121,29 +120,27 @@ func validatePublicURL(value string) error {
 	return nil
 }
 
+func quoteConninfoValue(value string) string {
+	value = strings.ReplaceAll(value, "\\", "\\\\")
+	value = strings.ReplaceAll(value, "'", "\\'")
+	return "'" + value + "'"
+}
+
 func (c *Config) GetDBDSN() string {
 	sslMode := "disable"
 	if strings.EqualFold(strings.TrimSpace(c.AppEnv), "production") {
 		sslMode = "require"
 	}
 
-	host := strings.TrimSpace(c.DBHost)
-	if strings.Contains(host, ":") && !strings.HasPrefix(host, "[") {
-		host = net.JoinHostPort(host, c.DBPort)
-	} else {
-		host = net.JoinHostPort(host, c.DBPort)
-	}
-
-	dsn := url.URL{
-		Scheme: "postgres",
-		Host:   host,
-		Path:   "/" + url.PathEscape(c.DBName),
-		User:   url.UserPassword(c.DBUser, c.DBPassword),
-	}
-	query := dsn.Query()
-	query.Set("sslmode", sslMode)
-	dsn.RawQuery = query.Encode()
-	return dsn.String()
+	return fmt.Sprintf(
+		"host=%s user=%s password=%s dbname=%s port=%s sslmode=%s",
+		quoteConninfoValue(c.DBHost),
+		quoteConninfoValue(c.DBUser),
+		quoteConninfoValue(c.DBPassword),
+		quoteConninfoValue(c.DBName),
+		quoteConninfoValue(c.DBPort),
+		quoteConninfoValue(sslMode),
+	)
 }
 
 func getEnv(key, fallback string) string {
