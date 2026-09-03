@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { postsAPI } from "../services/post/postsApi";
+import { getApiErrorMessage } from "../utils/api";
 
 export const usePosts = (page = 1, limit = 10) => {
   const [posts, setPosts] = useState([]);
@@ -19,7 +20,7 @@ export const usePosts = (page = 1, limit = 10) => {
       setCurrentPage(response.pagination?.page ?? page);
       setHasMore(response.pagination?.hasMore ?? false);
     } catch (err) {
-      setError(err.response?.data?.message || "Failed to fetch posts");
+      setError(getApiErrorMessage(err, "Failed to fetch posts"));
     } finally {
       setLoading(false);
     }
@@ -48,7 +49,7 @@ export const usePosts = (page = 1, limit = 10) => {
       setCurrentPage(response.pagination?.page ?? nextPage);
       setHasMore(response.pagination?.hasMore ?? false);
     } catch (err) {
-      setError(err.response?.data?.message || "Failed to load more posts");
+      setError(getApiErrorMessage(err, "Failed to load more posts"));
     } finally {
       setLoadingMore(false);
     }
@@ -79,7 +80,7 @@ export const usePostActions = () => {
     try {
       return await postsAPI.create(postData);
     } catch (err) {
-      const message = err.response?.data?.message || "Failed to create post";
+      const message = getApiErrorMessage(err, "Failed to create post");
       setError(message);
       throw new Error(message);
     } finally {
@@ -93,7 +94,7 @@ export const usePostActions = () => {
     try {
       return await postsAPI.delete(postId);
     } catch (err) {
-      const message = err.response?.data?.message || "Failed to delete post";
+      const message = getApiErrorMessage(err, "Failed to delete post");
       setError(message);
       throw new Error(message);
     } finally {
@@ -105,7 +106,7 @@ export const usePostActions = () => {
     try {
       return await postsAPI.toggleLike(postId);
     } catch (err) {
-      const message = err.response?.data?.message || "Failed to update like";
+      const message = getApiErrorMessage(err, "Failed to update like");
       throw new Error(message);
     }
   };
@@ -114,7 +115,7 @@ export const usePostActions = () => {
     try {
       return await postsAPI.addComment(postId, content);
     } catch (err) {
-      const message = err.response?.data?.message || "Failed to add comment";
+      const message = getApiErrorMessage(err, "Failed to add comment");
       throw new Error(message);
     }
   };
