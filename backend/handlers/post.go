@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -13,17 +14,18 @@ import (
 )
 
 type PostHandler struct {
-	DB *gorm.DB
+	DB        *gorm.DB
+	PublicURL string
 }
 
-func NewPostHandler(db *gorm.DB) *PostHandler {
-	return &PostHandler{DB: db}
+func NewPostHandler(db *gorm.DB, publicURL string) *PostHandler {
+	return &PostHandler{DB: db, PublicURL: strings.TrimRight(publicURL, "/")}
 }
 
 type createPostInput struct {
 	ContentType string `json:"contentType" binding:"required,oneof=image video"`
 	ContentURL  string `json:"contentUrl" binding:"required,url"`
-	Caption     string `json:"caption"`
+	Caption     string `json:"caption" binding:"max=2000"`
 }
 
 type createCommentInput struct {
@@ -36,6 +38,21 @@ const postEngagementSelect = `posts.*, (SELECT COUNT(*) FROM likes WHERE likes.p
 func escapeLikePattern(value string) string {
 	replacer := strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_")
 	return replacer.Replace(value)
+}
+
+func (h *PostHandler) isManagedMediaURL(value string) bool {
+	candidate, err := url.Parse(strings.TrimSpace(value))
+	if err != nil || candidate.Scheme == "" || candidate.Host == "" {
+		return false
+	}
+	public, err := url.Parse(h.PublicURL)
+	if err != nil || public.Scheme == "" || public.Host == "" {
+		return false
+	}
+	if !strings.EqualFold(candidate.Scheme, public.Scheme) || !strings.EqualFold(candidate.Host, public.Host) {
+		return false
+	}
+	return strings.HasPrefix(candidate.Path, "/uploads/") && candidate.RawQuery == "" && candidate.Fragment == ""
 }
 
 func (h *PostHandler) CreatePost(c *gin.Context) {
@@ -51,11 +68,15 @@ func (h *PostHandler) CreatePost(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 		return
 	}
+	if !h.isManagedMediaURL(input.ContentURL) {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "contentUrl must reference media uploaded to this server"})
+		return
+	}
 
 	post := models.Post{
 		UserID:      userID,
 		ContentType: input.ContentType,
-		ContentURL:  input.ContentURL,
+		ContentURL:  strings.TrimSpace(input.ContentURL),
 		Caption:     strings.TrimSpace(input.Caption),
 	}
 	if err := h.DB.Create(&post).Error; err != nil {
