@@ -35,8 +35,14 @@ var allowedUploadTypes = map[string]string{
 	"video/quicktime": ".mov",
 }
 
-func NewUploadHandler(db *gorm.DB, publicURL string, storage services.MediaStorage) *UploadHandler {
-	return &UploadHandler{DB: db, PublicURL: strings.TrimRight(publicURL, "/"), Storage: storage}
+// NewUploadHandler keeps the existing two-argument call shape valid for
+// lightweight callers while allowing production to inject durable storage.
+func NewUploadHandler(db *gorm.DB, publicURL string, storage ...services.MediaStorage) *UploadHandler {
+	var mediaStorage services.MediaStorage
+	if len(storage) > 0 {
+		mediaStorage = storage[0]
+	}
+	return &UploadHandler{DB: db, PublicURL: strings.TrimRight(publicURL, "/"), Storage: mediaStorage}
 }
 
 func randomFilename(ext string) (string, error) {
@@ -72,10 +78,12 @@ func (h *UploadHandler) cleanupUnclaimedUploads() {
 		}
 
 		key := services.MediaObjectKey(claimed.Filename)
-		if err := h.Storage.Delete(context.Background(), key); err != nil {
-			// The database row is already gone. The reconciler can retry this
-			// cleanup on R2 without risking a claim/delete race.
-			continue
+		if h.Storage != nil {
+			if err := h.Storage.Delete(context.Background(), key); err != nil {
+				// The database row is already gone. The reconciler can retry this
+				// cleanup on R2 without risking a claim/delete race.
+				continue
+			}
 		}
 		if claimed.Path != "" {
 			if err := os.Remove(claimed.Path); err != nil && !os.IsNotExist(err) {
@@ -145,6 +153,11 @@ func (h *UploadHandler) UploadMedia(c *gin.Context) {
 	}
 
 	key := services.MediaObjectKey(filename)
+	if h.Storage == nil {
+		_ = os.Remove(filePath)
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "media storage is not configured"})
+		return
+	}
 	if err := h.Storage.Put(c.Request.Context(), key, filePath, contentType); err != nil {
 		_ = os.Remove(filePath)
 		c.JSON(http.StatusBadGateway, gin.H{"message": "failed storing uploaded media"})
