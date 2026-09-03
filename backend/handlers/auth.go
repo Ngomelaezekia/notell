@@ -236,6 +236,14 @@ func (h *AuthHandler) findGoogleUser(googleUser *GoogleUser) (*models.User, erro
 	return &user, nil
 }
 
+func truncateUsername(value string, maxRunes int) string {
+	runes := []rune(value)
+	if len(runes) <= maxRunes {
+		return value
+	}
+	return string(runes[:maxRunes])
+}
+
 func (h *AuthHandler) findOrCreateGoogleUser(googleUser *GoogleUser) (*models.User, error) {
 	if user, err := h.findGoogleUser(googleUser); err == nil {
 		return user, nil
@@ -247,12 +255,17 @@ func (h *AuthHandler) findOrCreateGoogleUser(googleUser *GoogleUser) (*models.Us
 	if baseUsername == "" {
 		baseUsername = strings.Split(strings.ToLower(googleUser.Email), "@")[0]
 	}
+	baseUsername = truncateUsername(baseUsername, 40)
+	if baseUsername == "" {
+		return nil, errors.New("unable to derive Google username")
+	}
 
 	profilePicture := googleUser.Picture
 	for attempt := 0; attempt < 5; attempt++ {
 		username := baseUsername
 		if attempt > 0 {
-			username = fmt.Sprintf("%s_%d", baseUsername, time.Now().UnixNano()%1000000000)
+			suffix := fmt.Sprintf("_%d", time.Now().UnixNano()%1000000000)
+			username = truncateUsername(baseUsername, 50-len([]rune(suffix))) + suffix
 		}
 
 		user := models.User{
