@@ -20,11 +20,11 @@ func CreateNotification(db *gorm.DB, recipientID, actorID uint, notificationType
 		return nil
 	}
 	return db.Create(&models.Notification{
-		UserID: recipientID,
-		ActorID: actorID,
-		Type: notificationType,
-		PostID: postID,
-		CommentID: commentID,
+		UserID:      recipientID,
+		ActorID:     actorID,
+		Type:        notificationType,
+		PostID:      postID,
+		CommentID:   commentID,
 	}).Error
 }
 
@@ -63,6 +63,7 @@ func (h *NotificationHandler) List(c *gin.Context) {
 	err := h.DB.Where("user_id = ?", userID).
 		Preload("Actor", func(db *gorm.DB) *gorm.DB { return db.Select(notificationActorSelect) }).
 		Order("created_at DESC").
+		Order("id DESC").
 		Offset((page - 1) * limit).
 		Limit(limit).
 		Find(&notifications).Error
@@ -75,9 +76,9 @@ func (h *NotificationHandler) List(c *gin.Context) {
 		"data": gin.H{
 			"notifications": notifications,
 			"pagination": gin.H{
-				"page": page,
-				"limit": limit,
-				"total": total,
+				"page":    page,
+				"limit":   limit,
+				"total":   total,
 				"hasMore": int64(page*limit) < total,
 			},
 			"unreadCount": unreadCount,
