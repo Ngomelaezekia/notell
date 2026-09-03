@@ -80,7 +80,7 @@ export function AuthProvider({ children }) {
     window.location.href = `${API_BASE_URL}/auth/google`;
   };
 
-  const login = async (credentials) => {
+  const login = async (credentials, redirectTo = "/") => {
     setError(null);
 
     try {
@@ -89,7 +89,7 @@ export function AuthProvider({ children }) {
       if (!currentUser) {
         throw new Error("Login succeeded, but the session could not be verified.");
       }
-      navigate("/", { replace: true });
+      navigate(redirectTo || "/", { replace: true });
       return response.data;
     } catch (err) {
       const message = getApiErrorMessage(err, "Login failed");
@@ -98,7 +98,7 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const register = async (formData) => {
+  const register = async (formData, redirectTo = "/") => {
     setError(null);
 
     try {
@@ -107,7 +107,7 @@ export function AuthProvider({ children }) {
       if (!currentUser) {
         throw new Error("Registration succeeded, but the session could not be verified.");
       }
-      navigate("/", { replace: true });
+      navigate(redirectTo || "/", { replace: true });
       return response.data;
     } catch (err) {
       const message = getApiErrorMessage(err, "Registration failed");
