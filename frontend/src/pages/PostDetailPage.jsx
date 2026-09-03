@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { postsAPI } from "../services/post/postsApi";
+import { getApiErrorMessage } from "../utils/api";
 import { PostCard } from "../components/PostCard";
 
 export default function PostDetailPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [post, setPost] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -22,26 +24,27 @@ export default function PostDetailPage() {
       } catch (err) {
         if (!cancelled) {
           setPost(null);
-          setError(err?.response?.data?.message || "Failed to load post.");
+          setError(getApiErrorMessage(err, "Failed to load post."));
         }
       } finally {
         if (!cancelled) setLoading(false);
       }
     };
 
-    loadPost();
+    void loadPost();
     return () => { cancelled = true; };
   }, [id]);
 
   return (
     <section className="mx-auto w-full max-w-2xl">
       <div className="mb-4">
-        <Link
-          to="/search"
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
           className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold text-slate-600 transition hover:bg-white hover:text-slate-900"
         >
-          <ArrowLeft size={17} /> Back to search
-        </Link>
+          <ArrowLeft size={17} /> Back
+        </button>
       </div>
 
       {loading && (
@@ -56,7 +59,7 @@ export default function PostDetailPage() {
         </div>
       )}
 
-      {!loading && !error && post && <PostCard post={post} />}
+      {!loading && !error && post && <PostCard post={post} onPostDeleted={() => navigate("/")} />}
     </section>
   );
 }
