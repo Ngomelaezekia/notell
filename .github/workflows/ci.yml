@@ -36,9 +36,25 @@ jobs:
   backend:
     name: Backend test and build
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: notell_test
+          POSTGRES_PASSWORD: notell_test
+          POSTGRES_DB: notell_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U notell_test -d notell_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     defaults:
       run:
         working-directory: backend
+    env:
+      NOTELL_TEST_DATABASE_URL: host=localhost user=notell_test password=notell_test dbname=notell_test port=5432 sslmode=disable
     steps:
       - name: Checkout
         uses: actions/checkout@v7
