@@ -8,11 +8,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
 
-type UploadHandler struct{}
+type UploadHandler struct {
+	PublicURL string
+}
 
 const maxUploadSize int64 = 100 << 20 // 100 MiB
 
@@ -24,8 +27,8 @@ var allowedUploadTypes = map[string]string{
 	"video/quicktime": ".mov",
 }
 
-func NewUploadHandler() *UploadHandler {
-	return &UploadHandler{}
+func NewUploadHandler(publicURL string) *UploadHandler {
+	return &UploadHandler{PublicURL: strings.TrimRight(publicURL, "/")}
 }
 
 func randomFilename(ext string) (string, error) {
@@ -96,13 +99,7 @@ func (h *UploadHandler) UploadMedia(c *gin.Context) {
 		return
 	}
 
-	scheme := "http"
-	if c.Request.TLS != nil {
-		scheme = "https"
-	}
-
-	fileURL := fmt.Sprintf("%s://%s/uploads/%s", scheme, c.Request.Host, filename)
-
+	fileURL := fmt.Sprintf("%s/uploads/%s", h.PublicURL, filename)
 	c.JSON(http.StatusOK, gin.H{
 		"message": "upload successful",
 		"url":     fileURL,
