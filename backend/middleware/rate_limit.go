@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -54,7 +55,7 @@ func RateLimit(limit int, window time.Duration) gin.HandlerFunc {
 			if retryAfter < 1 {
 				retryAfter = 1
 			}
-			c.Header("Retry-After", string(rune('0'+retryAfter)))
+			c.Header("Retry-After", strconv.Itoa(retryAfter))
 			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"message": "too many requests"})
 			return
 		}
