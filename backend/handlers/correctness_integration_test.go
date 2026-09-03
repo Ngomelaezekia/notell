@@ -3,7 +3,6 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -257,6 +256,4 @@ func TestToggleLikeSerializesConcurrentRequests(t *testing.T) {
 	if count != 0 {
 		t.Fatalf("final like count = %d, want 0", count)
 	}
-
-	_ = errors.Is(nil, gorm.ErrRecordNotFound)
 }
