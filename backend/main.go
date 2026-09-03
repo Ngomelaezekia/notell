@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -33,6 +34,35 @@ func envInt(key string, fallback int) int {
 		return fallback
 	}
 	return parsed
+}
+
+func trustedProxies() []string {
+	value := strings.TrimSpace(os.Getenv("TRUSTED_PROXIES"))
+	if value == "" {
+		return []string{"127.0.0.1", "::1"}
+	}
+
+	parts := strings.Split(value, ",")
+	proxies := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if proxy := strings.TrimSpace(part); proxy != "" {
+			proxies = append(proxies, proxy)
+		}
+	}
+	if len(proxies) == 0 {
+		return []string{"127.0.0.1", "::1"}
+	}
+	return proxies
+}
+
+func securityHeaders() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("X-Frame-Options", "DENY")
+		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
+		c.Header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+		c.Next()
+	}
 }
 
 func main() {
@@ -75,7 +105,11 @@ func main() {
 	}
 
 	r := gin.Default()
+	if err := r.SetTrustedProxies(trustedProxies()); err != nil {
+		log.Fatalf("Invalid TRUSTED_PROXIES configuration: %v", err)
+	}
 	r.Use(
+		securityHeaders(),
 		middleware.MaxBodyBytes(maxJSONBodyBytes),
 		cors.New(cors.Config{
 			AllowOrigins:     []string{cfg.FrontendURL},
@@ -86,6 +120,12 @@ func main() {
 			MaxAge:           12 * time.Hour,
 		}),
 	)
+	if cfg.AppEnv == "production" {
+		r.Use(func(c *gin.Context) {
+			c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+			c.Next()
+		})
+	}
 	r.Static("/uploads", "./uploads")
 
 	auth := handlers.NewAuthHandler(db, cfg)
