@@ -53,16 +53,21 @@ func createCorrectnessUser(t *testing.T, db *gorm.DB, suffix string) models.User
 	if err := db.Create(&user).Error; err != nil {
 		t.Fatalf("create correctness user: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Delete(&user).Error })
+	t.Cleanup(func() {
+		// Posts in this fixture use an explicit cleanup path so the test does
+		// not depend on the database's current FK action for user deletion.
+		_ = db.Where("user_id = ?", user.ID).Delete(&models.Post{}).Error
+		_ = db.Delete(&user).Error
+	})
 	return user
 }
 
 func createCorrectnessPost(t *testing.T, db *gorm.DB, userID uint) models.Post {
 	t.Helper()
 	var post models.Post
-	// Use SQL for the fixture so the comment tests do not need to manufacture
-	// an Upload row and physical media file just to create a post.
-	if err := db.Exec(
+	// Use Raw + Scan rather than Exec + Scan: PostgreSQL's RETURNING clause
+	// produces a result set, which GORM must consume through Raw/Scan.
+	if err := db.Raw(
 		"INSERT INTO posts (user_id, content_type, content_url, caption, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) RETURNING id",
 		userID, "image", "https://example.test/uploads/correctness.jpg", "correctness", time.Now(), time.Now(),
 	).Scan(&post.ID).Error; err != nil {
