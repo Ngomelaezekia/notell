@@ -8,6 +8,7 @@ import (
 
 	"notell/models"
 
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -20,7 +21,7 @@ func openNotificationLifecycleDB(t *testing.T) *gorm.DB {
 		t.Skip("NOTELL_TEST_DATABASE_URL is not set")
 	}
 
-	db, err := openTestPostgres(dsn, logger.Error)
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: logger.Error})
 	if err != nil {
 		t.Fatalf("open test database: %v", err)
 	}
@@ -38,9 +39,10 @@ func openNotificationLifecycleDB(t *testing.T) *gorm.DB {
 func createNotificationLifecycleUser(t *testing.T, db *gorm.DB, suffix string) models.User {
 	t.Helper()
 
+	stamp := time.Now().UnixNano()
 	user := models.User{
-		Username: fmt.Sprintf("notification_lifecycle_%s_%d", suffix, time.Now().UnixNano()),
-		Email:    fmt.Sprintf("notification_lifecycle_%s_%d@example.test", suffix, time.Now().UnixNano()),
+		Username: fmt.Sprintf("notification_lifecycle_%s_%d", suffix, stamp),
+		Email:    fmt.Sprintf("notification_lifecycle_%s_%d@example.test", suffix, stamp),
 	}
 	if err := db.Create(&user).Error; err != nil {
 		t.Fatalf("create %s user: %v", suffix, err)
