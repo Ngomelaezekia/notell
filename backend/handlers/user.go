@@ -112,7 +112,7 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 	}
 
 	var updatedUser models.User
-	if err := h.DB.First(&updatedUser, userID).Error; err != nil {
+	if err := h.DB.Select("id", "username", "email", "profile_picture", "bio", "city", "country", "status", "allow_followers", "created_at", "updated_at").First(&updatedUser, userID).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to fetch updated profile"})
 		return
 	}
