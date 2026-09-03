@@ -43,7 +43,7 @@ export const Users = () => {
   useEffect(() => { loadProfile(); }, [loadProfile]);
 
   const handleFollow = async () => {
-    if (!id || actionLoading || !relationship?.allowFollowers) return;
+    if (!id || actionLoading || (!relationship?.following && !relationship?.allowFollowers)) return;
     setActionLoading(true);
     setError(null);
     try {
@@ -80,7 +80,7 @@ export const Users = () => {
               </div>
               <div className="pb-1"><h1 className="text-xl font-bold text-slate-900">{user?.username}</h1>{joined && <p className="text-xs text-slate-500">Joined {joined}</p>}</div>
             </div>
-            {!relationship?.isSelf && <button type="button" onClick={handleFollow} disabled={actionLoading || !relationship?.allowFollowers} className={`inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${relationship?.following ? "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50" : "bg-slate-900 text-white hover:bg-slate-800"}`}>
+            {!relationship?.isSelf && <button type="button" onClick={handleFollow} disabled={actionLoading || (!relationship?.following && !relationship?.allowFollowers)} className={`inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${relationship?.following ? "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50" : "bg-slate-900 text-white hover:bg-slate-800"}`}>
               {actionLoading ? <Loader2 size={16} className="animate-spin" /> : relationship?.following ? <Check size={16} /> : <UserPlus size={16} />}
               {relationship?.following ? "Following" : relationship?.allowFollowers ? "Follow" : "Followers disabled"}
             </button>}
