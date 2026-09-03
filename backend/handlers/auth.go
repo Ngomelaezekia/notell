@@ -189,8 +189,8 @@ type GoogleUser struct {
 	VerifiedEmail bool   `json:"verified_email"`
 }
 
-func (h *AuthHandler) getGoogleUser(token *oauth2.Token) (*GoogleUser, error) {
-	client := h.googleOAuthConfig().Client(context.Background(), token)
+func (h *AuthHandler) getGoogleUser(ctx context.Context, token *oauth2.Token) (*GoogleUser, error) {
+	client := h.googleOAuthConfig().Client(ctx, token)
 	resp, err := client.Get("https://www.googleapis.com/oauth2/v2/userinfo")
 	if err != nil {
 		return nil, err
@@ -290,12 +290,13 @@ func (h *AuthHandler) GoogleCallback(c *gin.Context) {
 		return
 	}
 
-	oauthToken, err := h.googleOAuthConfig().Exchange(context.Background(), code)
+	ctx := c.Request.Context()
+	oauthToken, err := h.googleOAuthConfig().Exchange(ctx, code)
 	if err != nil {
 		c.Redirect(http.StatusTemporaryRedirect, h.Config.FrontendURL+"/auth?error=exchange_failed")
 		return
 	}
-	googleUser, err := h.getGoogleUser(oauthToken)
+	googleUser, err := h.getGoogleUser(ctx, oauthToken)
 	if err != nil {
 		c.Redirect(http.StatusTemporaryRedirect, h.Config.FrontendURL+"/auth?error=user_fetch_failed")
 		return
