@@ -33,13 +33,17 @@ export const userAPI = {
     return response.data;
   },
 
-  getFollowers: async (userId) => {
-    const response = await API.get(`/users/${userId}/followers`);
+  getFollowers: async (userId, page = 1, limit = 20) => {
+    const response = await API.get(`/users/${userId}/followers`, {
+      params: { page, limit },
+    });
     return response.data;
   },
 
-  getFollowing: async (userId) => {
-    const response = await API.get(`/users/${userId}/following`);
+  getFollowing: async (userId, page = 1, limit = 20) => {
+    const response = await API.get(`/users/${userId}/following`, {
+      params: { page, limit },
+    });
     return response.data;
   },
 };
