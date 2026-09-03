@@ -1,6 +1,10 @@
 package models
 
-import "time"
+import (
+	"time"
+
+	"gorm.io/gorm"
+)
 
 type Notification struct {
 	ID        uint      `gorm:"primaryKey" json:"notificationId"`
@@ -16,4 +20,32 @@ type Notification struct {
 	Actor   User     `gorm:"foreignKey:ActorID;constraint:OnDelete:CASCADE" json:"actor,omitempty"`
 	Post    *Post    `gorm:"foreignKey:PostID;constraint:OnDelete:SET NULL" json:"-"`
 	Comment *Comment `gorm:"foreignKey:CommentID;constraint:OnDelete:SET NULL" json:"-"`
+}
+
+// BeforeCreate upgrades the existing comment notification emitted by the
+// comment handler into a reply notification when the comment targets another
+// comment. This keeps reply notifications single-fire without changing the
+// existing comment creation path.
+func (n *Notification) BeforeCreate(tx *gorm.DB) error {
+	if n.Type != "comment" || n.CommentID == nil {
+		return nil
+	}
+
+	var comment Comment
+	if err := tx.Select("id, user_id, post_id, parent_id").First(&comment, *n.CommentID).Error; err != nil || comment.ParentID == nil {
+		return nil
+	}
+
+	var parent Comment
+	if err := tx.Select("id, user_id, post_id").First(&parent, *comment.ParentID).Error; err != nil {
+		return nil
+	}
+	if parent.PostID != comment.PostID || parent.UserID == 0 || parent.UserID == n.ActorID {
+		return gorm.ErrInvalidData
+	}
+
+	n.UserID = parent.UserID
+	n.Type = "reply"
+	n.PostID = &comment.PostID
+	return nil
 }
