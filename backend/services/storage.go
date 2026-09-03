@@ -34,6 +34,8 @@ type r2MediaStorage struct {
 	publicURL string
 }
 
+const orphanMediaGracePeriod = time.Hour
+
 func NewMediaStorage(cfg *config.Config) (MediaStorage, error) {
 	if strings.EqualFold(cfg.StorageDriver, "local") {
 		return &localMediaStorage{}, nil
@@ -138,6 +140,7 @@ func (s *r2MediaStorage) reconcile(ctx context.Context, db *gorm.DB) error {
 		Bucket: aws.String(s.bucket),
 		Prefix: aws.String("uploads/"),
 	})
+	cutoff := time.Now().Add(-orphanMediaGracePeriod)
 
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
@@ -146,6 +149,11 @@ func (s *r2MediaStorage) reconcile(ctx context.Context, db *gorm.DB) error {
 		}
 		for _, object := range page.Contents {
 			if object.Key == nil || !strings.HasPrefix(*object.Key, "uploads/") {
+				continue
+			}
+			if object.LastModified != nil && object.LastModified.After(cutoff) {
+				// A newly-created object may be between PutObject and the Upload
+				// database insert. Give that transaction window a safe grace period.
 				continue
 			}
 			filename := filepath.Base(strings.TrimPrefix(*object.Key, "uploads/"))
