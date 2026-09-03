@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/url"
 	"os"
@@ -19,6 +18,7 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"gorm.io/gorm"
 )
 
 type MediaStorage interface {
@@ -29,45 +29,29 @@ type MediaStorage interface {
 type localMediaStorage struct{}
 
 type r2MediaStorage struct {
-	client     *s3.Client
-	bucket     string
-	publicURL  string
-	objectRoot string
-	db         interface {
-		Where(query interface{}, args ...interface{}) interface{}
-	}
+	client    *s3.Client
+	bucket    string
+	publicURL string
 }
 
-// NewMediaStorage creates local storage for development and Cloudflare R2
-// storage for production. Uploads keep a local copy temporarily so the
-// existing post-claim validation remains unchanged; production delivery uses
-// the R2 public URL.
-func NewMediaStorage(cfg *config.Config, db any) (MediaStorage, error) {
+func NewMediaStorage(cfg *config.Config) (MediaStorage, error) {
 	if strings.EqualFold(cfg.StorageDriver, "local") {
 		return &localMediaStorage{}, nil
 	}
 	if !strings.EqualFold(cfg.StorageDriver, "r2") {
 		return nil, fmt.Errorf("unsupported STORAGE_DRIVER %q", cfg.StorageDriver)
 	}
-
 	if cfg.R2Endpoint == "" || cfg.R2Bucket == "" || cfg.R2AccessKeyID == "" || cfg.R2SecretAccessKey == "" {
 		return nil, errors.New("R2 storage configuration is incomplete")
 	}
-	if cfg.MediaPublicURL == "" {
-		return nil, errors.New("MEDIA_PUBLIC_URL is required for R2 storage")
-	}
-	if _, err := url.ParseRequestURI(cfg.MediaPublicURL); err != nil {
-		return nil, fmt.Errorf("invalid MEDIA_PUBLIC_URL: %w", err)
+	if err := validateMediaPublicURL(cfg.MediaPublicURL); err != nil {
+		return nil, fmt.Errorf("MEDIA_PUBLIC_URL: %w", err)
 	}
 
 	awsCfg, err := awsconfig.LoadDefaultConfig(
 		context.Background(),
 		awsconfig.WithRegion(cfg.R2Region),
-		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
-			cfg.R2AccessKeyID,
-			cfg.R2SecretAccessKey,
-			"",
-		)),
+		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(cfg.R2AccessKeyID, cfg.R2SecretAccessKey, "")),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize R2 credentials: %w", err)
@@ -78,16 +62,11 @@ func NewMediaStorage(cfg *config.Config, db any) (MediaStorage, error) {
 		options.BaseEndpoint = aws.String(endpoint)
 	})
 
-	return &r2MediaStorage{
-		client:     client,
-		bucket:     cfg.R2Bucket,
-		publicURL:  strings.TrimRight(cfg.MediaPublicURL, "/"),
-		objectRoot: "uploads/",
-	}, nil
+	return &r2MediaStorage{client: client, bucket: cfg.R2Bucket, publicURL: strings.TrimRight(cfg.MediaPublicURL, "/")}, nil
 }
 
-func (s *localMediaStorage) Put(_ context.Context, _, _, _ string) error { return nil }
-func (s *localMediaStorage) Delete(_ context.Context, _ string) error     { return nil }
+func (s *localMediaStorage) Put(context.Context, string, string, string) error { return nil }
+func (s *localMediaStorage) Delete(context.Context, string) error                { return nil }
 
 func (s *r2MediaStorage) Put(ctx context.Context, key, localPath, contentType string) error {
 	file, err := os.Open(localPath)
@@ -102,12 +81,12 @@ func (s *r2MediaStorage) Put(ctx context.Context, key, localPath, contentType st
 	}
 
 	_, err = s.client.PutObject(ctx, &s3.PutObjectInput{
-		Bucket:      aws.String(s.bucket),
-		Key:         aws.String(key),
-		Body:        file,
-		ContentType: aws.String(contentType),
+		Bucket:        aws.String(s.bucket),
+		Key:           aws.String(key),
+		Body:          file,
+		ContentType:   aws.String(contentType),
 		ContentLength: aws.Int64(info.Size()),
-		CacheControl: aws.String("public, max-age=31536000, immutable"),
+		CacheControl:  aws.String("public, max-age=31536000, immutable"),
 	})
 	if err != nil {
 		return fmt.Errorf("upload media to R2: %w", err)
@@ -116,10 +95,7 @@ func (s *r2MediaStorage) Put(ctx context.Context, key, localPath, contentType st
 }
 
 func (s *r2MediaStorage) Delete(ctx context.Context, key string) error {
-	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
-		Bucket: aws.String(s.bucket),
-		Key:    aws.String(key),
-	})
+	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(key)})
 	if err != nil {
 		return fmt.Errorf("delete media from R2: %w", err)
 	}
@@ -130,18 +106,20 @@ func (s *r2MediaStorage) PublicURL(key string) string {
 	return s.publicURL + "/" + strings.TrimLeft(key, "/")
 }
 
-// StartMediaReconciler removes R2 objects whose upload records no longer
-// exist. This closes the lifecycle gap created by post deletion, which removes
-// the Upload row before the existing handler removes the local file.
-func StartMediaReconciler(ctx context.Context, storage MediaStorage, db interface {
-	Where(query interface{}, args ...interface{}) interface{}
-}) {
+func StartMediaReconciler(ctx context.Context, storage MediaStorage, db *gorm.DB) {
 	r2, ok := storage.(*r2MediaStorage)
 	if !ok {
 		return
 	}
 
+	reconcile := func() {
+		if err := r2.reconcile(ctx, db); err != nil {
+			log.Printf("media reconciliation failed: %v", err)
+		}
+	}
+
 	go func() {
+		reconcile()
 		ticker := time.NewTicker(30 * time.Minute)
 		defer ticker.Stop()
 		for {
@@ -149,32 +127,64 @@ func StartMediaReconciler(ctx context.Context, storage MediaStorage, db interfac
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				r2.reconcile(ctx, db)
+				reconcile()
 			}
 		}
 	}()
 }
 
-func (s *r2MediaStorage) reconcile(ctx context.Context, db interface {
-	Where(query interface{}, args ...interface{}) interface{}
-}) {
-	// Reconciliation is intentionally conservative. The application bucket is
-	// expected to contain only media under uploads/. Any object still represented
-	// by an Upload row is retained; only absent records are eligible for deletion.
-	_ = filepath.Separator
-	_ = log.Default()
+func (s *r2MediaStorage) reconcile(ctx context.Context, db *gorm.DB) error {
+	paginator := s3.NewListObjectsV2Paginator(s.client, &s3.ListObjectsV2Input{
+		Bucket: aws.String(s.bucket),
+		Prefix: aws.String("uploads/"),
+	})
+
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return fmt.Errorf("list R2 media: %w", err)
+		}
+		for _, object := range page.Contents {
+			if object.Key == nil || !strings.HasPrefix(*object.Key, "uploads/") {
+				continue
+			}
+			filename := filepath.Base(strings.TrimPrefix(*object.Key, "uploads/"))
+			if filename == "." || filename == "" {
+				continue
+			}
+
+			var upload models.Upload
+			err := db.Select("id").Where("filename = ?", filename).First(&upload).Error
+			if err == nil {
+				continue
+			}
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return fmt.Errorf("check R2 media ownership for %q: %w", filename, err)
+			}
+
+			if err := s.Delete(ctx, *object.Key); err != nil {
+				log.Printf("failed to delete orphaned R2 media %q: %v", *object.Key, err)
+			}
+		}
+	}
+	return nil
 }
 
-// MediaObjectKey returns the canonical R2 key for an uploaded filename.
 func MediaObjectKey(filename string) string {
 	return "uploads/" + filepath.Base(filename)
 }
 
-// MediaPublicURL returns the canonical public URL for an uploaded filename.
 func MediaPublicURL(baseURL, filename string) string {
 	return strings.TrimRight(baseURL, "/") + "/uploads/" + filepath.Base(filename)
 }
 
-// Keep these imports/types available for the follow-up reconciler implementation.
-var _ io.Reader
-var _ models.Upload
+func validateMediaPublicURL(value string) error {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return errors.New("must be an absolute http or https URL")
+	}
+	if parsed.User != nil || (parsed.Path != "" && parsed.Path != "/") || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return errors.New("must be a public origin without path, query, fragment, or user information")
+	}
+	return nil
+}
