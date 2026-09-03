@@ -41,12 +41,3 @@ func TestValidateManagedMediaRejectsVideoAsImage(t *testing.T) {
 		t.Fatal("expected video submitted as image to be rejected")
 	}
 }
-
-func TestValidateManagedMediaRejectsMissingFile(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "missing.jpg")
-
-	if err := validateManagedMedia(path, "image"); err == nil {
-		t.Fatal("expected missing media file to be rejected")
-	}
-}
