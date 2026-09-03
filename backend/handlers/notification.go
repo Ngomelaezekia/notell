@@ -28,6 +28,15 @@ func CreateNotification(db *gorm.DB, recipientID, actorID uint, notificationType
 	}).Error
 }
 
+// createNotification preserves the PostHandler notification contract used by
+// engagement handlers while delegating to the shared notification helper.
+func (h *PostHandler) createNotification(db *gorm.DB, recipientID, actorID uint, notificationType string, postID, commentID *uint) {
+	if err := CreateNotification(db, recipientID, actorID, notificationType, postID, commentID); err != nil {
+		// Notifications are best-effort and must not break likes/comments.
+		return
+	}
+}
+
 type NotificationHandler struct {
 	DB *gorm.DB
 }
