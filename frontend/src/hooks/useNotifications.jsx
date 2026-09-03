@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { notificationsAPI } from "../services/notification/notificationsApi";
+import { getApiErrorMessage } from "../utils/api";
 
 const POLL_INTERVAL = 15000;
 
@@ -21,7 +22,7 @@ export const useNotifications = (enabled = true) => {
       setNotifications(data.notifications ?? []);
       setUnreadCount(Number(data.unreadCount ?? 0));
     } catch (err) {
-      setError(err);
+      setError(getApiErrorMessage(err, "Failed to load notifications."));
     } finally {
       fetchingRef.current = false;
       if (showLoading) setLoading(false);
@@ -31,9 +32,11 @@ export const useNotifications = (enabled = true) => {
   useEffect(() => {
     if (!enabled) return undefined;
 
-    fetchNotifications(true);
+    const poll = () => {
+      void fetchNotifications(false);
+    };
+    void fetchNotifications(true);
 
-    const poll = () => fetchNotifications(false);
     const intervalId = window.setInterval(poll, POLL_INTERVAL);
 
     const handleVisibility = () => {
@@ -51,22 +54,37 @@ export const useNotifications = (enabled = true) => {
     const target = notifications.find((notification) => notification.notificationId === notificationId);
     if (!target || target.read) return;
 
-    await notificationsAPI.markRead(notificationId);
-    setNotifications((current) =>
-      current.map((notification) =>
-        notification.notificationId === notificationId
-          ? { ...notification, read: true }
-          : notification
-      )
-    );
-    setUnreadCount((current) => Math.max(0, current - 1));
+    setError(null);
+    try {
+      await notificationsAPI.markRead(notificationId);
+      setNotifications((current) =>
+        current.map((notification) =>
+          notification.notificationId === notificationId
+            ? { ...notification, read: true }
+            : notification
+        )
+      );
+      setUnreadCount((current) => Math.max(0, current - 1));
+    } catch (err) {
+      const message = getApiErrorMessage(err, "Failed to mark notification as read.");
+      setError(message);
+      throw new Error(message, { cause: err });
+    }
   }, [notifications]);
 
   const markAllRead = useCallback(async () => {
     if (unreadCount === 0) return;
-    await notificationsAPI.markAllRead();
-    setNotifications((current) => current.map((notification) => ({ ...notification, read: true })));
-    setUnreadCount(0);
+
+    setError(null);
+    try {
+      await notificationsAPI.markAllRead();
+      setNotifications((current) => current.map((notification) => ({ ...notification, read: true })));
+      setUnreadCount(0);
+    } catch (err) {
+      const message = getApiErrorMessage(err, "Failed to mark notifications as read.");
+      setError(message);
+      throw new Error(message, { cause: err });
+    }
   }, [unreadCount]);
 
   return {
