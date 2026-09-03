@@ -49,10 +49,7 @@ func RateLimit(limit int, window time.Duration) gin.HandlerFunc {
 		entry, exists := entries[key]
 		if !exists || now.Sub(entry.windowStart) >= window {
 			if !exists && len(entries) >= maxRateLimitEntries {
-				mu.Unlock()
-				c.Header("Retry-After", strconv.Itoa(retryAfterSeconds(window)))
-				c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"message": "too many requests"})
-				return
+				evictOldest(entries)
 			}
 			entry = rateLimitEntry{windowStart: now}
 		}
@@ -61,7 +58,7 @@ func RateLimit(limit int, window time.Duration) gin.HandlerFunc {
 		mu.Unlock()
 
 		if entry.count > limit {
-			c.Header("Retry-After", strconv.Itoa(retryAfterSeconds(window)))
+			c.Header("Retry-After", strconv.Itoa(retryAfterSeconds(window, entry.windowStart, now)))
 			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"message": "too many requests"})
 			return
 		}
@@ -79,8 +76,26 @@ func rateLimitKey(c *gin.Context) string {
 	return "ip:" + c.ClientIP()
 }
 
-func retryAfterSeconds(window time.Duration) int {
-	seconds := int(window.Seconds())
+func evictOldest(entries map[string]rateLimitEntry) {
+	var oldestKey string
+	var oldest time.Time
+	for key, entry := range entries {
+		if oldestKey == "" || entry.windowStart.Before(oldest) {
+			oldestKey = key
+			oldest = entry.windowStart
+		}
+	}
+	if oldestKey != "" {
+		delete(entries, oldestKey)
+	}
+}
+
+func retryAfterSeconds(window time.Duration, windowStart, now time.Time) int {
+	remaining := window - now.Sub(windowStart)
+	seconds := int(remaining / time.Second)
+	if remaining%time.Second != 0 {
+		seconds++
+	}
 	if seconds < 1 {
 		return 1
 	}
