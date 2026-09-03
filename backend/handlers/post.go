@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"notell/models"
 
@@ -143,13 +144,42 @@ func (h *PostHandler) CreatePost(c *gin.Context) {
 		return
 	}
 
-	post := models.Post{
-		UserID:      userID,
-		ContentType: input.ContentType,
-		ContentURL:  contentURL,
-		Caption:     strings.TrimSpace(input.Caption),
+	var upload models.Upload
+	if err := h.DB.Where("filename = ? AND user_id = ? AND post_id IS NULL", filepath.Base(mediaPath), userID).First(&upload).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "uploaded media is not owned by the current user or has already been used"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to validate uploaded media ownership"})
+		return
 	}
-	if err := h.DB.Create(&post).Error; err != nil {
+
+	var post models.Post
+	err := h.DB.Transaction(func(tx *gorm.DB) error {
+		var claimed models.Upload
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND user_id = ? AND post_id IS NULL", upload.ID, userID).First(&claimed).Error; err != nil {
+			return err
+		}
+		post = models.Post{
+			UserID:      userID,
+			ContentType: input.ContentType,
+			ContentURL:  contentURL,
+			Caption:     strings.TrimSpace(input.Caption),
+		}
+		if err := tx.Create(&post).Error; err != nil {
+			return err
+		}
+		now := time.Now()
+		if err := tx.Model(&claimed).Updates(map[string]interface{}{"post_id": post.ID, "claimed_at": now}).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "uploaded media is not owned by the current user or has already been used"})
+		return
+	}
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to create post"})
 		return
 	}
@@ -254,7 +284,7 @@ func (h *PostHandler) SearchPosts(c *gin.Context) {
 		}
 	}
 
-	err := base.Select(postEngagementSelect, authUserID).
+	err = base.Select(postEngagementSelect, authUserID).
 		Preload("User", func(db *gorm.DB) *gorm.DB {
 			return db.Select("id", "username", "profile_picture")
 		}).
@@ -344,6 +374,9 @@ func (h *PostHandler) DeletePost(c *gin.Context) {
 			return err
 		}
 		if err := tx.Where("post_id = ?", postIDUint).Delete(&models.Notification{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("post_id = ?", postIDUint).Delete(&models.Upload{}).Error; err != nil {
 			return err
 		}
 		return nil
