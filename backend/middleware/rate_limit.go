@@ -2,7 +2,9 @@ package middleware
 
 import (
 	"net/http"
+	"net"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,7 +20,7 @@ type rateLimitEntry struct {
 
 // RateLimit provides a small in-memory fixed-window limiter for single-instance deployments.
 // Authenticated requests are keyed by user ID so changing source IPs cannot
-// bypass the limit. Unauthenticated requests use Gin's trusted-proxy-aware IP.
+// bypass the limit. Unauthenticated requests use the trusted client IP.
 // For multi-instance production deployments, replace this with a shared store such as Redis.
 func RateLimit(limit int, window time.Duration) gin.HandlerFunc {
 	if limit < 1 {
@@ -73,7 +75,19 @@ func rateLimitKey(c *gin.Context) string {
 			return "user:" + strconv.FormatUint(uint64(id), 10)
 		}
 	}
-	return "ip:" + c.ClientIP()
+	return "ip:" + clientIP(c)
+}
+
+func clientIP(c *gin.Context) string {
+	// Render routes public traffic through Cloudflare. Cloudflare documents
+	// CF-Connecting-IP as the single, original client IP sent to the origin.
+	// Prefer it over X-Forwarded-For, which can contain a client-supplied chain.
+	if value := strings.TrimSpace(c.GetHeader("CF-Connecting-IP")); value != "" {
+		if parsed := net.ParseIP(value); parsed != nil {
+			return parsed.String()
+		}
+	}
+	return c.ClientIP()
 }
 
 func evictOldest(entries map[string]rateLimitEntry) {
