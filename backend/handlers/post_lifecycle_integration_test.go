@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -259,12 +260,12 @@ func TestPostMediaLifecycle_DeleteReleasesUploadAndRemovesFile(t *testing.T) {
 	}
 
 	var deletedPost models.Post
-	if err := db.First(&deletedPost, postID).Error; !gorm.IsRecordNotFoundError(err) {
+	if err := db.First(&deletedPost, postID).Error; !errors.Is(err, gorm.ErrRecordNotFound) {
 		t.Fatalf("expected post to be deleted, err=%v", err)
 	}
 
 	var deletedUpload models.Upload
-	if err := db.First(&deletedUpload, upload.ID).Error; !gorm.IsRecordNotFoundError(err) {
+	if err := db.First(&deletedUpload, upload.ID).Error; !errors.Is(err, gorm.ErrRecordNotFound) {
 		t.Fatalf("expected upload to be deleted, err=%v", err)
 	}
 
