@@ -34,14 +34,6 @@ export const useUser = () => {
     return updateProfile({ profilePicture });
   }, [updateProfile]);
 
-  const changePassword = async () => {
-    throw new Error("Password update endpoint is not implemented yet");
-  };
-
-  const deleteAccount = async () => {
-    throw new Error("Delete account endpoint is not implemented yet");
-  };
-
   return {
     user,
     loading,
@@ -49,7 +41,5 @@ export const useUser = () => {
     refetch: fetchCurrentUser,
     updateProfile,
     updateProfilePicture,
-    changePassword,
-    deleteAccount,
   };
 };
