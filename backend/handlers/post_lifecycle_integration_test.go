@@ -77,6 +77,17 @@ func createLifecycleUser(t *testing.T, db *gorm.DB, suffix string) models.User {
 		t.Fatalf("create test user: %v", err)
 	}
 	t.Cleanup(func() {
+		// Do not depend on database-specific FK cascade actions in fixtures.
+		// Posts reference users, so remove the dependent rows explicitly.
+		var postIDs []uint
+		_ = db.Model(&models.Post{}).Where("user_id = ?", user.ID).Pluck("id", &postIDs).Error
+		if len(postIDs) > 0 {
+			_ = db.Where("post_id IN ?", postIDs).Delete(&models.Notification{}).Error
+			_ = db.Where("post_id IN ?", postIDs).Delete(&models.Upload{}).Error
+			_ = db.Where("id IN ?", postIDs).Delete(&models.Post{}).Error
+		}
+		_ = db.Where("user_id = ?", user.ID).Delete(&models.Upload{}).Error
+		_ = db.Where("actor_id = ? OR user_id = ?", user.ID, user.ID).Delete(&models.Notification{}).Error
 		_ = db.Delete(&user).Error
 	})
 	return user
