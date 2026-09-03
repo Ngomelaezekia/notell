@@ -86,7 +86,11 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 	if err := h.DB.Create(&user).Error; err != nil {
-		c.JSON(http.StatusConflict, gin.H{"message": "username or email already exists"})
+		if isUniqueViolation(err) {
+			c.JSON(http.StatusConflict, gin.H{"message": "username or email already exists"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to create account"})
 		return
 	}
 	if err := h.createSession(c, user); err != nil {
