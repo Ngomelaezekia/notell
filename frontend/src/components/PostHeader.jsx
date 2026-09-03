@@ -6,14 +6,17 @@ export const Headerposts = ({ title = "Feed" }) => {
   const navigate = useNavigate();
 
   return (
-    <header className="sticky top-0 z-20 flex items-center justify-between px-4 py-3 bg-neutral-950/80 backdrop-blur-md border-b border-neutral-800 w-full">
-      <button 
+    <header className="sticky top-0 z-20 flex w-full items-center justify-between border-b border-neutral-800 bg-neutral-950/80 px-4 py-3 backdrop-blur-md">
+      <h1 className="text-sm font-semibold text-neutral-200">{title}</h1>
+      <button
+        type="button"
         onClick={() => navigate("/create-post")}
-        className="p-2 rounded-full hover:bg-neutral-900 transition text-neutral-300 cursor-pointer"
+        className="cursor-pointer rounded-full p-2 text-neutral-300 transition hover:bg-neutral-900"
         title="Create Post"
+        aria-label="Create Post"
       >
         <PlusIcon size={20} />
       </button>
-      </header>
+    </header>
   );
 };
