@@ -43,7 +43,7 @@ export function AuthProvider({ children }) {
       setUser(currentUser);
       setError(null);
       return currentUser;
-    } catch (err) {
+    } catch {
       setUser(null);
       return null;
     } finally {
@@ -99,7 +99,7 @@ export function AuthProvider({ children }) {
     } catch (err) {
       const message = extractErrorMessage(err, "Login failed");
       setError(message);
-      throw new Error(message);
+      throw new Error(message, { cause: err });
     }
   };
 
@@ -114,7 +114,7 @@ export function AuthProvider({ children }) {
     } catch (err) {
       const message = extractErrorMessage(err, "Registration failed");
       setError(message);
-      throw new Error(message);
+      throw new Error(message, { cause: err });
     }
   };
 
