@@ -44,17 +44,33 @@ func newPostLifecycleIntegrationDB(t *testing.T) *gorm.DB {
 		&models.Post{},
 		&models.Notification{},
 	); err != nil {
+		_ = closePostLifecycleDB(db)
 		t.Fatalf("migrate PostgreSQL test database: %v", err)
 	}
+
+	t.Cleanup(func() {
+		if err := closePostLifecycleDB(db); err != nil {
+			t.Errorf("close PostgreSQL test database: %v", err)
+		}
+	})
 
 	return db
 }
 
+func closePostLifecycleDB(db *gorm.DB) error {
+	sqlDB, err := db.DB()
+	if err != nil {
+		return err
+	}
+	return sqlDB.Close()
+}
+
 func createLifecycleUser(t *testing.T, db *gorm.DB, suffix string) models.User {
 	t.Helper()
+	stamp := time.Now().UnixNano()
 	user := models.User{
-		Username: fmt.Sprintf("lifecycle_%s_%d", suffix, time.Now().UnixNano()),
-		Email:    fmt.Sprintf("%s_%d@example.test", suffix, time.Now().UnixNano()),
+		Username: fmt.Sprintf("lifecycle_%s_%d", suffix, stamp),
+		Email:    fmt.Sprintf("%s_%d@example.test", suffix, stamp),
 	}
 	if err := db.Create(&user).Error; err != nil {
 		t.Fatalf("create test user: %v", err)
@@ -77,20 +93,6 @@ func createLifecycleUpload(t *testing.T, db *gorm.DB, userID uint, filename, med
 		t.Fatalf("create test upload: %v", err)
 	}
 	return upload
-}
-
-func createLifecyclePost(t *testing.T, db *gorm.DB, userID uint, contentType, filename string) models.Post {
-	t.Helper()
-	post := models.Post{
-		UserID:      userID,
-		ContentType: contentType,
-		ContentURL:  "https://example.test/uploads/" + filename,
-		Caption:     "lifecycle test",
-	}
-	if err := db.Create(&post).Error; err != nil {
-		t.Fatalf("create test post: %v", err)
-	}
-	return post
 }
 
 func invokeCreatePost(t *testing.T, h *PostHandler, userID uint, contentType, contentURL string) *httptest.ResponseRecorder {
@@ -214,10 +216,6 @@ func TestPostMediaLifecycle_DeleteReleasesUploadAndRemovesFile(t *testing.T) {
 	user := createLifecycleUser(t, db, "delete")
 	filename := fmt.Sprintf("%d.jpg", time.Now().UnixNano())
 	upload := createLifecycleUpload(t, db, user.ID, filename, "image/jpeg")
-	post := createLifecyclePost(t, db, user.ID, "image", filename)
-	if err := db.Model(&upload).Updates(map[string]interface{}{"post_id": post.ID, "claimed_at": time.Now()}).Error; err != nil {
-		t.Fatalf("claim test upload: %v", err)
-	}
 
 	if err := os.MkdirAll("uploads", 0755); err != nil {
 		t.Fatalf("create uploads directory: %v", err)
@@ -228,7 +226,24 @@ func TestPostMediaLifecycle_DeleteReleasesUploadAndRemovesFile(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Remove(mediaPath) })
 
+	// Exercise the real create path so the delete test covers the complete
+	// claim lifecycle: upload row + physical file -> post -> deletion.
 	h := NewPostHandler(db, "https://example.test")
+	contentURL := "https://example.test/uploads/" + filename
+	createResponse := invokeCreatePost(t, h, user.ID, "image", contentURL)
+	if createResponse.Code != http.StatusCreated {
+		t.Fatalf("CreatePost status = %d, want %d; body=%s", createResponse.Code, http.StatusCreated, createResponse.Body.String())
+	}
+
+	var claimed models.Upload
+	if err := db.First(&claimed, upload.ID).Error; err != nil {
+		t.Fatalf("reload claimed upload: %v", err)
+	}
+	if claimed.PostID == nil {
+		t.Fatal("expected upload to be claimed")
+	}
+	postID := *claimed.PostID
+
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.DELETE("/posts/:id", func(c *gin.Context) {
@@ -236,7 +251,7 @@ func TestPostMediaLifecycle_DeleteReleasesUploadAndRemovesFile(t *testing.T) {
 		h.DeletePost(c)
 	})
 
-	req := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/posts/%d", post.ID), nil)
+	req := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/posts/%d", postID), nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -244,7 +259,7 @@ func TestPostMediaLifecycle_DeleteReleasesUploadAndRemovesFile(t *testing.T) {
 	}
 
 	var deletedPost models.Post
-	if err := db.First(&deletedPost, post.ID).Error; !gorm.IsRecordNotFoundError(err) {
+	if err := db.First(&deletedPost, postID).Error; !gorm.IsRecordNotFoundError(err) {
 		t.Fatalf("expected post to be deleted, err=%v", err)
 	}
 
