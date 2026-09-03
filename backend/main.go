@@ -62,7 +62,7 @@ func main() {
 	r.Static("/uploads", "./uploads")
 
 	auth := handlers.NewAuthHandler(db, cfg)
-	post := handlers.NewPostHandler(db)
+	post := handlers.NewPostHandler(db, cfg.PublicURL)
 	userHandler := handlers.NewUserHandler(db)
 	relationshipHandler := handlers.NewRelationshipHandler(db)
 	notificationHandler := handlers.NewNotificationHandler(db)
