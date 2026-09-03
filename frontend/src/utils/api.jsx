@@ -10,8 +10,16 @@ const getEnvVar = (viteKey, craKey, fallback) => {
   return fallback;
 };
 
-export const SERVER_URL = getEnvVar("VITE_SERVER_URL", "REACT_APP_SERVER_URL", "http://localhost:8080");
-export const API_BASE_URL = getEnvVar("VITE_API_URL", "REACT_APP_API_URL", "http://localhost:8080/api");
+export const SERVER_URL = getEnvVar(
+  "VITE_SERVER_URL",
+  "REACT_APP_SERVER_URL",
+  "http://localhost:8080"
+);
+export const API_BASE_URL = getEnvVar(
+  "VITE_API_URL",
+  "REACT_APP_API_URL",
+  "http://localhost:8080/api"
+);
 
 export const getFileUrl = (path) => {
   if (!path) return "";
@@ -25,5 +33,23 @@ const API = axios.create({
   withCredentials: true,
   headers: { "Content-Type": "application/json" },
 });
+
+API.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error.response?.status;
+
+    if (status === 401 && typeof window !== "undefined") {
+      const path = window.location.pathname;
+      const isPublicRoute = path === "/auth" || path.startsWith("/auth/");
+
+      if (!isPublicRoute) {
+        window.dispatchEvent(new CustomEvent("notell:session-expired"));
+      }
+    }
+
+    return Promise.reject(error);
+  }
+);
 
 export default API;
