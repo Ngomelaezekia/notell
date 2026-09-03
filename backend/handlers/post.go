@@ -121,31 +121,25 @@ func (h *PostHandler) CreatePost(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 		return
 	}
+
 	contentURL := strings.TrimSpace(input.ContentURL)
 	if !h.isManagedMediaURL(contentURL) {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "contentUrl must reference media uploaded to this server"})
+		c.JSON(http.StatusBadRequest, gin.H{"message": "contentUrl must be a managed uploaded media URL"})
 		return
 	}
 	mediaPath, ok := h.managedMediaPath(contentURL)
 	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid uploaded media path"})
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid uploaded media URL"})
 		return
 	}
 	if err := validateManagedMedia(mediaPath, input.ContentType); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			c.JSON(http.StatusBadRequest, gin.H{"message": "uploaded media file not found"})
-			return
-		}
-		if strings.Contains(err.Error(), "media") || strings.Contains(err.Error(), "content type") || strings.Contains(err.Error(), "not a file") {
-			c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to validate uploaded media"})
+		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 		return
 	}
 
+	filename := filepath.Base(mediaPath)
 	var upload models.Upload
-	if err := h.DB.Where("filename = ? AND user_id = ? AND post_id IS NULL", filepath.Base(mediaPath), userID).First(&upload).Error; err != nil {
+	if err := h.DB.Where("filename = ? AND user_id = ? AND post_id IS NULL", filename, userID).First(&upload).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusBadRequest, gin.H{"message": "uploaded media is not owned by the current user or has already been used"})
 			return
@@ -415,10 +409,13 @@ func (h *PostHandler) ToggleLike(c *gin.Context) {
 
 	var liked bool
 	err = h.DB.Transaction(func(tx *gorm.DB) error {
+		// Serialize like toggles for the same post so two concurrent requests
+		// cannot both observe the absence of a like and race to insert it.
 		var post models.Post
-		if err := tx.First(&post, postIDUint).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&post, postIDUint).Error; err != nil {
 			return err
 		}
+
 		var like models.Like
 		err := tx.Where("post_id = ? AND user_id = ?", postIDUint, userID).First(&like).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -458,13 +455,70 @@ func (h *PostHandler) AddComment(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid post ID"})
 		return
 	}
+	postIDUint := uint(postID)
+
 	var input createCommentInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 		return
 	}
-	comment := models.Comment{UserID: userID, PostID: uint(postID), Content: strings.TrimSpace(input.Content), ParentID: input.ParentID}
-	if err := h.DB.Create(&comment).Error; err != nil {
+	content := strings.TrimSpace(input.Content)
+	if content == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "comment content cannot be empty"})
+		return
+	}
+
+	var comment models.Comment
+	err = h.DB.Transaction(func(tx *gorm.DB) error {
+		var post models.Post
+		if err := tx.Select("id, user_id").First(&post, postIDUint).Error; err != nil {
+			return err
+		}
+
+		if input.ParentID != nil {
+			if *input.ParentID == 0 {
+				return gorm.ErrInvalidData
+			}
+			var parent models.Comment
+			if err := tx.Select("id, post_id, parent_id, user_id").First(&parent, *input.ParentID).Error; err != nil {
+				return err
+			}
+			if parent.PostID != postIDUint {
+				return gorm.ErrInvalidData
+			}
+			if parent.ParentID != nil {
+				return gorm.ErrInvalidData
+			}
+		}
+
+		comment = models.Comment{
+			UserID:  userID,
+			PostID:  postIDUint,
+			Content: content,
+			ParentID: input.ParentID,
+		}
+		if err := tx.Create(&comment).Error; err != nil {
+			return err
+		}
+
+		if post.UserID != userID {
+			var parentID *uint
+			if input.ParentID != nil {
+				parentID = input.ParentID
+			}
+			h.createNotification(tx, post.UserID, userID, "comment", &postIDUint, parentID)
+		}
+		return nil
+	})
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"message": "post or parent comment not found"})
+		return
+	}
+	if errors.Is(err, gorm.ErrInvalidData) {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "parent comment must be a top-level comment on the same post"})
+		return
+	}
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to create comment"})
 		return
 	}
@@ -478,7 +532,7 @@ func (h *PostHandler) GetComments(c *gin.Context) {
 		return
 	}
 	var comments []models.Comment
-	if err := h.DB.Where("post_id = ?", uint(postID)).Order("created_at ASC").Find(&comments).Error; err != nil {
+	if err := h.DB.Where("post_id = ?", uint(postID)).Order("created_at ASC").Order("id ASC").Find(&comments).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to fetch comments"})
 		return
 	}
