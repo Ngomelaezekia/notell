@@ -10,7 +10,7 @@ type Notification struct {
 	PostID    *uint     `gorm:"index" json:"postId,omitempty"`
 	CommentID *uint     `gorm:"index" json:"commentId,omitempty"`
 	Read      bool      `gorm:"not null;default:false;index:idx_notifications_user_read_created,priority:2" json:"read"`
-	CreatedAt time.Time `json:"createdAt"`
+	CreatedAt time.Time `gorm:"index:idx_notifications_user_read_created,priority:3" json:"createdAt"`
 
 	Actor User `gorm:"foreignKey:ActorID;constraint:OnDelete:CASCADE" json:"actor,omitempty"`
 }
