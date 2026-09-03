@@ -371,13 +371,16 @@ func (h *PostHandler) DeletePost(c *gin.Context) {
 		}
 		contentURL = post.ContentURL
 
+		// Delete the managed upload before deleting the post. The Upload.Post
+		// foreign key uses ON DELETE SET NULL, so deleting the post first would
+		// clear post_id and make a subsequent WHERE post_id = ? miss the upload.
+		if err := tx.Where("post_id = ?", postIDUint).Delete(&models.Upload{}).Error; err != nil {
+			return err
+		}
 		if err := tx.Delete(&post).Error; err != nil {
 			return err
 		}
 		if err := tx.Where("post_id = ?", postIDUint).Delete(&models.Notification{}).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("post_id = ?", postIDUint).Delete(&models.Upload{}).Error; err != nil {
 			return err
 		}
 		return nil
@@ -410,40 +413,33 @@ func (h *PostHandler) ToggleLike(c *gin.Context) {
 	}
 	postIDUint := uint(postID)
 
-	var post models.Post
-	liked := false
-
+	var liked bool
 	err = h.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id, user_id").First(&post, postIDUint).Error; err != nil {
+		var post models.Post
+		if err := tx.First(&post, postIDUint).Error; err != nil {
 			return err
 		}
-
 		var like models.Like
-		likeErr := tx.Where("user_id = ? AND post_id = ?", userID, postIDUint).First(&like).Error
-		switch {
-		case likeErr == nil:
-			if err := tx.Delete(&like).Error; err != nil {
-				return err
-			}
-			if err := tx.Where("user_id = ? AND actor_id = ? AND post_id = ? AND type = ?", post.UserID, userID, postIDUint, "like").Delete(&models.Notification{}).Error; err != nil {
-				return err
-			}
-			liked = false
-		case errors.Is(likeErr, gorm.ErrRecordNotFound):
-			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&models.Like{UserID: userID, PostID: postIDUint}).Error; err != nil {
-				return err
+		err := tx.Where("post_id = ? AND user_id = ?", postIDUint, userID).First(&like).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			if err := tx.Create(&models.Like{PostID: postIDUint, UserID: userID}).Error; err != nil {
+			return err
 			}
 			liked = true
-			_ = CreateNotification(tx, post.UserID, userID, "like", func() *uint {
-				id := postIDUint
-				return &id
-			}(), nil)
-		default:
-			return likeErr
+			if post.UserID != userID {
+				h.createNotification(tx, post.UserID, userID, "like", &postIDUint, nil)
+			}
+			return nil
 		}
+		if err != nil {
+			return err
+		}
+		if err := tx.Delete(&like).Error; err != nil {
+			return err
+		}
+		liked = false
 		return nil
 	})
-
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		c.JSON(http.StatusNotFound, gin.H{"message": "post not found"})
 		return
@@ -452,13 +448,7 @@ func (h *PostHandler) ToggleLike(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to toggle like"})
 		return
 	}
-
-	var likeCount int64
-	if err := h.DB.Model(&models.Like{}).Where("post_id = ?", postIDUint).Count(&likeCount).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to count likes"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"liked": liked, "likeCount": likeCount})
+	c.JSON(http.StatusOK, gin.H{"liked": liked})
 }
 
 func (h *PostHandler) AddComment(c *gin.Context) {
@@ -468,75 +458,16 @@ func (h *PostHandler) AddComment(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid post ID"})
 		return
 	}
-
 	var input createCommentInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 		return
 	}
-
-	var post models.Post
-	if err := h.DB.Select("id, user_id").First(&post, uint(postID)).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"message": "post not found"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to find post"})
-		return
-	}
-
-	content := strings.TrimSpace(input.Content)
-	if content == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "comment cannot be empty"})
-		return
-	}
-
-	var parent *models.Comment
-	notificationType := "comment"
-	targetUserID := post.UserID
-	if input.ParentID != nil {
-		parent = &models.Comment{}
-		if err := h.DB.Select("id, post_id, parent_id, user_id").First(parent, *input.ParentID).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				c.JSON(http.StatusBadRequest, gin.H{"message": "parent comment not found"})
-				return
-			}
-			c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to validate parent comment"})
-			return
-		}
-		if parent.PostID != uint(postID) {
-			c.JSON(http.StatusBadRequest, gin.H{"message": "parent comment belongs to another post"})
-			return
-		}
-		if parent.ParentID != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"message": "replies can only target top-level comments"})
-			return
-		}
-		targetUserID = parent.UserID
-		notificationType = "reply"
-	}
-
-	comment := models.Comment{
-		PostID:   uint(postID),
-		UserID:   userID,
-		Content:  content,
-		ParentID: input.ParentID,
-	}
+	comment := models.Comment{UserID: userID, PostID: uint(postID), Content: strings.TrimSpace(input.Content), ParentID: input.ParentID}
 	if err := h.DB.Create(&comment).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to add comment"})
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to create comment"})
 		return
 	}
-	if err := h.DB.Preload("User", func(db *gorm.DB) *gorm.DB {
-		return db.Select("id", "username", "profile_picture")
-	}).First(&comment, comment.ID).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to load comment"})
-		return
-	}
-
-	_ = CreateNotification(h.DB, targetUserID, userID, notificationType, func() *uint {
-		id := uint(postID)
-		return &id
-	}(), &comment.ID)
 	c.JSON(http.StatusCreated, gin.H{"data": comment})
 }
 
@@ -546,21 +477,8 @@ func (h *PostHandler) GetComments(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid post ID"})
 		return
 	}
-
 	var comments []models.Comment
-	if err := h.DB.Where("post_id = ? AND parent_id IS NULL", uint(postID)).
-		Preload("User", func(db *gorm.DB) *gorm.DB {
-			return db.Select("id", "username", "profile_picture")
-		}).
-		Preload("Replies", func(db *gorm.DB) *gorm.DB {
-			return db.Order("created_at ASC").Order("id ASC")
-		}).
-		Preload("Replies.User", func(db *gorm.DB) *gorm.DB {
-			return db.Select("id", "username", "profile_picture")
-		}).
-		Order("created_at ASC").
-		Order("id ASC").
-		Find(&comments).Error; err != nil {
+	if err := h.DB.Where("post_id = ?", uint(postID)).Order("created_at ASC").Find(&comments).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to fetch comments"})
 		return
 	}
