@@ -69,6 +69,7 @@ func main() {
 		&models.Relationship{},
 		&models.Channel{},
 		&models.Notification{},
+		&models.Upload{},
 	); err != nil {
 		log.Fatalf("Database auto-migration failed: %v", err)
 	}
@@ -92,7 +93,7 @@ func main() {
 	userHandler := handlers.NewUserHandler(db)
 	relationshipHandler := handlers.NewRelationshipHandler(db)
 	notificationHandler := handlers.NewNotificationHandler(db)
-	uploadHandler := handlers.NewUploadHandler(cfg.PublicURL)
+	uploadHandler := handlers.NewUploadHandler(db, cfg.PublicURL)
 
 	api := r.Group("/api")
 	{
