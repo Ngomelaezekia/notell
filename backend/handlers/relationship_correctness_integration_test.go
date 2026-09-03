@@ -60,7 +60,11 @@ func invokeRelationship(t *testing.T, h *RelationshipHandler, method, path strin
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.Handle(method, path, func(c *gin.Context) {
+	// The production handlers read :id from Gin's route params. Registering
+	// the concrete request path (e.g. /users/42/follow) as a static route
+	// leaves c.Param("id") empty, so the test must exercise a parameterized
+	// route just like production.
+	r.Handle(method, "/users/:id/*action", func(c *gin.Context) {
 		c.Set("userId", userID)
 		handler(c)
 	})
