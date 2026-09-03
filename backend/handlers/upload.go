@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"notell/models"
 
@@ -22,6 +23,7 @@ type UploadHandler struct {
 }
 
 const maxUploadSize int64 = 100 << 20 // 100 MiB
+const unclaimedUploadRetention = 24 * time.Hour
 
 var allowedUploadTypes = map[string]string{
 	"image/jpeg":      ".jpg",
@@ -41,6 +43,39 @@ func randomFilename(ext string) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(buf) + ext, nil
+}
+
+// cleanupUnclaimedUploads removes abandoned uploads that were never claimed
+// by a post. Uploads are intentionally retained for 24 hours so a user can
+// finish publishing after an interrupted session without losing the media.
+func (h *UploadHandler) cleanupUnclaimedUploads() {
+	cutoff := time.Now().Add(-unclaimedUploadRetention)
+	var uploads []models.Upload
+	if err := h.DB.Select("id, path").
+		Where("post_id IS NULL AND created_at < ?", cutoff).
+		Find(&uploads).Error; err != nil {
+		return
+	}
+	if len(uploads) == 0 {
+		return
+	}
+
+	ids := make([]uint, 0, len(uploads))
+	for _, upload := range uploads {
+		ids = append(ids, upload.ID)
+	}
+	if err := h.DB.Where("id IN ? AND post_id IS NULL", ids).Delete(&models.Upload{}).Error; err != nil {
+		return
+	}
+
+	for _, upload := range uploads {
+		if upload.Path != "" {
+			if err := os.Remove(upload.Path); err != nil && !os.IsNotExist(err) {
+				// Database cleanup has already succeeded; a failed filesystem
+				// removal is safe to retry on the next cleanup pass.
+			}
+		}
+	}
 }
 
 // UploadMedia handles image/video uploads. Each uploaded object is recorded
@@ -117,6 +152,10 @@ func (h *UploadHandler) UploadMedia(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed recording uploaded file"})
 		return
 	}
+
+	// Opportunistically reclaim abandoned media without introducing a
+	// background worker or another production dependency.
+	h.cleanupUnclaimedUploads()
 
 	fileURL := fmt.Sprintf("%s/uploads/%s", h.PublicURL, filename)
 	c.JSON(http.StatusOK, gin.H{
