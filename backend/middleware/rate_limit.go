@@ -9,12 +9,16 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const maxRateLimitEntries = 10000
+
 type rateLimitEntry struct {
 	windowStart time.Time
 	count       int
 }
 
 // RateLimit provides a small in-memory fixed-window limiter for single-instance deployments.
+// Authenticated requests are keyed by user ID so changing source IPs cannot
+// bypass the limit. Unauthenticated requests use Gin's trusted-proxy-aware IP.
 // For multi-instance production deployments, replace this with a shared store such as Redis.
 func RateLimit(limit int, window time.Duration) gin.HandlerFunc {
 	if limit < 1 {
@@ -29,17 +33,10 @@ func RateLimit(limit int, window time.Duration) gin.HandlerFunc {
 	lastCleanup := time.Now()
 
 	return func(c *gin.Context) {
-		key := c.ClientIP()
+		key := rateLimitKey(c)
 		now := time.Now()
 
 		mu.Lock()
-		entry, exists := entries[key]
-		if !exists || now.Sub(entry.windowStart) >= window {
-			entry = rateLimitEntry{windowStart: now, count: 0}
-		}
-		entry.count++
-		entries[key] = entry
-
 		if now.Sub(lastCleanup) >= window {
 			for client, candidate := range entries {
 				if now.Sub(candidate.windowStart) >= window {
@@ -48,18 +45,44 @@ func RateLimit(limit int, window time.Duration) gin.HandlerFunc {
 			}
 			lastCleanup = now
 		}
+
+		entry, exists := entries[key]
+		if !exists || now.Sub(entry.windowStart) >= window {
+			if !exists && len(entries) >= maxRateLimitEntries {
+				mu.Unlock()
+				c.Header("Retry-After", strconv.Itoa(retryAfterSeconds(window)))
+				c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"message": "too many requests"})
+				return
+			}
+			entry = rateLimitEntry{windowStart: now}
+		}
+		entry.count++
+		entries[key] = entry
 		mu.Unlock()
 
 		if entry.count > limit {
-			retryAfter := int(window.Seconds())
-			if retryAfter < 1 {
-				retryAfter = 1
-			}
-			c.Header("Retry-After", strconv.Itoa(retryAfter))
+			c.Header("Retry-After", strconv.Itoa(retryAfterSeconds(window)))
 			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"message": "too many requests"})
 			return
 		}
 
 		c.Next()
 	}
+}
+
+func rateLimitKey(c *gin.Context) string {
+	if userID, ok := c.Get("userId"); ok {
+		if id, ok := userID.(uint); ok && id != 0 {
+			return "user:" + strconv.FormatUint(uint64(id), 10)
+		}
+	}
+	return "ip:" + c.ClientIP()
+}
+
+func retryAfterSeconds(window time.Duration) int {
+	seconds := int(window.Seconds())
+	if seconds < 1 {
+		return 1
+	}
+	return seconds
 }
