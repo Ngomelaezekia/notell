@@ -43,8 +43,20 @@ export const PostCard = ({ post, onPostDeleted }) => {
     setLikeLoading(true);
     try {
       const response = await toggleLike(postId);
-      setLiked(Boolean(response?.liked));
-      setLikeCount(Number(response?.likeCount ?? 0));
+      const nextLiked = Boolean(response?.liked);
+      setLiked(nextLiked);
+
+      if (typeof response?.likeCount === "number") {
+        setLikeCount(response.likeCount);
+      } else {
+        // The like endpoint currently returns the new state but not the
+        // aggregate count. Preserve the local count instead of resetting it
+        // to zero when the count field is absent.
+        setLikeCount((current) => {
+          if (nextLiked === liked) return current;
+          return Math.max(0, current + (nextLiked ? 1 : -1));
+        });
+      }
     } catch (error) {
       console.error(error);
     } finally {
