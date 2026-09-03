@@ -210,52 +210,70 @@ func (h *AuthHandler) getGoogleUser(token *oauth2.Token) (*GoogleUser, error) {
 	return &googleUser, nil
 }
 
-func (h *AuthHandler) findOrCreateGoogleUser(googleUser *GoogleUser) (*models.User, error) {
-	var user models.User
-	result := h.DB.Where("google_id = ? OR email = ?", googleUser.ID, strings.ToLower(googleUser.Email)).First(&user)
-	if result.Error == nil {
-		updates := map[string]interface{}{}
-		if user.GoogleID == nil {
-			updates["google_id"] = googleUser.ID
-		}
-		if user.ProfilePicture == nil && googleUser.Picture != "" {
-			updates["profile_picture"] = googleUser.Picture
-		}
-		if len(updates) > 0 {
-			if err := h.DB.Model(&user).Updates(updates).Error; err != nil {
-				return nil, err
-			}
-		}
-		return &user, nil
+func (h *AuthHandler) updateGoogleUser(user *models.User, googleUser *GoogleUser) error {
+	updates := map[string]interface{}{}
+	if user.GoogleID == nil {
+		updates["google_id"] = googleUser.ID
 	}
-	if result.Error != gorm.ErrRecordNotFound {
-		return nil, result.Error
+	if user.ProfilePicture == nil && googleUser.Picture != "" {
+		updates["profile_picture"] = googleUser.Picture
+	}
+	if len(updates) == 0 {
+		return nil
+	}
+	return h.DB.Model(user).Updates(updates).Error
+}
+
+func (h *AuthHandler) findGoogleUser(googleUser *GoogleUser) (*models.User, error) {
+	var user models.User
+	err := h.DB.Where("google_id = ? OR email = ?", googleUser.ID, strings.ToLower(googleUser.Email)).First(&user).Error
+	if err != nil {
+		return nil, err
+	}
+	if err := h.updateGoogleUser(&user, googleUser); err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (h *AuthHandler) findOrCreateGoogleUser(googleUser *GoogleUser) (*models.User, error) {
+	if user, err := h.findGoogleUser(googleUser); err == nil {
+		return user, nil
+	} else if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
 	}
 
 	baseUsername := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(googleUser.Name), " ", "_"))
 	if baseUsername == "" {
 		baseUsername = strings.Split(strings.ToLower(googleUser.Email), "@")[0]
 	}
-	username := baseUsername
-	var count int64
-	if err := h.DB.Model(&models.User{}).Where("username = ?", username).Count(&count).Error; err != nil {
-		return nil, err
-	}
-	if count > 0 {
-		username = fmt.Sprintf("%s_%d", baseUsername, time.Now().UnixNano()%1000000)
-	}
 
 	profilePicture := googleUser.Picture
-	user = models.User{
-		Username:       username,
-		Email:          strings.ToLower(googleUser.Email),
-		GoogleID:       &googleUser.ID,
-		ProfilePicture: &profilePicture,
+	for attempt := 0; attempt < 5; attempt++ {
+		username := baseUsername
+		if attempt > 0 {
+			username = fmt.Sprintf("%s_%d", baseUsername, time.Now().UnixNano()%1000000000)
+		}
+
+		user := models.User{
+			Username:       username,
+			Email:          strings.ToLower(googleUser.Email),
+			GoogleID:       &googleUser.ID,
+			ProfilePicture: &profilePicture,
+		}
+		if err := h.DB.Create(&user).Error; err != nil {
+			if !isUniqueViolation(err) {
+				return nil, err
+			}
+			if existing, lookupErr := h.findGoogleUser(googleUser); lookupErr == nil {
+				return existing, nil
+			}
+			continue
+		}
+		return &user, nil
 	}
-	if err := h.DB.Create(&user).Error; err != nil {
-		return nil, err
-	}
-	return &user, nil
+
+	return nil, fmt.Errorf("failed to create Google user after concurrent uniqueness conflicts")
 }
 
 func (h *AuthHandler) GoogleCallback(c *gin.Context) {
