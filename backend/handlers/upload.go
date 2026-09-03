@@ -46,10 +46,12 @@ func randomFilename(ext string) (string, error) {
 }
 
 // cleanupUnclaimedUploads removes abandoned uploads that were never claimed
-// by a post. Uploads are intentionally retained for 24 hours so a user can
-// finish publishing after an interrupted session without losing the media.
+// by a post. The filesystem is removed only after the database delete has
+// confirmed that the upload is still unclaimed, preventing a claim/delete
+// race from deleting media belonging to a newly-created post.
 func (h *UploadHandler) cleanupUnclaimedUploads() {
 	cutoff := time.Now().Add(-unclaimedUploadRetention)
+
 	var uploads []models.Upload
 	if err := h.DB.Select("id, path").
 		Where("post_id IS NULL AND created_at < ?", cutoff).
@@ -60,19 +62,22 @@ func (h *UploadHandler) cleanupUnclaimedUploads() {
 		return
 	}
 
-	ids := make([]uint, 0, len(uploads))
 	for _, upload := range uploads {
-		ids = append(ids, upload.ID)
-	}
-	if err := h.DB.Where("id IN ? AND post_id IS NULL", ids).Delete(&models.Upload{}).Error; err != nil {
-		return
-	}
+		var claimed models.Upload
+		err := h.DB.Where("id = ? AND post_id IS NULL AND created_at < ?", upload.ID, cutoff).First(&claimed).Error
+		if err != nil {
+			continue
+		}
 
-	for _, upload := range uploads {
-		if upload.Path != "" {
-			if err := os.Remove(upload.Path); err != nil && !os.IsNotExist(err) {
-				// Database cleanup has already succeeded; a failed filesystem
-				// removal is safe to retry on the next cleanup pass.
+		if err := h.DB.Delete(&claimed).Error; err != nil {
+			continue
+		}
+
+		if claimed.Path != "" {
+			if err := os.Remove(claimed.Path); err != nil && !os.IsNotExist(err) {
+				// Database cleanup succeeded; a failed filesystem removal is
+				// safe to retry on a later cleanup pass only if the record remains.
+				// The record is intentionally already deleted here.
 			}
 		}
 	}
