@@ -1,8 +1,8 @@
 package middleware
 
 import (
-	"net/http"
 	"net"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
