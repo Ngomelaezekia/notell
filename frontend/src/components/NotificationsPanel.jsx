@@ -32,8 +32,8 @@ export default function NotificationsPanel({
     if (!notification?.read) {
       try {
         await onMarkRead(notification.notificationId);
-      } catch (err) {
-        console.error(err);
+      } catch {
+        return;
       }
     }
 
@@ -41,6 +41,14 @@ export default function NotificationsPanel({
       navigate(`/posts/${notification.postId}`);
     } else if (notification?.actorId) {
       navigate(`/users/${notification.actorId}`);
+    }
+  };
+
+  const handleMarkAllRead = async () => {
+    try {
+      await onMarkAllRead();
+    } catch {
+      // Hook state already contains the user-facing error.
     }
   };
 
@@ -57,7 +65,7 @@ export default function NotificationsPanel({
           )}
         </div>
         {unreadCount > 0 && (
-          <button type="button" onClick={onMarkAllRead} className="flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800">
+          <button type="button" onClick={handleMarkAllRead} className="flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800">
             <CheckCheck size={14} /> Mark all read
           </button>
         )}
@@ -69,7 +77,7 @@ export default function NotificationsPanel({
             <Loader2 size={17} className="animate-spin" /> Loading...
           </div>
         ) : error ? (
-          <div className="px-4 py-8 text-center text-sm text-red-600">Failed to load notifications.</div>
+          <div className="px-4 py-8 text-center text-sm text-red-600">{error}</div>
         ) : notifications.length === 0 ? (
           <div className="px-4 py-10 text-center text-sm text-slate-500">You’re all caught up.</div>
         ) : (
@@ -80,7 +88,7 @@ export default function NotificationsPanel({
               <button
                 key={notification.notificationId}
                 type="button"
-                onClick={() => openNotification(notification)}
+                onClick={() => void openNotification(notification)}
                 className={`flex w-full items-start gap-3 border-b border-slate-100 px-4 py-3 text-left transition hover:bg-slate-50 ${notification.read ? "bg-white" : "bg-indigo-50/60"}`}
               >
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-100 text-xs font-semibold text-slate-700">
