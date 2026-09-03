@@ -33,7 +33,7 @@ func multipartRequest(t *testing.T, filename string, body []byte) *http.Request 
 
 func TestUploadMediaRejectsUnsupportedContent(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	h := NewUploadHandler()
+	h := NewUploadHandler("http://localhost:8080")
 	r := gin.New()
 	r.POST("/upload", h.UploadMedia)
 
@@ -61,7 +61,7 @@ func TestRandomFilenameUsesSafeExtension(t *testing.T) {
 
 func TestUploadMediaRejectsEmptyFile(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	h := NewUploadHandler()
+	h := NewUploadHandler("http://localhost:8080")
 	r := gin.New()
 	r.POST("/upload", h.UploadMedia)
 
