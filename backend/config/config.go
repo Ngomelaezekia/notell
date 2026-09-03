@@ -42,7 +42,7 @@ func Load() *Config {
 		GoogleClientID:     strings.TrimSpace(getEnv("GOOGLE_CLIENT_ID", "")),
 		GoogleClientSecret: getEnv("GOOGLE_CLIENT_SECRET", ""),
 		GoogleRedirectURL:  strings.TrimSpace(getEnv("GOOGLE_REDIRECT_URL", "http://localhost:8080/api/auth/google/callback")),
-		FrontendURL:        strings.TrimSpace(getEnv("FRONTEND_URL", "http://localhost:5173")),
+		FrontendURL:        normalizeFrontendURL(getEnv("FRONTEND_URL", "http://localhost:5173")),
 		PublicURL:          strings.TrimRight(strings.TrimSpace(getEnv("SERVER_URL", "http://localhost:8080")), "/"),
 	}
 
@@ -81,7 +81,7 @@ func (c *Config) Validate() error {
 		if c.FrontendURL == "" {
 			return errors.New("FRONTEND_URL must be set in production")
 		}
-		if err := validateAbsoluteURL(c.FrontendURL); err != nil {
+		if err := validateFrontendURL(c.FrontendURL); err != nil {
 			return fmt.Errorf("FRONTEND_URL: %w", err)
 		}
 		if err := validateAbsoluteURL(c.GoogleRedirectURL); err != nil {
@@ -92,6 +92,28 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	return nil
+}
+
+func normalizeFrontendURL(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	return strings.TrimRight(value, "/")
+}
+
+func validateFrontendURL(value string) error {
+	if err := validateAbsoluteURL(value); err != nil {
+		return err
+	}
+	parsed, _ := url.Parse(strings.TrimSpace(value))
+	if parsed.Path != "" && parsed.Path != "/" {
+		return errors.New("must not include a URL path")
+	}
+	if parsed.RawQuery != "" || parsed.Fragment != "" {
+		return errors.New("must not include query or fragment components")
+	}
 	return nil
 }
 
