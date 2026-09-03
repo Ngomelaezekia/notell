@@ -3,8 +3,10 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/joho/godotenv"
@@ -60,6 +62,13 @@ func (c *Config) Validate() error {
 		return errors.New("database and server configuration must not be empty")
 	}
 
+	if _, err := strconv.Atoi(c.Port); err != nil {
+		return errors.New("PORT must be a valid number")
+	}
+	if port, err := strconv.Atoi(c.DBPort); err != nil || port < 1 || port > 65535 {
+		return errors.New("DB_PORT must be a valid TCP port")
+	}
+
 	if appEnv == "production" {
 		if c.JWTSecret == "" || c.JWTSecret == "super-secret-key-change-me" {
 			return errors.New("JWT_SECRET must be set to a secure value in production")
@@ -73,6 +82,12 @@ func (c *Config) Validate() error {
 		if c.FrontendURL == "" {
 			return errors.New("FRONTEND_URL must be set in production")
 		}
+		if err := validateAbsoluteURL(c.FrontendURL); err != nil {
+			return fmt.Errorf("FRONTEND_URL: %w", err)
+		}
+		if err := validateAbsoluteURL(c.GoogleRedirectURL); err != nil {
+			return fmt.Errorf("GOOGLE_REDIRECT_URL: %w", err)
+		}
 		if err := validatePublicURL(c.PublicURL); err != nil {
 			return fmt.Errorf("SERVER_URL: %w", err)
 		}
@@ -81,11 +96,22 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-func validatePublicURL(value string) error {
+func validateAbsoluteURL(value string) error {
 	parsed, err := url.Parse(strings.TrimSpace(value))
 	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
 		return errors.New("must be an absolute http or https URL")
 	}
+	if parsed.User != nil {
+		return errors.New("must not include user information")
+	}
+	return nil
+}
+
+func validatePublicURL(value string) error {
+	if err := validateAbsoluteURL(value); err != nil {
+		return err
+	}
+	parsed, _ := url.Parse(strings.TrimSpace(value))
 	if parsed.Path != "" && parsed.Path != "/" {
 		return errors.New("must not include a URL path")
 	}
@@ -101,10 +127,23 @@ func (c *Config) GetDBDSN() string {
 		sslMode = "require"
 	}
 
-	return fmt.Sprintf(
-		"host=%s user=%s password=%s dbname=%s port=%s sslmode=%s",
-		c.DBHost, c.DBUser, c.DBPassword, c.DBName, c.DBPort, sslMode,
-	)
+	host := strings.TrimSpace(c.DBHost)
+	if strings.Contains(host, ":") && !strings.HasPrefix(host, "[") {
+		host = net.JoinHostPort(host, c.DBPort)
+	} else {
+		host = net.JoinHostPort(host, c.DBPort)
+	}
+
+	dsn := url.URL{
+		Scheme: "postgres",
+		Host:   host,
+		Path:   "/" + url.PathEscape(c.DBName),
+		User:   url.UserPassword(c.DBUser, c.DBPassword),
+	}
+	query := dsn.Query()
+	query.Set("sslmode", sslMode)
+	dsn.RawQuery = query.Encode()
+	return dsn.String()
 }
 
 func getEnv(key, fallback string) string {
