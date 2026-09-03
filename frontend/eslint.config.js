@@ -18,9 +18,8 @@ export default defineConfig([
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
     rules: {
-      // Existing data-fetching and synchronization effects are intentional in this app.
+      'no-unused-vars': ['error', { varsIgnorePattern: '^React$' }],
       'react-hooks/set-state-in-effect': 'off',
-      // Utility/context modules intentionally export helpers alongside components.
       'react-refresh/only-export-components': 'off',
     },
   },
