@@ -3,7 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { Search, UserRound, FileText, Loader2, ChevronDown } from "lucide-react";
 import { userAPI } from "../services/user/userApi";
 import { postsAPI } from "../services/post/postsApi";
-import { getFileUrl } from "../utils/api";
+import { getFileUrl, getApiErrorMessage } from "../utils/api";
 import { PostCard } from "../components/PostCard";
 
 const PAGE_SIZE = 20;
@@ -77,7 +77,7 @@ export default function SearchPage() {
         } else {
           setUsers([]);
           setUserHasMore(false);
-          setUserError(userResult.reason?.response?.data?.message || "People search failed.");
+          setUserError(getApiErrorMessage(userResult.reason, "People search failed."));
         }
 
         if (postResult.status === "fulfilled") {
@@ -87,7 +87,7 @@ export default function SearchPage() {
         } else {
           setPosts([]);
           setPostHasMore(false);
-          setPostError(postResult.reason?.response?.data?.message || "Post search failed.");
+          setPostError(getApiErrorMessage(postResult.reason, "Post search failed."));
         }
 
         setSearched(true);
@@ -139,10 +139,10 @@ export default function SearchPage() {
         const existingIds = new Set(current.map((user) => user.id));
         return [...current, ...nextUsers.filter((user) => !existingIds.has(user.id))];
       });
-      setUserPage(nextPage);
+      setUserPage(data.pagination?.page ?? nextPage);
       setUserHasMore(Boolean(data.pagination?.hasMore));
     } catch (error) {
-      setUserError(error?.response?.data?.message || "Failed to load more people.");
+      setUserError(getApiErrorMessage(error, "Failed to load more people."));
     } finally {
       setLoadingMoreUsers(false);
     }
@@ -164,13 +164,17 @@ export default function SearchPage() {
         const existingIds = new Set(current.map((post) => post.postId));
         return [...current, ...nextPosts.filter((post) => !existingIds.has(post.postId))];
       });
-      setPostPage(nextPage);
+      setPostPage(data.pagination?.page ?? nextPage);
       setPostHasMore(Boolean(data.pagination?.hasMore));
     } catch (error) {
-      setPostError(error?.response?.data?.message || "Failed to load more posts.");
+      setPostError(getApiErrorMessage(error, "Failed to load more posts."));
     } finally {
       setLoadingMorePosts(false);
     }
+  };
+
+  const removePost = (postId) => {
+    setPosts((current) => current.filter((post) => post.postId !== postId));
   };
 
   const showPeople = activeTab === "all" || activeTab === "people";
@@ -196,26 +200,14 @@ export default function SearchPage() {
             autoFocus
             className="w-full rounded-2xl border border-slate-200 bg-white py-3.5 pl-12 pr-28 text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
           />
-          <button
-            type="submit"
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-700"
-          >
+          <button type="submit" className="absolute right-2 top-1/2 -translate-y-1/2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-700">
             Search
           </button>
         </form>
 
         <div className="mt-5 flex gap-2 overflow-x-auto border-b border-slate-100 pb-3">
           {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => changeTab(tab.id)}
-              className={`shrink-0 rounded-xl px-4 py-2 text-sm font-bold transition ${
-                activeTab === tab.id
-                  ? "bg-slate-900 text-white"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              }`}
-            >
+            <button key={tab.id} type="button" onClick={() => changeTab(tab.id)} className={`shrink-0 rounded-xl px-4 py-2 text-sm font-bold transition ${activeTab === tab.id ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
               {tab.label}
             </button>
           ))}
@@ -223,28 +215,15 @@ export default function SearchPage() {
 
         <div className="mt-6">
           {loading && (
-            <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500">
-              <Loader2 size={18} className="animate-spin" /> Searching...
-            </div>
+            <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500"><Loader2 size={18} className="animate-spin" /> Searching...</div>
           )}
 
-          {!loading && searched && showPeople && userError && (
-            <p className="mb-4 rounded-2xl bg-red-50 p-4 text-sm text-red-600">{userError}</p>
-          )}
-
-          {!loading && searched && showPosts && postError && (
-            <p className="mb-4 rounded-2xl bg-red-50 p-4 text-sm text-red-600">{postError}</p>
-          )}
+          {!loading && searched && showPeople && userError && <p className="mb-4 rounded-2xl bg-red-50 p-4 text-sm text-red-600">{userError}</p>}
+          {!loading && searched && showPosts && postError && <p className="mb-4 rounded-2xl bg-red-50 p-4 text-sm text-red-600">{postError}</p>}
 
           {!loading && !hasResults && !hasErrors && searched && (
             <div className="py-12 text-center">
-              {activeTab === "people" ? (
-                <UserRound className="mx-auto text-slate-300" size={42} />
-              ) : activeTab === "posts" ? (
-                <FileText className="mx-auto text-slate-300" size={42} />
-              ) : (
-                <Search className="mx-auto text-slate-300" size={42} />
-              )}
+              {activeTab === "people" ? <UserRound className="mx-auto text-slate-300" size={42} /> : activeTab === "posts" ? <FileText className="mx-auto text-slate-300" size={42} /> : <Search className="mx-auto text-slate-300" size={42} />}
               <p className="mt-3 font-semibold text-slate-700">No results found</p>
               <p className="mt-1 text-sm text-slate-500">Try a different search term.</p>
             </div>
@@ -254,57 +233,25 @@ export default function SearchPage() {
             <section className={showPosts && posts.length > 0 ? "mb-8" : ""}>
               <div className="mb-3 flex items-center justify-between">
                 <h2 className="text-lg font-black text-slate-900">People</h2>
-                {activeTab === "all" && (
-                  <button
-                    type="button"
-                    onClick={() => changeTab("people")}
-                    className="text-sm font-bold text-indigo-600 hover:text-indigo-800"
-                  >
-                    See all
-                  </button>
-                )}
+                {activeTab === "all" && <button type="button" onClick={() => changeTab("people")} className="text-sm font-bold text-indigo-600 hover:text-indigo-800">See all</button>}
               </div>
 
               <div className="space-y-3">
                 {users.map((user) => (
-                  <Link
-                    key={user.id}
-                    to={`/users/${user.id}`}
-                    className="flex items-center gap-4 rounded-2xl border border-slate-100 bg-white p-4 transition hover:border-indigo-200 hover:shadow-md"
-                  >
+                  <Link key={user.id} to={`/users/${user.id}`} className="flex items-center gap-4 rounded-2xl border border-slate-100 bg-white p-4 transition hover:border-indigo-200 hover:shadow-md">
                     <div className="h-12 w-12 shrink-0 overflow-hidden rounded-full bg-slate-100">
-                      {user.profilePicture ? (
-                        <img src={getFileUrl(user.profilePicture)} alt="" className="h-full w-full object-cover" />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center text-slate-400">
-                          <UserRound size={22} />
-                        </div>
-                      )}
+                      {user.profilePicture ? <img src={getFileUrl(user.profilePicture)} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-slate-400"><UserRound size={22} /></div>}
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-bold text-slate-900">@{user.username}</p>
-                      {(user.city || user.country) && (
-                        <p className="truncate text-xs text-slate-500">
-                          {[user.city, user.country].filter(Boolean).join(", ")}
-                        </p>
-                      )}
+                      {(user.city || user.country) && <p className="truncate text-xs text-slate-500">{[user.city, user.country].filter(Boolean).join(", ")}</p>}
                       {user.bio && <p className="mt-1 truncate text-sm text-slate-600">{user.bio}</p>}
                     </div>
                   </Link>
                 ))}
               </div>
 
-              {userHasMore && (
-                <button
-                  type="button"
-                  onClick={loadMoreUsers}
-                  disabled={loadingMoreUsers}
-                  className="mx-auto mt-4 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {loadingMoreUsers ? <Loader2 size={16} className="animate-spin" /> : <ChevronDown size={16} />}
-                  {loadingMoreUsers ? "Loading..." : "Load more people"}
-                </button>
-              )}
+              {userHasMore && <button type="button" onClick={loadMoreUsers} disabled={loadingMoreUsers} className="mx-auto mt-4 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">{loadingMoreUsers ? <Loader2 size={16} className="animate-spin" /> : <ChevronDown size={16} />}{loadingMoreUsers ? "Loading..." : "Load more people"}</button>}
             </section>
           )}
 
@@ -312,42 +259,19 @@ export default function SearchPage() {
             <section>
               <div className="mb-3 flex items-center justify-between">
                 <h2 className="text-lg font-black text-slate-900">Posts</h2>
-                {activeTab === "all" && (
-                  <button
-                    type="button"
-                    onClick={() => changeTab("posts")}
-                    className="text-sm font-bold text-indigo-600 hover:text-indigo-800"
-                  >
-                    See all
-                  </button>
-                )}
+                {activeTab === "all" && <button type="button" onClick={() => changeTab("posts")} className="text-sm font-bold text-indigo-600 hover:text-indigo-800">See all</button>}
               </div>
 
               <div className="space-y-4">
                 {posts.map((post) => (
                   <div key={post.postId} className="relative">
-                    <PostCard post={post} />
-                    <Link
-                      to={`/posts/${post.postId}`}
-                      className="mt-2 inline-flex rounded-xl px-3 py-2 text-sm font-bold text-indigo-600 transition hover:bg-indigo-50 hover:text-indigo-800"
-                    >
-                      Open post
-                    </Link>
+                    <PostCard post={post} onPostDeleted={removePost} />
+                    <Link to={`/posts/${post.postId}`} className="mt-2 inline-flex rounded-xl px-3 py-2 text-sm font-bold text-indigo-600 transition hover:bg-indigo-50 hover:text-indigo-800">Open post</Link>
                   </div>
                 ))}
               </div>
 
-              {postHasMore && (
-                <button
-                  type="button"
-                  onClick={loadMorePosts}
-                  disabled={loadingMorePosts}
-                  className="mx-auto mt-4 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {loadingMorePosts ? <Loader2 size={16} className="animate-spin" /> : <ChevronDown size={16} />}
-                  {loadingMorePosts ? "Loading..." : "Load more posts"}
-                </button>
-              )}
+              {postHasMore && <button type="button" onClick={loadMorePosts} disabled={loadingMorePosts} className="mx-auto mt-4 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">{loadingMorePosts ? <Loader2 size={16} className="animate-spin" /> : <ChevronDown size={16} />}{loadingMorePosts ? "Loading..." : "Load more posts"}</button>}
             </section>
           )}
         </div>
