@@ -158,7 +158,10 @@ func main() {
 		api.GET("/posts/:id/comments", middleware.RateLimit(120, time.Minute), post.GetComments)
 		api.GET("/users/:id", middleware.RateLimit(120, time.Minute), userHandler.GetUserProfile)
 
-		protected := api.Group("/").Use(middleware.AuthRequired(cfg.JWTSecret))
+		protected := api.Group("/").Use(
+			middleware.CSRFProtection(cfg.FrontendURL),
+			middleware.AuthRequired(cfg.JWTSecret),
+		)
 		{
 			protected.POST("/upload", middleware.RateLimit(20, time.Minute), uploadHandler.UploadMedia)
 			protected.GET("/auth/me", middleware.RateLimit(120, time.Minute), auth.Me)
