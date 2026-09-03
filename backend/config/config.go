@@ -62,8 +62,8 @@ func (c *Config) Validate() error {
 		return errors.New("database and server configuration must not be empty")
 	}
 
-	if _, err := strconv.Atoi(c.Port); err != nil {
-		return errors.New("PORT must be a valid number")
+	if port, err := strconv.Atoi(c.Port); err != nil || port < 1 || port > 65535 {
+		return errors.New("PORT must be a valid TCP port")
 	}
 	if port, err := strconv.Atoi(c.DBPort); err != nil || port < 1 || port > 65535 {
 		return errors.New("DB_PORT must be a valid TCP port")
