@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 
@@ -22,6 +23,7 @@ type Config struct {
 	GoogleClientSecret string
 	GoogleRedirectURL  string
 	FrontendURL        string
+	PublicURL          string
 }
 
 func Load() *Config {
@@ -38,8 +40,9 @@ func Load() *Config {
 		JWTSecret:          getEnv("JWT_SECRET", "super-secret-key-change-me"),
 		GoogleClientID:     getEnv("GOOGLE_CLIENT_ID", ""),
 		GoogleClientSecret: getEnv("GOOGLE_CLIENT_SECRET", ""),
-		GoogleRedirectURL:  getEnv("GOOGLE_REDIRECT_URL", "http://localhost:8080/auth/google/callback"),
+		GoogleRedirectURL:  getEnv("GOOGLE_REDIRECT_URL", "http://localhost:8080/api/auth/google/callback"),
 		FrontendURL:        getEnv("FRONTEND_URL", "http://localhost:5173"),
+		PublicURL:          getEnv("SERVER_URL", "http://localhost:8080"),
 	}
 
 	if err := cfg.Validate(); err != nil {
@@ -69,8 +72,19 @@ func (c *Config) Validate() error {
 		if c.FrontendURL == "" {
 			return errors.New("FRONTEND_URL must be set in production")
 		}
+		if err := validatePublicURL(c.PublicURL); err != nil {
+			return fmt.Errorf("SERVER_URL: %w", err)
+		}
 	}
 
+	return nil
+}
+
+func validatePublicURL(value string) error {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return errors.New("must be an absolute http or https URL")
+	}
 	return nil
 }
 
