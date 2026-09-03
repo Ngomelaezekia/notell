@@ -50,7 +50,7 @@ func createRelationshipTestUser(t *testing.T, db *gorm.DB, suffix string, allowF
 	}
 	t.Cleanup(func() {
 		_ = db.Where("follower_id = ? OR following_id = ?", user.ID, user.ID).Delete(&models.Relationship{}).Error
-		_ = db.Where("recipient_id = ? OR actor_id = ?", user.ID, user.ID).Delete(&models.Notification{}).Error
+		_ = db.Where("user_id = ? OR actor_id = ?", user.ID, user.ID).Delete(&models.Notification{}).Error
 		_ = db.Delete(&user).Error
 	})
 	return user
@@ -131,7 +131,7 @@ func TestFollowUserRejectsDuplicateWithoutCreatingNotification(t *testing.T) {
 	if err := db.Model(&models.Relationship{}).Where("follower_id = ? AND following_id = ?", follower.ID, target.ID).Count(&relationshipCount).Error; err != nil {
 		t.Fatalf("count relationship: %v", err)
 	}
-	if err := db.Model(&models.Notification{}).Where("recipient_id = ? AND actor_id = ? AND type = ?", target.ID, follower.ID, "follow").Count(&notificationCount).Error; err != nil {
+	if err := db.Model(&models.Notification{}).Where("user_id = ? AND actor_id = ? AND type = ?", target.ID, follower.ID, "follow").Count(&notificationCount).Error; err != nil {
 		t.Fatalf("count notifications: %v", err)
 	}
 	if relationshipCount != 1 || notificationCount != 1 {
@@ -139,7 +139,7 @@ func TestFollowUserRejectsDuplicateWithoutCreatingNotification(t *testing.T) {
 	}
 }
 
-func TestUnfollowUserIsIdempotentByContract(t *testing.T) {
+func TestUnfollowUserRemovesExistingRelationship(t *testing.T) {
 	db := newRelationshipCorrectnessDB(t)
 	follower := createRelationshipTestUser(t, db, "unfollow-follower", true)
 	target := createRelationshipTestUser(t, db, "unfollow-target", true)
@@ -160,6 +160,18 @@ func TestUnfollowUserIsIdempotentByContract(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("relationship count = %d, want 0", count)
+	}
+}
+
+func TestUnfollowUserReportsMissingRelationship(t *testing.T) {
+	db := newRelationshipCorrectnessDB(t)
+	follower := createRelationshipTestUser(t, db, "unfollow-missing-follower", true)
+	target := createRelationshipTestUser(t, db, "unfollow-missing-target", true)
+	h := NewRelationshipHandler(db)
+
+	w := invokeRelationship(t, h, http.MethodDelete, fmt.Sprintf("/users/%d/unfollow", target.ID), follower.ID, h.UnfollowUser)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d; body=%s", w.Code, http.StatusNotFound, w.Body.String())
 	}
 }
 
@@ -186,10 +198,10 @@ func TestGetRelationshipStatusReportsBothDirectionsAndCounts(t *testing.T) {
 	}
 	var payload struct {
 		Data struct {
-			Following       bool  `json:"following"`
-			Follower        bool  `json:"follower"`
-			FollowerCount   int64 `json:"followerCount"`
-			FollowingCount  int64 `json:"followingCount"`
+			Following      bool  `json:"following"`
+			Follower       bool  `json:"follower"`
+			FollowerCount  int64 `json:"followerCount"`
+			FollowingCount int64 `json:"followingCount"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
