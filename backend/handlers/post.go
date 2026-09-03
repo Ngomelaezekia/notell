@@ -79,6 +79,34 @@ func (h *PostHandler) managedMediaPath(value string) (string, bool) {
 	return filepath.Join("uploads", filename), true
 }
 
+func validateManagedMedia(path, contentType string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return errors.New("uploaded media file not found")
+		}
+		return err
+	}
+	if info.IsDir() {
+		return errors.New("uploaded media path is not a file")
+	}
+
+	ext := strings.ToLower(filepath.Ext(path))
+	switch contentType {
+	case "image":
+		if ext != ".jpg" && ext != ".png" && ext != ".webp" {
+			return errors.New("media file type does not match image content type")
+		}
+	case "video":
+		if ext != ".mp4" && ext != ".mov" {
+			return errors.New("media file type does not match video content type")
+		}
+	default:
+		return errors.New("unsupported content type")
+	}
+	return nil
+}
+
 func (h *PostHandler) CreatePost(c *gin.Context) {
 	authUserID, exists := c.Get("userId")
 	if !exists {
@@ -92,15 +120,33 @@ func (h *PostHandler) CreatePost(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 		return
 	}
-	if !h.isManagedMediaURL(input.ContentURL) {
+	contentURL := strings.TrimSpace(input.ContentURL)
+	if !h.isManagedMediaURL(contentURL) {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "contentUrl must reference media uploaded to this server"})
+		return
+	}
+	mediaPath, ok := h.managedMediaPath(contentURL)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid uploaded media path"})
+		return
+	}
+	if err := validateManagedMedia(mediaPath, input.ContentType); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "uploaded media file not found"})
+			return
+		}
+		if strings.Contains(err.Error(), "media") || strings.Contains(err.Error(), "content type") || strings.Contains(err.Error(), "not a file") {
+			c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to validate uploaded media"})
 		return
 	}
 
 	post := models.Post{
 		UserID:      userID,
 		ContentType: input.ContentType,
-		ContentURL:  strings.TrimSpace(input.ContentURL),
+		ContentURL:  contentURL,
 		Caption:     strings.TrimSpace(input.Caption),
 	}
 	if err := h.DB.Create(&post).Error; err != nil {
