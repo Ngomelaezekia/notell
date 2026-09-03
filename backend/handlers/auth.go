@@ -52,12 +52,12 @@ func (h *AuthHandler) clearSession(c *gin.Context) {
 }
 
 type registerInput struct {
-	Username string  `json:"username" binding:"required"`
-	Email    string  `json:"email" binding:"required,email"`
-	Password string  `json:"password" binding:"required,min=6"`
-	Country  *string `json:"country"`
-	City     *string `json:"city"`
-	Bio      *string `json:"bio"`
+	Username string  `json:"username" binding:"required,max=50"`
+	Email    string  `json:"email" binding:"required,email,max=254"`
+	Password string  `json:"password" binding:"required,min=6,max=72"`
+	Country  *string `json:"country" binding:"max=100"`
+	City     *string `json:"city" binding:"max=100"`
+	Bio      *string `json:"bio" binding:"max=2000"`
 }
 
 func (h *AuthHandler) Register(c *gin.Context) {
@@ -101,8 +101,8 @@ func (h *AuthHandler) Register(c *gin.Context) {
 }
 
 type loginInput struct {
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required"`
+	Email    string `json:"email" binding:"required,email,max=254"`
+	Password string `json:"password" binding:"required,max=72"`
 }
 
 func (h *AuthHandler) Login(c *gin.Context) {
