@@ -21,6 +21,15 @@ export const API_BASE_URL = getEnvVar(
   "http://localhost:8080/api"
 );
 
+export const getApiErrorMessage = (error, fallback = "Something went wrong") => {
+  return (
+    error?.response?.data?.message ||
+    error?.response?.data?.error ||
+    error?.message ||
+    fallback
+  );
+};
+
 export const getFileUrl = (path) => {
   if (!path) return "";
   if (/^https?:\/\//i.test(path)) return path;
