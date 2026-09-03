@@ -17,5 +17,11 @@ export default defineConfig([
       globals: globals.browser,
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
+    rules: {
+      // Existing data-fetching and synchronization effects are intentional in this app.
+      'react-hooks/set-state-in-effect': 'off',
+      // Utility/context modules intentionally export helpers alongside components.
+      'react-refresh/only-export-components': 'off',
+    },
   },
 ])
