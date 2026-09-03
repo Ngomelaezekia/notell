@@ -10,10 +10,14 @@ import (
 	"path/filepath"
 	"strings"
 
+	"notell/models"
+
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 type UploadHandler struct {
+	DB        *gorm.DB
 	PublicURL string
 }
 
@@ -27,8 +31,8 @@ var allowedUploadTypes = map[string]string{
 	"video/quicktime": ".mov",
 }
 
-func NewUploadHandler(publicURL string) *UploadHandler {
-	return &UploadHandler{PublicURL: strings.TrimRight(publicURL, "/")}
+func NewUploadHandler(db *gorm.DB, publicURL string) *UploadHandler {
+	return &UploadHandler{DB: db, PublicURL: strings.TrimRight(publicURL, "/")}
 }
 
 func randomFilename(ext string) (string, error) {
@@ -39,8 +43,11 @@ func randomFilename(ext string) (string, error) {
 	return hex.EncodeToString(buf) + ext, nil
 }
 
-// UploadMedia handles image/video uploads.
+// UploadMedia handles image/video uploads. Each uploaded object is recorded
+// against the authenticated user so post creation can atomically claim it.
 func (h *UploadHandler) UploadMedia(c *gin.Context) {
+	userID := c.MustGet("userId").(uint)
+
 	// Cap the entire multipart request so oversized bodies are rejected before
 	// they can consume unbounded memory or temporary disk space.
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxUploadSize+(1<<20))
@@ -96,6 +103,18 @@ func (h *UploadHandler) UploadMedia(c *gin.Context) {
 	filePath := filepath.Join(uploadDir, filename)
 	if err := c.SaveUploadedFile(file, filePath); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed uploading file"})
+		return
+	}
+
+	upload := models.Upload{
+		UserID:    userID,
+		Filename:  filename,
+		Path:      filepath.ToSlash(filePath),
+		MediaType: contentType,
+	}
+	if err := h.DB.Create(&upload).Error; err != nil {
+		_ = os.Remove(filePath)
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed recording uploaded file"})
 		return
 	}
 
