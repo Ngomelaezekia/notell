@@ -93,6 +93,16 @@ func createLifecycleUpload(t *testing.T, db *gorm.DB, userID uint, filename, med
 	if err := db.Create(&upload).Error; err != nil {
 		t.Fatalf("create test upload: %v", err)
 	}
+
+	mediaPath := filepath.Join("uploads", filename)
+	if err := os.MkdirAll("uploads", 0755); err != nil {
+		t.Fatalf("create uploads directory: %v", err)
+	}
+	if err := os.WriteFile(mediaPath, []byte("lifecycle-test"), 0600); err != nil {
+		t.Fatalf("create test media file: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Remove(mediaPath) })
+
 	return upload
 }
 
@@ -218,14 +228,7 @@ func TestPostMediaLifecycle_DeleteReleasesUploadAndRemovesFile(t *testing.T) {
 	filename := fmt.Sprintf("%d.jpg", time.Now().UnixNano())
 	upload := createLifecycleUpload(t, db, user.ID, filename, "image/jpeg")
 
-	if err := os.MkdirAll("uploads", 0755); err != nil {
-		t.Fatalf("create uploads directory: %v", err)
-	}
 	mediaPath := filepath.Join("uploads", filename)
-	if err := os.WriteFile(mediaPath, []byte("lifecycle-test"), 0600); err != nil {
-		t.Fatalf("create test media file: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Remove(mediaPath) })
 
 	// Exercise the real create path so the delete test covers the complete
 	// claim lifecycle: upload row + physical file -> post -> deletion.
