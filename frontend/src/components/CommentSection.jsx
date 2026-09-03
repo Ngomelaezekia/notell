@@ -80,20 +80,13 @@ export default function CommentSection({ postId }) {
     setSubmitting(true);
     setError(null);
     try {
-      const response = await postsAPI.addComment(postId, text, replyTo?.commentId ?? null);
-      const newComment = response.data;
+      await postsAPI.addComment(postId, text, replyTo?.commentId ?? null);
       setContent("");
       setReplyTo(null);
-
-      if (newComment?.parentId) {
-        setComments((current) => current.map((comment) =>
-          comment.commentId === newComment.parentId
-            ? { ...comment, replies: [...(comment.replies ?? []), newComment] }
-            : comment
-        ));
-      } else if (newComment) {
-        setComments((current) => [...current, newComment]);
-      }
+      // The create endpoint returns the comment itself; refresh the collection
+      // so the newly-created item has the same preloaded user shape as all
+      // other comments rendered by this component.
+      await loadComments();
     } catch (err) {
       setError(getApiErrorMessage(err, "Failed to add comment."));
     } finally {
