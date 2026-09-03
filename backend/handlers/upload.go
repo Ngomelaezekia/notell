@@ -1,9 +1,9 @@
 package handlers
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"notell/models"
+	"notell/services"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -20,6 +21,7 @@ import (
 type UploadHandler struct {
 	DB        *gorm.DB
 	PublicURL string
+	Storage   services.MediaStorage
 }
 
 const maxUploadSize int64 = 100 << 20 // 100 MiB
@@ -33,8 +35,8 @@ var allowedUploadTypes = map[string]string{
 	"video/quicktime": ".mov",
 }
 
-func NewUploadHandler(db *gorm.DB, publicURL string) *UploadHandler {
-	return &UploadHandler{DB: db, PublicURL: strings.TrimRight(publicURL, "/")}
+func NewUploadHandler(db *gorm.DB, publicURL string, storage services.MediaStorage) *UploadHandler {
+	return &UploadHandler{DB: db, PublicURL: strings.TrimRight(publicURL, "/"), Storage: storage}
 }
 
 func randomFilename(ext string) (string, error) {
@@ -45,15 +47,11 @@ func randomFilename(ext string) (string, error) {
 	return hex.EncodeToString(buf) + ext, nil
 }
 
-// cleanupUnclaimedUploads removes abandoned uploads that were never claimed
-// by a post. The filesystem is removed only after the database delete has
-// confirmed that the upload is still unclaimed, preventing a claim/delete
-// race from deleting media belonging to a newly-created post.
 func (h *UploadHandler) cleanupUnclaimedUploads() {
 	cutoff := time.Now().Add(-unclaimedUploadRetention)
 
 	var uploads []models.Upload
-	if err := h.DB.Select("id, path").
+	if err := h.DB.Select("id, path, filename").
 		Where("post_id IS NULL AND created_at < ?", cutoff).
 		Find(&uploads).Error; err != nil {
 		return
@@ -73,23 +71,23 @@ func (h *UploadHandler) cleanupUnclaimedUploads() {
 			continue
 		}
 
+		key := services.MediaObjectKey(claimed.Filename)
+		if err := h.Storage.Delete(context.Background(), key); err != nil {
+			// The database row is already gone. The reconciler can retry this
+			// cleanup on R2 without risking a claim/delete race.
+			continue
+		}
 		if claimed.Path != "" {
 			if err := os.Remove(claimed.Path); err != nil && !os.IsNotExist(err) {
-				// Database cleanup succeeded; a failed filesystem removal is
-				// safe to retry on a later cleanup pass only if the record remains.
-				// The record is intentionally already deleted here.
+				continue
 			}
 		}
 	}
 }
 
-// UploadMedia handles image/video uploads. Each uploaded object is recorded
-// against the authenticated user so post creation can atomically claim it.
 func (h *UploadHandler) UploadMedia(c *gin.Context) {
 	userID := c.MustGet("userId").(uint)
 
-	// Cap the entire multipart request so oversized bodies are rejected before
-	// they can consume unbounded memory or temporary disk space.
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxUploadSize+(1<<20))
 
 	file, err := c.FormFile("file")
@@ -146,6 +144,13 @@ func (h *UploadHandler) UploadMedia(c *gin.Context) {
 		return
 	}
 
+	key := services.MediaObjectKey(filename)
+	if err := h.Storage.Put(c.Request.Context(), key, filePath, contentType); err != nil {
+		_ = os.Remove(filePath)
+		c.JSON(http.StatusBadGateway, gin.H{"message": "failed storing uploaded media"})
+		return
+	}
+
 	upload := models.Upload{
 		UserID:    userID,
 		Filename:  filename,
@@ -153,16 +158,15 @@ func (h *UploadHandler) UploadMedia(c *gin.Context) {
 		MediaType: contentType,
 	}
 	if err := h.DB.Create(&upload).Error; err != nil {
+		_ = h.Storage.Delete(context.Background(), key)
 		_ = os.Remove(filePath)
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed recording uploaded file"})
 		return
 	}
 
-	// Opportunistically reclaim abandoned media without introducing a
-	// background worker or another production dependency.
 	h.cleanupUnclaimedUploads()
 
-	fileURL := fmt.Sprintf("%s/uploads/%s", h.PublicURL, filename)
+	fileURL := services.MediaPublicURL(h.PublicURL, filename)
 	c.JSON(http.StatusOK, gin.H{
 		"message": "upload successful",
 		"url":     fileURL,
