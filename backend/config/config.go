@@ -121,6 +121,9 @@ func validatePublicURL(value string) error {
 }
 
 func quoteConninfoValue(value string) string {
+	if value != "" && !strings.ContainsAny(value, " \t\n\r'\\") {
+		return value
+	}
 	value = strings.ReplaceAll(value, "\\", "\\\\")
 	value = strings.ReplaceAll(value, "'", "\\'")
 	return "'" + value + "'"
