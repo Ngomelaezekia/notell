@@ -35,19 +35,17 @@ export function AuthProvider({ children }) {
       setError(null);
       return currentUser;
     } catch (err) {
-      const status = err?.response?.status;
-      if (status === 401) {
+      if (err?.response?.status === 401) {
         setUser(null);
         return null;
       }
 
-      const message = getApiErrorMessage(err, "Unable to verify your session.");
-      setError(message);
-      return user;
+      setError(getApiErrorMessage(err, "Unable to verify your session."));
+      return null;
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, []);
 
   useEffect(() => {
     const handleSessionExpired = () => {
