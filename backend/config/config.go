@@ -25,11 +25,19 @@ type Config struct {
 	GoogleRedirectURL  string
 	FrontendURL        string
 	PublicURL          string
+	MediaPublicURL     string
+	StorageDriver      string
+	R2Endpoint         string
+	R2Bucket           string
+	R2AccessKeyID      string
+	R2SecretAccessKey  string
+	R2Region           string
 }
 
 func Load() *Config {
 	_ = godotenv.Load()
 
+	serverURL := strings.TrimRight(strings.TrimSpace(getEnv("SERVER_URL", "http://localhost:8080")), "/")
 	cfg := &Config{
 		AppEnv:             strings.ToLower(strings.TrimSpace(getEnv("APP_ENV", "development"))),
 		Port:               strings.TrimSpace(getEnv("PORT", "8080")),
@@ -43,7 +51,14 @@ func Load() *Config {
 		GoogleClientSecret: getEnv("GOOGLE_CLIENT_SECRET", ""),
 		GoogleRedirectURL:  strings.TrimSpace(getEnv("GOOGLE_REDIRECT_URL", "http://localhost:8080/api/auth/google/callback")),
 		FrontendURL:        normalizeFrontendURL(getEnv("FRONTEND_URL", "http://localhost:5173")),
-		PublicURL:          strings.TrimRight(strings.TrimSpace(getEnv("SERVER_URL", "http://localhost:8080")), "/"),
+		PublicURL:          serverURL,
+		MediaPublicURL:     strings.TrimRight(strings.TrimSpace(getEnv("MEDIA_PUBLIC_URL", serverURL)), "/"),
+		StorageDriver:      strings.ToLower(strings.TrimSpace(getEnv("STORAGE_DRIVER", "local"))),
+		R2Endpoint:         strings.TrimRight(strings.TrimSpace(getEnv("R2_ENDPOINT", "")), "/"),
+		R2Bucket:           strings.TrimSpace(getEnv("R2_BUCKET", "")),
+		R2AccessKeyID:      strings.TrimSpace(getEnv("R2_ACCESS_KEY_ID", "")),
+		R2SecretAccessKey:  getEnv("R2_SECRET_ACCESS_KEY", ""),
+		R2Region:           strings.TrimSpace(getEnv("R2_REGION", "auto")),
 	}
 
 	if err := cfg.Validate(); err != nil {
@@ -68,6 +83,10 @@ func (c *Config) Validate() error {
 		return errors.New("DB_PORT must be a valid TCP port")
 	}
 
+	if !strings.EqualFold(c.StorageDriver, "local") && !strings.EqualFold(c.StorageDriver, "r2") {
+		return errors.New("STORAGE_DRIVER must be local or r2")
+	}
+
 	if appEnv == "production" {
 		if c.JWTSecret == "" || c.JWTSecret == "super-secret-key-change-me" {
 			return errors.New("JWT_SECRET must be set to a secure value in production")
@@ -89,6 +108,21 @@ func (c *Config) Validate() error {
 		}
 		if err := validatePublicURL(c.PublicURL); err != nil {
 			return fmt.Errorf("SERVER_URL: %w", err)
+		}
+		if !strings.EqualFold(c.StorageDriver, "r2") {
+			return errors.New("STORAGE_DRIVER must be r2 in production")
+		}
+		if err := validatePublicURL(c.MediaPublicURL); err != nil {
+			return fmt.Errorf("MEDIA_PUBLIC_URL: %w", err)
+		}
+		if c.R2Endpoint == "" || c.R2Bucket == "" || c.R2AccessKeyID == "" || c.R2SecretAccessKey == "" {
+			return errors.New("R2 storage configuration must be set in production")
+		}
+		if err := validateAbsoluteURL(c.R2Endpoint); err != nil {
+			return fmt.Errorf("R2_ENDPOINT: %w", err)
+		}
+		if c.R2Region == "" {
+			return errors.New("R2_REGION must not be empty")
 		}
 	}
 
