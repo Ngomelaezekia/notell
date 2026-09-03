@@ -82,11 +82,21 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 		updates["email"] = trimmedEmail
 	}
 
-	if input.Country != nil { updates["country"] = strings.TrimSpace(*input.Country) }
-	if input.City != nil { updates["city"] = strings.TrimSpace(*input.City) }
-	if input.Bio != nil { updates["bio"] = strings.TrimSpace(*input.Bio) }
-	if input.ProfilePicture != nil { updates["profile_picture"] = strings.TrimSpace(*input.ProfilePicture) }
-	if input.AllowFollowers != nil { updates["allow_followers"] = *input.AllowFollowers }
+	if input.Country != nil {
+		updates["country"] = strings.TrimSpace(*input.Country)
+	}
+	if input.City != nil {
+		updates["city"] = strings.TrimSpace(*input.City)
+	}
+	if input.Bio != nil {
+		updates["bio"] = strings.TrimSpace(*input.Bio)
+	}
+	if input.ProfilePicture != nil {
+		updates["profile_picture"] = strings.TrimSpace(*input.ProfilePicture)
+	}
+	if input.AllowFollowers != nil {
+		updates["allow_followers"] = *input.AllowFollowers
+	}
 
 	if len(updates) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "no valid fields provided for update"})
@@ -115,14 +125,21 @@ func (h *UserHandler) SearchUsers(c *gin.Context) {
 
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
-	if page < 1 { page = 1 }
-	if limit < 1 { limit = 20 }
-	if limit > 50 { limit = 50 }
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 20
+	}
+	if limit > 50 {
+		limit = 50
+	}
 
-	pattern := "%" + query + "%"
+	escapedQuery := escapeLikePattern(query)
+	pattern := "%" + escapedQuery + "%"
 	var total int64
 	base := h.DB.Model(&models.User{}).Where(
-		"username ILIKE ? OR bio ILIKE ? OR city ILIKE ? OR country ILIKE ?",
+		"username ILIKE ? ESCAPE '\\' OR bio ILIKE ? ESCAPE '\\' OR city ILIKE ? ESCAPE '\\' OR country ILIKE ? ESCAPE '\\'",
 		pattern, pattern, pattern, pattern,
 	)
 	if err := base.Count(&total).Error; err != nil {
@@ -132,7 +149,11 @@ func (h *UserHandler) SearchUsers(c *gin.Context) {
 
 	var users []models.User
 	err := base.Select("id, username, profile_picture, bio, country, city, status, allow_followers, created_at").
-		Order("username ASC").Offset((page - 1) * limit).Limit(limit).Find(&users).Error
+		Order("username ASC").
+		Order("id ASC").
+		Offset((page - 1) * limit).
+		Limit(limit).
+		Find(&users).Error
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "database error"})
 		return
