@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -21,6 +22,18 @@ import (
 )
 
 const maxJSONBodyBytes = 1 << 20
+
+func envInt(key string, fallback int) int {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < 0 {
+		return fallback
+	}
+	return parsed
+}
 
 func main() {
 	cfg := config.Load()
@@ -38,7 +51,15 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to access PostgreSQL connection pool: %v", err)
 	}
+	sqlDB.SetMaxOpenConns(envInt("DB_MAX_OPEN_CONNS", 25))
+	sqlDB.SetMaxIdleConns(envInt("DB_MAX_IDLE_CONNS", 10))
+	sqlDB.SetConnMaxLifetime(time.Duration(envInt("DB_CONN_MAX_LIFETIME_MINUTES", 30)) * time.Minute)
+	sqlDB.SetConnMaxIdleTime(time.Duration(envInt("DB_CONN_MAX_IDLE_MINUTES", 5)) * time.Minute)
 	defer sqlDB.Close()
+
+	if err := sqlDB.Ping(); err != nil {
+		log.Fatalf("Failed to ping PostgreSQL database: %v", err)
+	}
 
 	if err := db.AutoMigrate(
 		&models.User{},
@@ -88,36 +109,36 @@ func main() {
 			c.JSON(http.StatusOK, gin.H{"status": "ready"})
 		})
 
-		api.POST("/auth/register", auth.Register)
-		api.POST("/auth/login", auth.Login)
-		api.GET("/auth/google", auth.GoogleLogin)
-		api.GET("/auth/google/callback", auth.GoogleCallback)
+		api.POST("/auth/register", middleware.RateLimit(10, time.Minute), auth.Register)
+		api.POST("/auth/login", middleware.RateLimit(10, time.Minute), auth.Login)
+		api.GET("/auth/google", middleware.RateLimit(20, time.Minute), auth.GoogleLogin)
+		api.GET("/auth/google/callback", middleware.RateLimit(20, time.Minute), auth.GoogleCallback)
 		api.GET("/posts/:id", post.GetPostByID)
 		api.GET("/posts/:id/comments", post.GetComments)
 		api.GET("/users/:id", userHandler.GetUserProfile)
 
 		protected := api.Group("/").Use(middleware.AuthRequired(cfg.JWTSecret))
 		{
-			protected.POST("/upload", uploadHandler.UploadMedia)
+			protected.POST("/upload", middleware.RateLimit(20, time.Minute), uploadHandler.UploadMedia)
 			protected.GET("/auth/me", auth.Me)
 			protected.POST("/auth/logout", auth.Logout)
-			protected.PUT("/users/profile", userHandler.UpdateProfile)
-			protected.GET("/users/search", userHandler.SearchUsers)
-			protected.GET("/posts/search", post.SearchPosts)
-			protected.POST("/posts", post.CreatePost)
-			protected.GET("/posts/feed", post.GetFeed)
-			protected.DELETE("/posts/:id", post.DeletePost)
-			protected.POST("/posts/:id/like", post.ToggleLike)
-			protected.POST("/posts/:id/comments", post.AddComment)
-			protected.POST("/users/:id/follow", relationshipHandler.FollowUser)
-			protected.DELETE("/users/:id/unfollow", relationshipHandler.UnfollowUser)
+			protected.PUT("/users/profile", middleware.RateLimit(30, time.Minute), userHandler.UpdateProfile)
+			protected.GET("/users/search", middleware.RateLimit(60, time.Minute), userHandler.SearchUsers)
+			protected.GET("/posts/search", middleware.RateLimit(60, time.Minute), post.SearchPosts)
+			protected.POST("/posts", middleware.RateLimit(30, time.Minute), post.CreatePost)
+			protected.GET("/posts/feed", middleware.RateLimit(120, time.Minute), post.GetFeed)
+			protected.DELETE("/posts/:id", middleware.RateLimit(30, time.Minute), post.DeletePost)
+			protected.POST("/posts/:id/like", middleware.RateLimit(120, time.Minute), post.ToggleLike)
+			protected.POST("/posts/:id/comments", middleware.RateLimit(60, time.Minute), post.AddComment)
+			protected.POST("/users/:id/follow", middleware.RateLimit(60, time.Minute), relationshipHandler.FollowUser)
+			protected.DELETE("/users/:id/unfollow", middleware.RateLimit(60, time.Minute), relationshipHandler.UnfollowUser)
 			protected.GET("/users/:id/relationship", relationshipHandler.GetRelationshipStatus)
-			protected.DELETE("/users/followers/:id", relationshipHandler.RemoveFollower)
+			protected.DELETE("/users/followers/:id", middleware.RateLimit(60, time.Minute), relationshipHandler.RemoveFollower)
 			protected.GET("/users/:id/followers", relationshipHandler.GetFollowers)
 			protected.GET("/users/:id/following", relationshipHandler.GetFollowing)
-			protected.GET("/notifications", notificationHandler.List)
-			protected.POST("/notifications/:id/read", notificationHandler.MarkRead)
-			protected.POST("/notifications/read-all", notificationHandler.MarkAllRead)
+			protected.GET("/notifications", middleware.RateLimit(120, time.Minute), notificationHandler.List)
+			protected.POST("/notifications/:id/read", middleware.RateLimit(120, time.Minute), notificationHandler.MarkRead)
+			protected.POST("/notifications/read-all", middleware.RateLimit(60, time.Minute), notificationHandler.MarkAllRead)
 		}
 	}
 
