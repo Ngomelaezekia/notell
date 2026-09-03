@@ -30,19 +30,19 @@ func Load() *Config {
 	_ = godotenv.Load()
 
 	cfg := &Config{
-		AppEnv:             getEnv("APP_ENV", "development"),
-		Port:               getEnv("PORT", "8080"),
-		DBHost:             getEnv("DB_HOST", "localhost"),
-		DBPort:             getEnv("DB_PORT", "5432"),
-		DBUser:             getEnv("DB_USER", "postgres"),
+		AppEnv:             strings.ToLower(strings.TrimSpace(getEnv("APP_ENV", "development"))),
+		Port:               strings.TrimSpace(getEnv("PORT", "8080")),
+		DBHost:             strings.TrimSpace(getEnv("DB_HOST", "localhost")),
+		DBPort:             strings.TrimSpace(getEnv("DB_PORT", "5432")),
+		DBUser:             strings.TrimSpace(getEnv("DB_USER", "postgres")),
 		DBPassword:         getEnv("DB_PASSWORD", "postgres"),
-		DBName:             getEnv("DB_NAME", "notell_db"),
+		DBName:             strings.TrimSpace(getEnv("DB_NAME", "notell_db")),
 		JWTSecret:          getEnv("JWT_SECRET", "super-secret-key-change-me"),
-		GoogleClientID:     getEnv("GOOGLE_CLIENT_ID", ""),
+		GoogleClientID:     strings.TrimSpace(getEnv("GOOGLE_CLIENT_ID", "")),
 		GoogleClientSecret: getEnv("GOOGLE_CLIENT_SECRET", ""),
-		GoogleRedirectURL:  getEnv("GOOGLE_REDIRECT_URL", "http://localhost:8080/api/auth/google/callback"),
-		FrontendURL:        getEnv("FRONTEND_URL", "http://localhost:5173"),
-		PublicURL:          getEnv("SERVER_URL", "http://localhost:8080"),
+		GoogleRedirectURL:  strings.TrimSpace(getEnv("GOOGLE_REDIRECT_URL", "http://localhost:8080/api/auth/google/callback")),
+		FrontendURL:        strings.TrimSpace(getEnv("FRONTEND_URL", "http://localhost:5173")),
+		PublicURL:          strings.TrimRight(strings.TrimSpace(getEnv("SERVER_URL", "http://localhost:8080")), "/"),
 	}
 
 	if err := cfg.Validate(); err != nil {
@@ -52,14 +52,15 @@ func Load() *Config {
 }
 
 func (c *Config) Validate() error {
-	if strings.TrimSpace(c.AppEnv) == "" {
+	appEnv := strings.ToLower(strings.TrimSpace(c.AppEnv))
+	if appEnv == "" {
 		return errors.New("APP_ENV must not be empty")
 	}
 	if c.Port == "" || c.DBHost == "" || c.DBPort == "" || c.DBUser == "" || c.DBName == "" {
 		return errors.New("database and server configuration must not be empty")
 	}
 
-	if c.AppEnv == "production" {
+	if appEnv == "production" {
 		if c.JWTSecret == "" || c.JWTSecret == "super-secret-key-change-me" {
 			return errors.New("JWT_SECRET must be set to a secure value in production")
 		}
@@ -85,12 +86,18 @@ func validatePublicURL(value string) error {
 	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
 		return errors.New("must be an absolute http or https URL")
 	}
+	if parsed.Path != "" && parsed.Path != "/" {
+		return errors.New("must not include a URL path")
+	}
+	if parsed.RawQuery != "" || parsed.Fragment != "" {
+		return errors.New("must not include query or fragment components")
+	}
 	return nil
 }
 
 func (c *Config) GetDBDSN() string {
 	sslMode := "disable"
-	if c.AppEnv == "production" {
+	if strings.EqualFold(strings.TrimSpace(c.AppEnv), "production") {
 		sslMode = "require"
 	}
 
