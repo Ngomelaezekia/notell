@@ -15,6 +15,7 @@ import (
 	"notell/handlers"
 	"notell/middleware"
 	"notell/models"
+	"notell/services"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -104,6 +105,14 @@ func main() {
 		log.Fatalf("Database auto-migration failed: %v", err)
 	}
 
+	mediaStorage, err := services.NewMediaStorage(cfg)
+	if err != nil {
+		log.Fatalf("Media storage initialization failed: %v", err)
+	}
+	storageCtx, storageCancel := context.WithCancel(context.Background())
+	defer storageCancel()
+	services.StartMediaReconciler(storageCtx, mediaStorage, db)
+
 	r := gin.Default()
 	if err := r.SetTrustedProxies(trustedProxies()); err != nil {
 		log.Fatalf("Invalid TRUSTED_PROXIES configuration: %v", err)
@@ -129,11 +138,11 @@ func main() {
 	r.Static("/uploads", "./uploads")
 
 	auth := handlers.NewAuthHandler(db, cfg)
-	post := handlers.NewPostHandler(db, cfg.PublicURL)
+	post := handlers.NewPostHandler(db, cfg.MediaPublicURL)
 	userHandler := handlers.NewUserHandler(db)
 	relationshipHandler := handlers.NewRelationshipHandler(db)
 	notificationHandler := handlers.NewNotificationHandler(db)
-	uploadHandler := handlers.NewUploadHandler(db, cfg.PublicURL)
+	uploadHandler := handlers.NewUploadHandler(db, cfg.MediaPublicURL, mediaStorage)
 
 	api := r.Group("/api")
 	{
@@ -212,6 +221,7 @@ func main() {
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	storageCancel()
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		log.Printf("Graceful shutdown failed: %v", err)
 	}
