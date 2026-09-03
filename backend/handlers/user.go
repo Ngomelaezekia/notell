@@ -103,6 +103,10 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 		return
 	}
 	if err := h.DB.Model(&models.User{}).Where("id = ?", userID).Updates(updates).Error; err != nil {
+		if isUniqueViolation(err) {
+			c.JSON(http.StatusConflict, gin.H{"message": "username or email is already in use"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to update profile"})
 		return
 	}
@@ -120,6 +124,10 @@ func (h *UserHandler) SearchUsers(c *gin.Context) {
 	query := strings.TrimSpace(c.Query("q"))
 	if len(query) < 2 {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "search query must be at least 2 characters"})
+		return
+	}
+	if len(query) > 100 {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "search query is too long"})
 		return
 	}
 
