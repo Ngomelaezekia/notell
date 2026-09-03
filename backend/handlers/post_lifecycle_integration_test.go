@@ -59,6 +59,9 @@ func createLifecycleUser(t *testing.T, db *gorm.DB, suffix string) models.User {
 	if err := db.Create(&user).Error; err != nil {
 		t.Fatalf("create test user: %v", err)
 	}
+	t.Cleanup(func() {
+		_ = db.Delete(&user).Error
+	})
 	return user
 }
 
