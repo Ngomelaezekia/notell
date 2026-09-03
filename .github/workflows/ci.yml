@@ -66,11 +66,17 @@ jobs:
           cache: true
           cache-dependency-path: backend/go.sum
 
-      - name: Download dependencies
-        run: go mod download
+      - name: Synchronize Go modules
+        run: go mod tidy
+
+      - name: Verify module graph
+        run: go mod tidy -diff
+
+      - name: Verify dependencies
+        run: go mod verify
 
       - name: Test
-        run: go test ./...
+        run: go test -mod=readonly ./...
 
       - name: Build
-        run: go build ./...
+        run: go build -mod=readonly ./...
