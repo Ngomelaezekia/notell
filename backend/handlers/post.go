@@ -19,12 +19,23 @@ import (
 )
 
 type PostHandler struct {
-	DB        *gorm.DB
-	PublicURL string
+	DB             *gorm.DB
+	PublicURL      string
+	MediaPublicURL string
 }
 
-func NewPostHandler(db *gorm.DB, publicURL string) *PostHandler {
-	return &PostHandler{DB: db, PublicURL: strings.TrimRight(publicURL, "/")}
+// NewPostHandler preserves the existing two-argument call shape while allowing
+// production to supply a separate durable media origin such as Cloudflare R2.
+func NewPostHandler(db *gorm.DB, publicURL string, mediaPublicURL ...string) *PostHandler {
+	mediaURL := publicURL
+	if len(mediaPublicURL) > 0 && strings.TrimSpace(mediaPublicURL[0]) != "" {
+		mediaURL = mediaPublicURL[0]
+	}
+	return &PostHandler{
+		DB:             db,
+		PublicURL:      strings.TrimRight(publicURL, "/"),
+		MediaPublicURL: strings.TrimRight(mediaURL, "/"),
+	}
 }
 
 type createPostInput struct {
@@ -50,14 +61,19 @@ func (h *PostHandler) isManagedMediaURL(value string) bool {
 	if err != nil || candidate.Scheme == "" || candidate.Host == "" {
 		return false
 	}
-	public, err := url.Parse(h.PublicURL)
-	if err != nil || public.Scheme == "" || public.Host == "" {
-		return false
+	for _, publicURL := range []string{h.MediaPublicURL, h.PublicURL} {
+		public, err := url.Parse(publicURL)
+		if err != nil || public.Scheme == "" || public.Host == "" {
+			continue
+		}
+		if strings.EqualFold(candidate.Scheme, public.Scheme) &&
+			strings.EqualFold(candidate.Host, public.Host) &&
+			strings.HasPrefix(candidate.Path, "/uploads/") &&
+			candidate.RawQuery == "" && candidate.Fragment == "" {
+			return true
+		}
 	}
-	if !strings.EqualFold(candidate.Scheme, public.Scheme) || !strings.EqualFold(candidate.Host, public.Host) {
-		return false
-	}
-	return strings.HasPrefix(candidate.Path, "/uploads/") && candidate.RawQuery == "" && candidate.Fragment == ""
+	return false
 }
 
 func (h *PostHandler) managedMediaPath(value string) (string, bool) {
@@ -257,297 +273,3 @@ func (h *PostHandler) SearchPosts(c *gin.Context) {
 	if limit > 50 {
 		limit = 50
 	}
-
-	escapedQuery := escapeLikePattern(query)
-	pattern := "%" + escapedQuery + "%"
-	prefix := escapedQuery + "%"
-	var total int64
-	base := h.DB.Model(&models.Post{}).
-		Joins("JOIN users ON users.id = posts.user_id").
-		Where("posts.caption ILIKE ? ESCAPE '\\' OR users.username ILIKE ? ESCAPE '\\'", pattern, pattern)
-	if err := base.Count(&total).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "database error"})
-		return
-	}
-
-	var posts []models.Post
-	authUserID := uint(0)
-	if value, ok := c.Get("userId"); ok {
-		if id, ok := value.(uint); ok {
-			authUserID = id
-		}
-	}
-
-	var err error
-	err = base.Select(postEngagementSelect, authUserID).
-		Preload("User", func(db *gorm.DB) *gorm.DB {
-			return db.Select("id", "username", "profile_picture")
-		}).
-		Order(gorm.Expr(`CASE
-			WHEN LOWER(users.username) = LOWER(?) THEN 0
-			WHEN LOWER(users.username) LIKE LOWER(?) ESCAPE '\\' THEN 1
-			WHEN LOWER(posts.caption) LIKE LOWER(?) ESCAPE '\\' THEN 2
-			ELSE 3
-		END`, query, prefix, prefix)).
-		Order("posts.created_at DESC").
-		Order("posts.id DESC").
-		Offset((page - 1) * limit).
-		Limit(limit).
-		Find(&posts).Error
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "database error"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"data": gin.H{
-			"posts": posts,
-			"pagination": gin.H{
-				"page":    page,
-				"limit":   limit,
-				"total":   total,
-				"hasMore": int64(page*limit) < total,
-			},
-		},
-	})
-}
-
-func (h *PostHandler) GetPostByID(c *gin.Context) {
-	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid post ID"})
-		return
-	}
-
-	var post models.Post
-	userID := uint(0)
-	if value, ok := c.Get("userId"); ok {
-		if id, ok := value.(uint); ok {
-			userID = id
-		}
-	}
-
-	err = h.DB.Model(&models.Post{}).
-		Select(postEngagementSelect, userID).
-		Where("posts.id = ?", uint(id)).
-		Preload("User", func(db *gorm.DB) *gorm.DB {
-			return db.Select("id", "username", "profile_picture")
-		}).
-		First(&post).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"message": "post not found"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to fetch post"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"data": post})
-}
-
-func (h *PostHandler) DeletePost(c *gin.Context) {
-	userID := c.MustGet("userId").(uint)
-	postID, err := strconv.ParseUint(c.Param("id"), 10, 32)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid post ID"})
-		return
-	}
-	postIDUint := uint(postID)
-	var contentURL string
-
-	err = h.DB.Transaction(func(tx *gorm.DB) error {
-		var post models.Post
-		if err := tx.Select("id, content_url").Where("id = ? AND user_id = ?", postIDUint, userID).First(&post).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return gorm.ErrRecordNotFound
-			}
-			return err
-		}
-		contentURL = post.ContentURL
-
-		// Delete the managed upload before deleting the post. The Upload.Post
-		// foreign key uses ON DELETE SET NULL, so deleting the post first would
-		// clear post_id and make a subsequent WHERE post_id = ? miss the upload.
-		if err := tx.Where("post_id = ?", postIDUint).Delete(&models.Upload{}).Error; err != nil {
-			return err
-		}
-
-		// Delete notifications while their post_id still references the post.
-		// Notification.Post uses ON DELETE SET NULL, so doing this after the post
-		// delete would leave the notifications orphaned with a NULL post_id.
-		if err := tx.Where("post_id = ?", postIDUint).Delete(&models.Notification{}).Error; err != nil {
-			return err
-		}
-
-		if err := tx.Delete(&post).Error; err != nil {
-			return err
-		}
-		return nil
-	})
-
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		c.JSON(http.StatusNotFound, gin.H{"message": "post not found"})
-		return
-	}
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to delete post"})
-		return
-	}
-
-	if path, ok := h.managedMediaPath(contentURL); ok {
-		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-			log.Printf("failed to remove deleted post media %q: %v", path, err)
-		}
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "post deleted successfully"})
-}
-
-func (h *PostHandler) ToggleLike(c *gin.Context) {
-	userID := c.MustGet("userId").(uint)
-	postID, err := strconv.ParseUint(c.Param("id"), 10, 32)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid post ID"})
-		return
-	}
-	postIDUint := uint(postID)
-
-	var liked bool
-	err = h.DB.Transaction(func(tx *gorm.DB) error {
-		var post models.Post
-		if err := tx.Select("id").First(&post, postIDUint).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return gorm.ErrRecordNotFound
-			}
-			return err
-		}
-
-		var like models.Like
-		findErr := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id = ? AND post_id = ?", userID, postIDUint).First(&like).Error
-		if findErr == nil {
-			if err := tx.Delete(&like).Error; err != nil {
-				return err
-			}
-			liked = false
-		} else if errors.Is(findErr, gorm.ErrRecordNotFound) {
-			if err := tx.Create(&models.Like{UserID: userID, PostID: postIDUint}).Error; err != nil {
-				if isUniqueViolation(err) {
-					return gorm.ErrDuplicatedKey
-				}
-				return err
-			}
-			liked = true
-		} else {
-			return findErr
-		}
-		return nil
-	})
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		c.JSON(http.StatusNotFound, gin.H{"message": "post not found"})
-		return
-	}
-	if errors.Is(err, gorm.ErrDuplicatedKey) {
-		c.JSON(http.StatusConflict, gin.H{"message": "like state changed concurrently; please retry"})
-		return
-	}
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to toggle like"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "like state updated", "liked": liked})
-}
-
-func (h *PostHandler) AddComment(c *gin.Context) {
-	userID := c.MustGet("userId").(uint)
-	postID, err := strconv.ParseUint(c.Param("id"), 10, 32)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid post ID"})
-		return
-	}
-
-	var input createCommentInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
-		return
-	}
-	content := strings.TrimSpace(input.Content)
-	if content == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "comment content cannot be empty"})
-		return
-	}
-
-	postIDUint := uint(postID)
-	var post models.Post
-	if err := h.DB.First(&post, postIDUint).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"message": "post not found"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to load post"})
-		return
-	}
-
-	if input.ParentID != nil {
-		if *input.ParentID == 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"message": "invalid parent comment"})
-			return
-		}
-		var parent models.Comment
-		if err := h.DB.Select("id, post_id, parent_id").First(&parent, *input.ParentID).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				c.JSON(http.StatusBadRequest, gin.H{"message": "parent comment not found"})
-				return
-			}
-			c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to load parent comment"})
-			return
-		}
-		if parent.PostID != postIDUint {
-			c.JSON(http.StatusBadRequest, gin.H{"message": "parent comment belongs to another post"})
-			return
-		}
-		if parent.ParentID != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"message": "nested replies are not supported"})
-			return
-		}
-	}
-
-	comment := models.Comment{
-		PostID:   postIDUint,
-		UserID:   userID,
-		Content:  content,
-		ParentID: input.ParentID,
-	}
-	if err := h.DB.Create(&comment).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to add comment"})
-		return
-	}
-
-	if post.UserID != userID {
-		postIDForNotification := post.ID
-		h.createNotification(h.DB, post.UserID, userID, "comment", &postIDForNotification, &comment.ID)
-	}
-
-	c.JSON(http.StatusCreated, gin.H{"message": "comment added successfully", "data": comment})
-}
-
-func (h *PostHandler) GetComments(c *gin.Context) {
-	postID, err := strconv.ParseUint(c.Param("id"), 10, 32)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid post ID"})
-		return
-	}
-
-	var comments []models.Comment
-	if err := h.DB.Where("post_id = ?", uint(postID)).
-		Preload("User", func(db *gorm.DB) *gorm.DB {
-			return db.Select("id", "username", "profile_picture")
-		}).
-		Order("created_at ASC").
-		Order("id ASC").
-		Find(&comments).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to fetch comments"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"data": comments})
-}
