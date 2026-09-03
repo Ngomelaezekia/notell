@@ -2,8 +2,11 @@ package handlers
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -11,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type PostHandler struct {
@@ -53,6 +57,26 @@ func (h *PostHandler) isManagedMediaURL(value string) bool {
 		return false
 	}
 	return strings.HasPrefix(candidate.Path, "/uploads/") && candidate.RawQuery == "" && candidate.Fragment == ""
+}
+
+func (h *PostHandler) managedMediaPath(value string) (string, bool) {
+	candidate, err := url.Parse(strings.TrimSpace(value))
+	if err != nil || !h.isManagedMediaURL(value) {
+		return "", false
+	}
+	decodedPath, err := url.PathUnescape(candidate.Path)
+	if err != nil {
+		return "", false
+	}
+	relative := strings.TrimPrefix(decodedPath, "/uploads/")
+	if relative == "" {
+		return "", false
+	}
+	filename := filepath.Base(filepath.FromSlash(relative))
+	if filename != relative || filename == "." || filename == string(filepath.Separator) {
+		return "", false
+	}
+	return filepath.Join("uploads", filename), true
 }
 
 func (h *PostHandler) CreatePost(c *gin.Context) {
@@ -132,8 +156,8 @@ func (h *PostHandler) GetFeed(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"data": posts,
 		"pagination": gin.H{
-			"page": page,
-			"limit": limit,
+			"page":    page,
+			"limit":   limit,
 			"hasMore": hasMore,
 		},
 	})
@@ -145,6 +169,10 @@ func (h *PostHandler) SearchPosts(c *gin.Context) {
 	query := strings.TrimSpace(c.Query("q"))
 	if len(query) < 2 {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "search query must be at least 2 characters"})
+		return
+	}
+	if len(query) > 100 {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "search query is too long"})
 		return
 	}
 
@@ -254,14 +282,20 @@ func (h *PostHandler) DeletePost(c *gin.Context) {
 		return
 	}
 	postIDUint := uint(postID)
+	var contentURL string
 
 	err = h.DB.Transaction(func(tx *gorm.DB) error {
-		result := tx.Where("id = ? AND user_id = ?", postIDUint, userID).Delete(&models.Post{})
-		if result.Error != nil {
-			return result.Error
+		var post models.Post
+		if err := tx.Select("id, content_url").Where("id = ? AND user_id = ?", postIDUint, userID).First(&post).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return gorm.ErrRecordNotFound
+			}
+			return err
 		}
-		if result.RowsAffected == 0 {
-			return gorm.ErrRecordNotFound
+		contentURL = post.ContentURL
+
+		if err := tx.Delete(&post).Error; err != nil {
+			return err
 		}
 		if err := tx.Where("post_id = ?", postIDUint).Delete(&models.Notification{}).Error; err != nil {
 			return err
@@ -277,6 +311,13 @@ func (h *PostHandler) DeletePost(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to delete post"})
 		return
 	}
+
+	if path, ok := h.managedMediaPath(contentURL); ok {
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			log.Printf("failed to remove deleted post media %q: %v", path, err)
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{"message": "post deleted successfully"})
 }
 
@@ -287,48 +328,53 @@ func (h *PostHandler) ToggleLike(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid post ID"})
 		return
 	}
+	postIDUint := uint(postID)
 
 	var post models.Post
-	if err := h.DB.Select("id, user_id").First(&post, uint(postID)).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"message": "post not found"})
-		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to find post"})
-		}
-		return
-	}
-
-	var like models.Like
-	err = h.DB.Where("user_id = ? AND post_id = ?", userID, uint(postID)).First(&like).Error
 	liked := false
-	if err == nil {
-		if err := h.DB.Delete(&like).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to remove like"})
-			return
+
+	err = h.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id, user_id").First(&post, postIDUint).Error; err != nil {
+			return err
 		}
-		if err := h.DB.Where("user_id = ? AND actor_id = ? AND post_id = ? AND type = ?", post.UserID, userID, uint(postID), "like").Delete(&models.Notification{}).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to remove like notification"})
-			return
+
+		var like models.Like
+		likeErr := tx.Where("user_id = ? AND post_id = ?", userID, postIDUint).First(&like).Error
+		switch {
+		case likeErr == nil:
+			if err := tx.Delete(&like).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("user_id = ? AND actor_id = ? AND post_id = ? AND type = ?", post.UserID, userID, postIDUint, "like").Delete(&models.Notification{}).Error; err != nil {
+				return err
+			}
+			liked = false
+		case errors.Is(likeErr, gorm.ErrRecordNotFound):
+			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&models.Like{UserID: userID, PostID: postIDUint}).Error; err != nil {
+				return err
+			}
+			liked = true
+			_ = CreateNotification(tx, post.UserID, userID, "like", func() *uint {
+				id := postIDUint
+				return &id
+			}(), nil)
+		default:
+			return likeErr
 		}
-	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to check like"})
-		return
-	}
+		return nil
+	})
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		if err := h.DB.Create(&models.Like{UserID: userID, PostID: uint(postID)}).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to like post"})
-			return
-		}
-		liked = true
-		_ = CreateNotification(h.DB, post.UserID, userID, "like", func() *uint {
-			id := uint(postID)
-			return &id
-		}(), nil)
+		c.JSON(http.StatusNotFound, gin.H{"message": "post not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to toggle like"})
+		return
 	}
 
 	var likeCount int64
-	if err := h.DB.Model(&models.Like{}).Where("post_id = ?", uint(postID)).Count(&likeCount).Error; err != nil {
+	if err := h.DB.Model(&models.Like{}).Where("post_id = ?", postIDUint).Count(&likeCount).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to count likes"})
 		return
 	}
