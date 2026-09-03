@@ -5,7 +5,16 @@ import { Headerposts } from "../components/PostHeader";
 import { PostCard } from "../components/PostCard";
 
 const Posts = () => {
-  const { posts, loading, loadingMore, hasMore, error, refetch, loadMore } = usePosts();
+  const {
+    posts,
+    loading,
+    loadingMore,
+    hasMore,
+    error,
+    refetch,
+    loadMore,
+    removePost,
+  } = usePosts();
   const scrollContainerRef = useRef(null);
   const loadMoreRef = useRef(null);
 
@@ -60,7 +69,7 @@ const Posts = () => {
             )}
 
             {!loading && posts.map((post) => (
-              <PostCard key={post.postId} post={post} />
+              <PostCard key={post.postId} post={post} onPostDeleted={removePost} />
             ))}
 
             {error && posts.length > 0 && (
