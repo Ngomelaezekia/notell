@@ -31,11 +31,19 @@ func multipartRequest(t *testing.T, filename string, body []byte) *http.Request 
 	return req
 }
 
+func newUploadTestRouter(h *UploadHandler) *gin.Engine {
+	r := gin.New()
+	r.POST("/upload", func(c *gin.Context) {
+		c.Set("userId", uint(1))
+		h.UploadMedia(c)
+	})
+	return r
+}
+
 func TestUploadMediaRejectsUnsupportedContent(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	h := NewUploadHandler("http://localhost:8080")
-	r := gin.New()
-	r.POST("/upload", h.UploadMedia)
+	h := NewUploadHandler(nil, "http://localhost:8080")
+	r := newUploadTestRouter(h)
 
 	req := multipartRequest(t, "image.jpg", []byte("not an image"))
 	w := httptest.NewRecorder()
@@ -61,9 +69,8 @@ func TestRandomFilenameUsesSafeExtension(t *testing.T) {
 
 func TestUploadMediaRejectsEmptyFile(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	h := NewUploadHandler("http://localhost:8080")
-	r := gin.New()
-	r.POST("/upload", h.UploadMedia)
+	h := NewUploadHandler(nil, "http://localhost:8080")
+	r := newUploadTestRouter(h)
 
 	req := multipartRequest(t, "empty.jpg", nil)
 	w := httptest.NewRecorder()
