@@ -32,12 +32,20 @@ type Post struct {
 // but this prevents another Post creation path from bypassing it.
 func (p *Post) BeforeCreate(tx *gorm.DB) error {
 	candidate, err := url.Parse(strings.TrimSpace(p.ContentURL))
-	if err != nil || candidate.Path == "" {
+	if err != nil || candidate.Scheme == "" || candidate.Host == "" || candidate.Path == "" {
+		return errors.New("invalid post media URL")
+	}
+	if candidate.RawQuery != "" || candidate.Fragment != "" || !strings.HasPrefix(candidate.Path, "/uploads/") {
 		return errors.New("invalid post media URL")
 	}
 
-	filename := filepath.Base(filepath.FromSlash(strings.TrimPrefix(candidate.Path, "/uploads/")))
-	if filename == "." || filename == string(filepath.Separator) || filename == "" {
+	relative := strings.TrimPrefix(candidate.Path, "/uploads/")
+	decodedRelative, err := url.PathUnescape(relative)
+	if err != nil || decodedRelative == "" || decodedRelative != relative {
+		return errors.New("invalid post media path")
+	}
+	filename := filepath.Base(filepath.FromSlash(decodedRelative))
+	if filename != decodedRelative || filename == "." || filename == string(filepath.Separator) || filename == "" {
 		return errors.New("invalid post media filename")
 	}
 
