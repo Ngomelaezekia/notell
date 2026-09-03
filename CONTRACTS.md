@@ -17,7 +17,7 @@ Profile update input is bounded server-side. Username/email uniqueness is enforc
 
 Canonical post keys are `postId`, `userId`, `contentType`, `contentUrl`, `caption`, `createdAt`, `updatedAt`, and `user`.
 
-`contentUrl` must be an absolute URL hosted by this server under `/uploads/`. Post creation verifies that the referenced media exists, matches the declared image/video type, belongs to the authenticated uploader, and has not already been claimed by another post.
+`contentUrl` must be an absolute managed media URL under `/uploads/`. In production this normally points to the configured durable media origin (such as the R2 public domain); legacy media may still use the API server origin during migration. Post creation verifies the media URL origin/path, validates the media type, verifies ownership through the upload record, and prevents reuse by another post.
 
 Feed ordering is deterministic: `created_at DESC, id DESC`, with one-record lookahead pagination.
 
@@ -25,7 +25,7 @@ Feed ordering is deterministic: `created_at DESC, id DESC`, with one-record look
 
 `POST /api/upload` accepts multipart field `file` and returns `{message,url}`. Supported types are JPEG, PNG, WebP, MP4, and MOV. The server ceiling is 100 MiB.
 
-Upload records retain ownership and claim metadata so unowned/reused media cannot be attached to arbitrary posts. A post claims exactly one upload as part of the same database transaction that creates the post. Deleting a post removes its associated upload record and attempts to remove the stored file.
+Upload records retain ownership and claim metadata so unowned/reused media cannot be attached to arbitrary posts. A post claims exactly one upload as part of the same database transaction that creates the post. New production uploads are stored in durable object storage; the local file is treated as temporary instance-local storage. Deleting a post removes its associated upload record and schedules/removes the corresponding stored object through the storage cleanup path.
 
 ## Search
 
