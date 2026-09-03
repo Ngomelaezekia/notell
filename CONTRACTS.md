@@ -7,10 +7,44 @@
 - JWTs are not stored in browser localStorage.
 - Google OAuth state is stored in a short-lived HttpOnly cookie and must match the callback state.
 
-## Upload lifecycle
+## Users
 
-- `POST /api/upload` is authenticated and records each uploaded object against the current user.
-- `POST /api/posts` accepts only media uploaded by the current user and only while that upload is unclaimed.
-- Post creation claims the upload in the same database transaction as post creation.
-- Deleting a post removes its associated upload record and attempts to remove the stored media file.
-- Supported uploads remain JPEG, PNG, WebP, MP4, and MOV; the server ceiling is 100 MiB.
+Canonical user keys are `id`, `username`, `email`, `profilePicture`, `country`, `city`, `bio`, `status`, `allowFollowers`, `createdAt`, and `updatedAt`.
+
+Profile update input is bounded server-side. Username/email uniqueness is enforced by the database and surfaced as a conflict response.
+
+## Posts
+
+Canonical post keys are `postId`, `userId`, `contentType`, `contentUrl`, `caption`, `createdAt`, `updatedAt`, and `user`.
+
+`contentUrl` must be an absolute URL hosted by this server under `/uploads/`. Post creation verifies that the referenced media exists, matches the declared image/video type, belongs to the authenticated uploader, and has not already been claimed by another post.
+
+Feed ordering is deterministic: `created_at DESC, id DESC`, with one-record lookahead pagination.
+
+## Uploads
+
+`POST /api/upload` accepts multipart field `file` and returns `{message,url}`. Supported types are JPEG, PNG, WebP, MP4, and MOV. The server ceiling is 100 MiB.
+
+Upload records retain ownership and claim metadata so unowned/reused media cannot be attached to arbitrary posts. A post claims exactly one upload as part of the same database transaction that creates the post. Deleting a post removes its associated upload record and attempts to remove the stored file.
+
+## Search
+
+Post search covers captions and author usernames. LIKE wildcards are escaped and result ordering is deterministic with an ID tie-breaker.
+
+User search covers username, bio, city, and country with deterministic username + ID ordering.
+
+## Comments
+
+Replies may target top-level comments only. Parent comments must belong to the same post.
+
+## Relationships
+
+Follower/following lists are paginated. Follow operations respect the target user's `allowFollowers` setting.
+
+## Notifications
+
+Notifications support list/read/read-all operations. Ordering is deterministic with `created_at DESC, id DESC`.
+
+## Active models
+
+The database currently migrates User, Post, Comment, Like, Relationship, Channel, Notification, and Upload. Channel remains schema-only until channel routes/UI are implemented.
