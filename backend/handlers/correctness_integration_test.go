@@ -66,7 +66,7 @@ func createCorrectnessUser(t *testing.T, db *gorm.DB, suffix string) models.User
 		}
 		_ = db.Where("user_id = ?", user.ID).Delete(&models.Comment{}).Error
 		_ = db.Where("user_id = ?", user.ID).Delete(&models.Like{}).Error
-		_ = db.Where("actor_id = ? OR recipient_id = ?", user.ID, user.ID).Delete(&models.Notification{}).Error
+		_ = db.Where("actor_id = ? OR user_id = ?", user.ID, user.ID).Delete(&models.Notification{}).Error
 		_ = db.Delete(&user).Error
 	})
 	return user
