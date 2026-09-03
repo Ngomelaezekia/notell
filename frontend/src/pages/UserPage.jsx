@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, Check, Loader2, MapPin, UserPlus, Users } from "lucide-react";
+import { ArrowLeft, Check, Loader2, MapPin, UserPlus, Users as UsersIcon } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { userAPI } from "../services/user/userApi";
 import { getFileUrl } from "../utils/api";
@@ -91,7 +91,7 @@ export const Users = () => {
             <Stat label="Followers" value={relationship?.followerCount} to={`/users/${id}/followers`} />
             <Stat label="Following" value={relationship?.followingCount} to={`/users/${id}/following`} />
           </div>
-          {relationship?.follower && !relationship?.following && <div className="mt-4 flex items-center gap-2 text-xs text-slate-500"><Users size={14} /> This user follows you</div>}
+          {relationship?.follower && !relationship?.following && <div className="mt-4 flex items-center gap-2 text-xs text-slate-500"><UsersIcon size={14} /> This user follows you</div>}
           {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
         </div>
       </section>
