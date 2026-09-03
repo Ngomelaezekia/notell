@@ -21,12 +21,12 @@ func NewUserHandler(db *gorm.DB) *UserHandler {
 }
 
 type updateProfileInput struct {
-	Username       *string `json:"username" binding:"omitempty,gt=0"`
-	Email          *string `json:"email" binding:"omitempty,email"`
-	Country        *string `json:"country"`
-	City           *string `json:"city"`
-	Bio            *string `json:"bio"`
-	ProfilePicture *string `json:"profilePicture" binding:"omitempty,url"`
+	Username       *string `json:"username" binding:"omitempty,gt=0,max=50"`
+	Email          *string `json:"email" binding:"omitempty,email,max=254"`
+	Country        *string `json:"country" binding:"max=100"`
+	City           *string `json:"city" binding:"max=100"`
+	Bio            *string `json:"bio" binding:"max=2000"`
+	ProfilePicture *string `json:"profilePicture" binding:"omitempty,url,max=2048"`
 	AllowFollowers *bool   `json:"allowFollowers"`
 }
 
