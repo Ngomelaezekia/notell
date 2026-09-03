@@ -14,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 func newRelationshipCorrectnessDB(t *testing.T) *gorm.DB {
@@ -22,7 +23,7 @@ func newRelationshipCorrectnessDB(t *testing.T) *gorm.DB {
 	if dsn == "" {
 		t.Skip("NOTELL_TEST_DATABASE_URL is not set")
 	}
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Error)})
 	if err != nil {
 		t.Fatalf("open PostgreSQL test database: %v", err)
 	}
@@ -41,13 +42,19 @@ func createRelationshipTestUser(t *testing.T, db *gorm.DB, suffix string, allowF
 	t.Helper()
 	stamp := time.Now().UnixNano()
 	user := models.User{
-		Username:       fmt.Sprintf("relationship_%s_%d", suffix, stamp),
-		Email:          fmt.Sprintf("relationship_%s_%d@example.test", suffix, stamp),
-		AllowFollowers: allowFollowers,
+		Username: fmt.Sprintf("relationship_%s_%d", suffix, stamp),
+		Email: fmt.Sprintf("relationship_%s_%d@example.test", suffix, stamp),
 	}
 	if err := db.Create(&user).Error; err != nil {
 		t.Fatalf("create relationship test user: %v", err)
 	}
+	// The User model has a gorm default:true tag, so a false value supplied
+	// during Create is replaced by the database/model default. Use an explicit
+	// update to make the false case deterministic.
+	if err := db.Model(&user).Update("allow_followers", allowFollowers).Error; err != nil {
+		t.Fatalf("set allow_followers: %v", err)
+	}
+	user.AllowFollowers = allowFollowers
 	t.Cleanup(func() {
 		_ = db.Where("follower_id = ? OR following_id = ?", user.ID, user.ID).Delete(&models.Relationship{}).Error
 		_ = db.Where("user_id = ? OR actor_id = ?", user.ID, user.ID).Delete(&models.Notification{}).Error
@@ -60,10 +67,6 @@ func invokeRelationship(t *testing.T, h *RelationshipHandler, method, path strin
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	// The production handlers read :id from Gin's route params. Registering
-	// the concrete request path (e.g. /users/42/follow) as a static route
-	// leaves c.Param("id") empty, so the test must exercise a parameterized
-	// route just like production.
 	r.Handle(method, "/users/:id/*action", func(c *gin.Context) {
 		c.Set("userId", userID)
 		handler(c)
@@ -202,9 +205,9 @@ func TestGetRelationshipStatusReportsBothDirectionsAndCounts(t *testing.T) {
 	}
 	var payload struct {
 		Data struct {
-			Following      bool  `json:"following"`
-			Follower       bool  `json:"follower"`
-			FollowerCount  int64 `json:"followerCount"`
+			Following bool `json:"following"`
+			Follower bool `json:"follower"`
+			FollowerCount int64 `json:"followerCount"`
 			FollowingCount int64 `json:"followingCount"`
 		} `json:"data"`
 	}
