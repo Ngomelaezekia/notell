@@ -33,3 +33,17 @@ services:
         sync: false
       - key: SERVER_URL
         sync: false
+      - key: MEDIA_PUBLIC_URL
+        sync: false
+      - key: STORAGE_DRIVER
+        value: r2
+      - key: R2_ENDPOINT
+        sync: false
+      - key: R2_BUCKET
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_REGION
+        value: auto
