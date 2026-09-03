@@ -1,8 +1,12 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"notell/config"
@@ -27,6 +31,12 @@ func main() {
 		log.Fatalf("Failed to connect to PostgreSQL database: %v", err)
 	}
 	log.Println("Database connection established successfully")
+
+	sqlDB, err := db.DB()
+	if err != nil {
+		log.Fatalf("Failed to access PostgreSQL connection pool: %v", err)
+	}
+	defer sqlDB.Close()
 
 	if err := db.AutoMigrate(
 		&models.User{},
@@ -56,7 +66,7 @@ func main() {
 	userHandler := handlers.NewUserHandler(db)
 	relationshipHandler := handlers.NewRelationshipHandler(db)
 	notificationHandler := handlers.NewNotificationHandler(db)
-	uploadHandler := handlers.NewUploadHandler()
+	uploadHandler := handlers.NewUploadHandler(cfg.PublicURL)
 
 	api := r.Group("/api")
 	{
@@ -103,8 +113,23 @@ func main() {
 		MaxHeaderBytes:    1 << 20,
 	}
 
-	log.Printf("Server running in %s mode on port %s...", cfg.AppEnv, cfg.Port)
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatalf("Server failed to start: %v", err)
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(stop)
+
+	go func() {
+		log.Printf("Server running in %s mode on port %s...", cfg.AppEnv, cfg.Port)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Server failed to start: %v", err)
+		}
+	}()
+
+	<-stop
+	log.Println("Shutdown signal received")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		log.Printf("Graceful shutdown failed: %v", err)
 	}
 }
