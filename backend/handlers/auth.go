@@ -34,7 +34,16 @@ func NewAuthHandler(db *gorm.DB, cfg *config.Config) *AuthHandler {
 const sessionLifetime = 72 * time.Hour
 
 func (h *AuthHandler) setSessionCookie(c *gin.Context, name, value string, maxAge int) {
-	c.SetSameSite(http.SameSiteLaxMode)
+	if h.Config.AppEnv == "production" {
+		// The frontend and API are normally deployed on different HTTPS
+		// origins (for example, Vercel + Render). SameSite=None is required
+		// for the browser to send the HttpOnly session cookie on credentialed
+		// cross-origin API requests. CSRFProtection separately validates the
+		// browser Origin for cookie-authenticated state-changing requests.
+		c.SetSameSite(http.SameSiteNoneMode)
+	} else {
+		c.SetSameSite(http.SameSiteLaxMode)
+	}
 	c.SetCookie(name, value, maxAge, "/", "", h.Config.AppEnv == "production", true)
 }
 
