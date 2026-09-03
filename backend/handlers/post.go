@@ -24,8 +24,6 @@ type PostHandler struct {
 	MediaPublicURL string
 }
 
-// NewPostHandler preserves the existing two-argument call shape while allowing
-// production to supply a separate durable media origin such as Cloudflare R2.
 func NewPostHandler(db *gorm.DB, publicURL string, mediaPublicURL ...string) *PostHandler {
 	mediaURL := publicURL
 	if len(mediaPublicURL) > 0 && strings.TrimSpace(mediaPublicURL[0]) != "" {
@@ -97,17 +95,6 @@ func (h *PostHandler) managedMediaPath(value string) (string, bool) {
 }
 
 func validateManagedMedia(path, contentType string) error {
-	info, err := os.Stat(path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return errors.New("uploaded media file not found")
-		}
-		return err
-	}
-	if info.IsDir() {
-		return errors.New("uploaded media path is not a file")
-	}
-
 	ext := strings.ToLower(filepath.Ext(path))
 	switch contentType {
 	case "image":
@@ -143,17 +130,24 @@ func (h *PostHandler) CreatePost(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "contentUrl must be a managed uploaded media URL"})
 		return
 	}
-	mediaPath, ok := h.managedMediaPath(contentURL)
-	if !ok {
+
+	candidate, err := url.Parse(contentURL)
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid uploaded media URL"})
 		return
 	}
-	if err := validateManagedMedia(mediaPath, input.ContentType); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+	decodedPath, err := url.PathUnescape(candidate.Path)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid uploaded media URL"})
+		return
+	}
+	relative := strings.TrimPrefix(decodedPath, "/uploads/")
+	filename := filepath.Base(filepath.FromSlash(relative))
+	if relative == "" || filename != relative || filename == "." || filename == string(filepath.Separator) {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid uploaded media URL"})
 		return
 	}
 
-	filename := filepath.Base(mediaPath)
 	var upload models.Upload
 	if err := h.DB.Where("filename = ? AND user_id = ? AND post_id IS NULL", filename, userID).First(&upload).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -164,8 +158,24 @@ func (h *PostHandler) CreatePost(c *gin.Context) {
 		return
 	}
 
+	var contentTypeMatches bool
+	switch input.ContentType {
+	case "image":
+		contentTypeMatches = upload.MediaType == "image/jpeg" || upload.MediaType == "image/png" || upload.MediaType == "image/webp"
+	case "video":
+		contentTypeMatches = upload.MediaType == "video/mp4" || upload.MediaType == "video/quicktime"
+	}
+	if !contentTypeMatches {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "uploaded media type does not match content type"})
+		return
+	}
+	if err := validateManagedMedia(filename, input.ContentType); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+		return
+	}
+
 	var post models.Post
-	err := h.DB.Transaction(func(tx *gorm.DB) error {
+	err = h.DB.Transaction(func(tx *gorm.DB) error {
 		var claimed models.Upload
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND user_id = ? AND post_id IS NULL", upload.ID, userID).First(&claimed).Error; err != nil {
 			return err
@@ -381,16 +391,10 @@ func (h *PostHandler) DeletePost(c *gin.Context) {
 		}
 		contentURL = post.ContentURL
 
-		// Delete the managed upload before deleting the post. The Upload.Post
-		// foreign key uses ON DELETE SET NULL, so deleting the post first would
-		// clear post_id and make a subsequent WHERE post_id = ? miss the upload.
 		if err := tx.Where("post_id = ?", postIDUint).Delete(&models.Upload{}).Error; err != nil {
 			return err
 		}
 
-		// Delete notifications while their post_id still references the post.
-		// Notification.Post uses ON DELETE SET NULL, so doing this after the post
-		// delete would leave the notifications orphaned with a NULL post_id.
 		if err := tx.Where("post_id = ?", postIDUint).Delete(&models.Notification{}).Error; err != nil {
 			return err
 		}
@@ -471,6 +475,14 @@ func (h *PostHandler) ToggleLike(c *gin.Context) {
 		return
 	}
 
+	if liked {
+		var postOwnerID uint
+		if err := h.DB.Model(&models.Post{}).Where("id = ?", postIDUint).Pluck("user_id", &postOwnerID).Error; err == nil && postOwnerID != userID {
+			postIDForNotification := postIDUint
+			h.createNotification(h.DB, postOwnerID, userID, "like", &postIDForNotification, nil)
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{"message": "like state updated", "liked": liked})
 }
 
@@ -528,18 +540,20 @@ func (h *PostHandler) AddComment(c *gin.Context) {
 		}
 	}
 
-	comment := models.Comment{
-		PostID:   postIDUint,
-		UserID:   userID,
-		Content:  content,
-		ParentID: input.ParentID,
-	}
+	comment := models.Comment{PostID: postIDUint, UserID: userID, Content: content, ParentID: input.ParentID}
 	if err := h.DB.Create(&comment).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to add comment"})
 		return
 	}
 
-	if post.UserID != userID {
+	if input.ParentID != nil {
+		var parent models.Comment
+		if err := h.DB.Select("id, user_id").First(&parent, *input.ParentID).Error; err == nil && parent.UserID != userID {
+			postIDForNotification := post.ID
+			commentIDForNotification := comment.ID
+			h.createNotification(h.DB, parent.UserID, userID, "reply", &postIDForNotification, &commentIDForNotification)
+		}
+	} else if post.UserID != userID {
 		postIDForNotification := post.ID
 		h.createNotification(h.DB, post.UserID, userID, "comment", &postIDForNotification, &comment.ID)
 	}
