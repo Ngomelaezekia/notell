@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { MessageSquare, Send, Loader2, Reply } from "lucide-react";
 import { postsAPI } from "../services/post/postsApi";
-import { getFileUrl } from "../utils/api";
+import { getApiErrorMessage, getFileUrl } from "../utils/api";
 
 const formatDate = (value) => {
   if (!value) return "";
@@ -29,9 +29,11 @@ const CommentItem = ({ comment, onReply }) => {
             <span className="text-xs text-slate-400">{formatDate(comment.createdAt)}</span>
           </div>
           <p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-700">{comment.content}</p>
-          <button type="button" onClick={() => onReply(comment)} className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-indigo-600">
-            <Reply size={13} /> Reply
-          </button>
+          {!comment?.parentId && (
+            <button type="button" onClick={() => onReply(comment)} className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-indigo-600">
+              <Reply size={13} /> Reply
+            </button>
+          )}
         </div>
       </div>
 
@@ -60,13 +62,15 @@ export default function CommentSection({ postId }) {
       const response = await postsAPI.getComments(postId);
       setComments(response.data ?? []);
     } catch (err) {
-      setError(err.response?.data?.message ?? err.message ?? "Failed to load comments");
+      setError(getApiErrorMessage(err, "Failed to load comments."));
     } finally {
       setLoading(false);
     }
   }, [postId]);
 
-  useEffect(() => { loadComments(); }, [loadComments]);
+  useEffect(() => {
+    void loadComments();
+  }, [loadComments]);
 
   const submitComment = async (event) => {
     event.preventDefault();
@@ -91,17 +95,20 @@ export default function CommentSection({ postId }) {
         setComments((current) => [...current, newComment]);
       }
     } catch (err) {
-      setError(err.response?.data?.message ?? err.message ?? "Failed to add comment");
+      setError(getApiErrorMessage(err, "Failed to add comment."));
     } finally {
       setSubmitting(false);
     }
   };
 
+  const replyCount = comments.reduce((total, comment) => total + (comment.replies?.length ?? 0), 0);
+  const totalCount = comments.length + replyCount;
+
   return (
     <section className="mt-4 border-t border-slate-100 pt-4" aria-label="Comments">
       <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-800">
         <MessageSquare size={17} />
-        Comments {comments.length > 0 ? `(${comments.length})` : ""}
+        Comments {totalCount > 0 ? `(${totalCount})` : ""}
       </div>
 
       {replyTo && (
