@@ -8,7 +8,7 @@ import {
 
 import { useNavigate } from "react-router-dom";
 
-import API, { API_BASE_URL } from "../utils/api";
+import API, { API_BASE_URL, getApiErrorMessage } from "../utils/api";
 
 const AuthContext = createContext(null);
 
@@ -18,15 +18,6 @@ export function AuthProvider({ children }) {
   const [error, setError] = useState(null);
 
   const navigate = useNavigate();
-
-  const extractErrorMessage = (err, fallback) => {
-    return (
-      err.response?.data?.message ||
-      err.response?.data?.error ||
-      err.message ||
-      fallback
-    );
-  };
 
   const fetchCurrentUser = useCallback(async () => {
     try {
@@ -43,13 +34,20 @@ export function AuthProvider({ children }) {
       setUser(currentUser);
       setError(null);
       return currentUser;
-    } catch {
-      setUser(null);
-      return null;
+    } catch (err) {
+      const status = err?.response?.status;
+      if (status === 401) {
+        setUser(null);
+        return null;
+      }
+
+      const message = getApiErrorMessage(err, "Unable to verify your session.");
+      setError(message);
+      return user;
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     const handleSessionExpired = () => {
@@ -71,17 +69,13 @@ export function AuthProvider({ children }) {
 
       if (oauthError) {
         setError(`OAuth Error: ${oauthError}`);
-        window.history.replaceState(
-          {},
-          document.title,
-          window.location.pathname
-        );
+        window.history.replaceState({}, document.title, window.location.pathname);
       }
 
       await fetchCurrentUser();
     };
 
-    init();
+    void init();
   }, [fetchCurrentUser]);
 
   const loginWithGoogle = () => {
@@ -93,11 +87,14 @@ export function AuthProvider({ children }) {
 
     try {
       const response = await API.post("/auth/login", credentials);
-      await fetchCurrentUser();
+      const currentUser = await fetchCurrentUser();
+      if (!currentUser) {
+        throw new Error("Login succeeded, but the session could not be verified.");
+      }
       navigate("/", { replace: true });
       return response.data;
     } catch (err) {
-      const message = extractErrorMessage(err, "Login failed");
+      const message = getApiErrorMessage(err, "Login failed");
       setError(message);
       throw new Error(message, { cause: err });
     }
@@ -108,11 +105,14 @@ export function AuthProvider({ children }) {
 
     try {
       const response = await API.post("/auth/register", formData);
-      await fetchCurrentUser();
+      const currentUser = await fetchCurrentUser();
+      if (!currentUser) {
+        throw new Error("Registration succeeded, but the session could not be verified.");
+      }
       navigate("/", { replace: true });
       return response.data;
     } catch (err) {
-      const message = extractErrorMessage(err, "Registration failed");
+      const message = getApiErrorMessage(err, "Registration failed");
       setError(message);
       throw new Error(message, { cause: err });
     }
@@ -122,15 +122,14 @@ export function AuthProvider({ children }) {
     try {
       await API.post("/auth/logout");
     } catch (err) {
-      console.warn("Logout warning:", err.message);
+      setError(getApiErrorMessage(err, "Logout failed"));
     } finally {
       setUser(null);
-      setError(null);
       navigate("/auth", { replace: true });
     }
   };
 
-  const updateUser = (updatedFields) => {
+  const updateUser = useCallback((updatedFields) => {
     setUser((prev) =>
       prev
         ? {
@@ -139,7 +138,7 @@ export function AuthProvider({ children }) {
           }
         : null
     );
-  };
+  }, []);
 
   return (
     <AuthContext.Provider
