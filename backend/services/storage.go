@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,11 +23,12 @@ import (
 type MediaStorage interface {
 	Put(ctx context.Context, key, localPath, contentType string) error
 	Delete(ctx context.Context, key string) error
+	PublicURL(key string) string
 }
 
 type localMediaStorage struct{}
 
-type r2MediaStorage struct {
+type s3MediaStorage struct {
 	client    *s3.Client
 	bucket    string
 	publicURL string
@@ -40,46 +40,46 @@ func NewMediaStorage(cfg *config.Config) (MediaStorage, error) {
 	if strings.EqualFold(cfg.StorageDriver, "local") {
 		return &localMediaStorage{}, nil
 	}
-	if !strings.EqualFold(cfg.StorageDriver, "r2") {
+	if !strings.EqualFold(cfg.StorageDriver, "b2") {
 		return nil, fmt.Errorf("unsupported STORAGE_DRIVER %q", cfg.StorageDriver)
 	}
-	if cfg.R2Endpoint == "" || cfg.R2Bucket == "" || cfg.R2AccessKeyID == "" || cfg.R2SecretAccessKey == "" {
-		return nil, errors.New("R2 storage configuration is incomplete")
-	}
-	if err := validateMediaPublicURL(cfg.MediaPublicURL); err != nil {
-		return nil, fmt.Errorf("MEDIA_PUBLIC_URL: %w", err)
+	if cfg.B2Endpoint == "" || cfg.B2Bucket == "" || cfg.B2KeyID == "" || cfg.B2ApplicationKey == "" || cfg.B2Region == "" {
+		return nil, errors.New("Backblaze B2 storage configuration is incomplete")
 	}
 
 	awsCfg, err := awsconfig.LoadDefaultConfig(
 		context.Background(),
-		awsconfig.WithRegion(cfg.R2Region),
-		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(cfg.R2AccessKeyID, cfg.R2SecretAccessKey, "")),
+		awsconfig.WithRegion(cfg.B2Region),
+		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(cfg.B2KeyID, cfg.B2ApplicationKey, "")),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize R2 credentials: %w", err)
+		return nil, fmt.Errorf("failed to initialize B2 credentials: %w", err)
 	}
 
-	endpoint := strings.TrimRight(cfg.R2Endpoint, "/")
+	endpoint := strings.TrimRight(cfg.B2Endpoint, "/")
 	client := s3.NewFromConfig(awsCfg, func(options *s3.Options) {
 		options.BaseEndpoint = aws.String(endpoint)
+		options.UsePathStyle = true
 	})
 
-	return &r2MediaStorage{client: client, bucket: cfg.R2Bucket, publicURL: strings.TrimRight(cfg.MediaPublicURL, "/")}, nil
+	publicURL := strings.TrimRight(cfg.MediaPublicURL, "/")
+	return &s3MediaStorage{client: client, bucket: cfg.B2Bucket, publicURL: publicURL}, nil
 }
 
 func (s *localMediaStorage) Put(context.Context, string, string, string) error { return nil }
 func (s *localMediaStorage) Delete(context.Context, string) error                { return nil }
+func (s *localMediaStorage) PublicURL(key string) string                         { return MediaPublicURL("", key) }
 
-func (s *r2MediaStorage) Put(ctx context.Context, key, localPath, contentType string) error {
+func (s *s3MediaStorage) Put(ctx context.Context, key, localPath, contentType string) error {
 	file, err := os.Open(localPath)
 	if err != nil {
-		return fmt.Errorf("open media for R2 upload: %w", err)
+		return fmt.Errorf("open media for B2 upload: %w", err)
 	}
 	defer file.Close()
 
 	info, err := file.Stat()
 	if err != nil {
-		return fmt.Errorf("stat media for R2 upload: %w", err)
+		return fmt.Errorf("stat media for B2 upload: %w", err)
 	}
 
 	_, err = s.client.PutObject(ctx, &s3.PutObjectInput{
@@ -91,31 +91,31 @@ func (s *r2MediaStorage) Put(ctx context.Context, key, localPath, contentType st
 		CacheControl:  aws.String("public, max-age=31536000, immutable"),
 	})
 	if err != nil {
-		return fmt.Errorf("upload media to R2: %w", err)
+		return fmt.Errorf("upload media to Backblaze B2: %w", err)
 	}
 	return nil
 }
 
-func (s *r2MediaStorage) Delete(ctx context.Context, key string) error {
+func (s *s3MediaStorage) Delete(ctx context.Context, key string) error {
 	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(key)})
 	if err != nil {
-		return fmt.Errorf("delete media from R2: %w", err)
+		return fmt.Errorf("delete media from Backblaze B2: %w", err)
 	}
 	return nil
 }
 
-func (s *r2MediaStorage) PublicURL(key string) string {
-	return s.publicURL + "/" + strings.TrimLeft(key, "/")
+func (s *s3MediaStorage) PublicURL(key string) string {
+	return MediaPublicURL(s.publicURL, key)
 }
 
 func StartMediaReconciler(ctx context.Context, storage MediaStorage, db *gorm.DB) {
-	r2, ok := storage.(*r2MediaStorage)
+	s3Store, ok := storage.(*s3MediaStorage)
 	if !ok {
 		return
 	}
 
 	reconcile := func() {
-		if err := r2.reconcile(ctx, db); err != nil {
+		if err := s3Store.reconcile(ctx, db); err != nil {
 			log.Printf("media reconciliation failed: %v", err)
 		}
 	}
@@ -135,7 +135,7 @@ func StartMediaReconciler(ctx context.Context, storage MediaStorage, db *gorm.DB
 	}()
 }
 
-func (s *r2MediaStorage) reconcile(ctx context.Context, db *gorm.DB) error {
+func (s *s3MediaStorage) reconcile(ctx context.Context, db *gorm.DB) error {
 	paginator := s3.NewListObjectsV2Paginator(s.client, &s3.ListObjectsV2Input{
 		Bucket: aws.String(s.bucket),
 		Prefix: aws.String("uploads/"),
@@ -145,15 +145,13 @@ func (s *r2MediaStorage) reconcile(ctx context.Context, db *gorm.DB) error {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			return fmt.Errorf("list R2 media: %w", err)
+			return fmt.Errorf("list Backblaze B2 media: %w", err)
 		}
 		for _, object := range page.Contents {
 			if object.Key == nil || !strings.HasPrefix(*object.Key, "uploads/") {
 				continue
 			}
 			if object.LastModified != nil && object.LastModified.After(cutoff) {
-				// A newly-created object may be between PutObject and the Upload
-				// database insert. Give that transaction window a safe grace period.
 				continue
 			}
 			filename := filepath.Base(strings.TrimPrefix(*object.Key, "uploads/"))
@@ -167,11 +165,11 @@ func (s *r2MediaStorage) reconcile(ctx context.Context, db *gorm.DB) error {
 				continue
 			}
 			if !errors.Is(err, gorm.ErrRecordNotFound) {
-				return fmt.Errorf("check R2 media ownership for %q: %w", filename, err)
+				return fmt.Errorf("check B2 media ownership for %q: %w", filename, err)
 			}
 
 			if err := s.Delete(ctx, *object.Key); err != nil {
-				log.Printf("failed to delete orphaned R2 media %q: %v", *object.Key, err)
+				log.Printf("failed to delete orphaned B2 media %q: %v", *object.Key, err)
 			}
 		}
 	}
@@ -182,17 +180,6 @@ func MediaObjectKey(filename string) string {
 	return "uploads/" + filepath.Base(filename)
 }
 
-func MediaPublicURL(baseURL, filename string) string {
-	return strings.TrimRight(baseURL, "/") + "/uploads/" + filepath.Base(filename)
-}
-
-func validateMediaPublicURL(value string) error {
-	parsed, err := url.Parse(strings.TrimSpace(value))
-	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-		return errors.New("must be an absolute http or https URL")
-	}
-	if parsed.User != nil || (parsed.Path != "" && parsed.Path != "/") || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return errors.New("must be a public origin without path, query, fragment, or user information")
-	}
-	return nil
+func MediaPublicURL(baseURL, key string) string {
+	return strings.TrimRight(baseURL, "/") + "/" + strings.TrimLeft(key, "/")
 }
