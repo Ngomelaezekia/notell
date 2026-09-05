@@ -3,13 +3,7 @@ import { useAuth } from "../context/AuthContext";
 import api from "../utils/api";
 
 export const useUser = () => {
-  const {
-    user,
-    loading,
-    error,
-    fetchCurrentUser,
-    updateUser,
-  } = useAuth();
+  const { user, loading, error, fetchCurrentUser, updateUser } = useAuth();
 
   const updateProfile = useCallback(async (updatedFields) => {
     const response = await api.put("/users/profile", updatedFields);
@@ -18,21 +12,27 @@ export const useUser = () => {
     return updatedUser;
   }, [updateUser]);
 
-  const updateProfilePicture = useCallback(async (file) => {
-    if (!file) throw new Error("Profile picture is required");
-
+  const uploadImage = useCallback(async (file) => {
+    if (!file) throw new Error("Image is required");
     const formData = new FormData();
     formData.append("file", file);
-
     const uploadResponse = await api.post("/upload", formData, {
       headers: { "Content-Type": "multipart/form-data" },
     });
+    const url = uploadResponse.data?.url;
+    if (!url) throw new Error("Upload did not return a URL");
+    return url;
+  }, []);
 
-    const profilePicture = uploadResponse.data?.url;
-    if (!profilePicture) throw new Error("Upload did not return a URL");
-
+  const updateProfilePicture = useCallback(async (file) => {
+    const profilePicture = await uploadImage(file);
     return updateProfile({ profilePicture });
-  }, [updateProfile]);
+  }, [uploadImage, updateProfile]);
+
+  const updateCoverPicture = useCallback(async (file) => {
+    const coverPicture = await uploadImage(file);
+    return updateProfile({ coverPicture });
+  }, [uploadImage, updateProfile]);
 
   return {
     user,
@@ -41,5 +41,6 @@ export const useUser = () => {
     refetch: fetchCurrentUser,
     updateProfile,
     updateProfilePicture,
+    updateCoverPicture,
   };
 };
