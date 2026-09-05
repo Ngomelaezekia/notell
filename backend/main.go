@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -63,6 +64,35 @@ func securityHeaders() gin.HandlerFunc {
 		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
 		c.Header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 		c.Next()
+	}
+}
+
+func serveMedia(storage services.MediaStorage) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		filename := filepath.Base(filepath.FromSlash(c.Param("filename")))
+		if filename == "." || filename == string(filepath.Separator) || filename != c.Param("filename") {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "invalid media filename"})
+			return
+		}
+
+		key := services.MediaObjectKey(filename)
+		body, contentType, contentLength, err := storage.Open(c.Request.Context(), key)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"message": "media not found"})
+			return
+		}
+		defer body.Close()
+
+		c.Header("Cache-Control", "private, max-age=300")
+		if contentType != "" {
+			c.Header("Content-Type", contentType)
+		}
+		if contentLength > 0 {
+			c.Header("Content-Length", strconv.FormatInt(contentLength, 10))
+		}
+		if _, err := io.Copy(c.Writer, body); err != nil {
+			log.Printf("failed streaming media %q: %v", key, err)
+		}
 	}
 }
 
@@ -135,14 +165,17 @@ func main() {
 			c.Next()
 		})
 	}
-	r.Static("/uploads", "./uploads")
+
+	// Media is stored in B2 in production. The bucket can remain private because
+	// media is streamed through this backend endpoint using the server-side B2 key.
+	r.GET("/uploads/:filename", serveMedia(mediaStorage))
 
 	auth := handlers.NewAuthHandler(db, cfg)
 	post := handlers.NewPostHandler(db, cfg.PublicURL, cfg.MediaPublicURL)
 	userHandler := handlers.NewUserHandler(db)
 	relationshipHandler := handlers.NewRelationshipHandler(db)
 	notificationHandler := handlers.NewNotificationHandler(db)
-	uploadHandler := handlers.NewUploadHandler(db, cfg.MediaPublicURL, mediaStorage)
+	uploadHandler := handlers.NewUploadHandler(db, cfg.PublicURL, mediaStorage)
 
 	api := r.Group("/api")
 	{
