@@ -1,8 +1,10 @@
 services:
   - type: web
-    name: notell-api
+    name: notell
     runtime: go
     rootDir: backend
+    plan: free
+    region: singapore
     buildCommand: go mod tidy && go build -tags netgo -ldflags '-s -w' -o app
     startCommand: ./app
     healthCheckPath: /api/ready
@@ -12,15 +14,25 @@ services:
       - key: PORT
         value: 10000
       - key: DB_HOST
-        sync: false
+        fromDatabase:
+          name: notels05
+          property: host
       - key: DB_PORT
-        value: 5432
+        fromDatabase:
+          name: notels05
+          property: port
       - key: DB_USER
-        sync: false
+        fromDatabase:
+          name: notels05
+          property: user
       - key: DB_PASSWORD
-        sync: false
+        fromDatabase:
+          name: notels05
+          property: password
       - key: DB_NAME
-        sync: false
+        fromDatabase:
+          name: notels05
+          property: database
       - key: JWT_SECRET
         sync: false
       - key: GOOGLE_CLIENT_ID
@@ -30,9 +42,9 @@ services:
       - key: GOOGLE_REDIRECT_URL
         sync: false
       - key: FRONTEND_URL
-        sync: false
+        value: https://notell-web.onrender.com
       - key: SERVER_URL
-        sync: false
+        value: https://notell.onrender.com
       - key: MEDIA_PUBLIC_URL
         sync: false
       - key: STORAGE_DRIVER
@@ -47,3 +59,22 @@ services:
         sync: false
       - key: R2_REGION
         value: auto
+
+  - type: static
+    name: notell-web
+    plan: free
+    buildCommand: cd frontend && npm ci && npm run build
+    staticPublishPath: frontend/dist
+    envVars:
+      - key: VITE_SERVER_URL
+        value: https://notell.onrender.com
+      - key: VITE_API_URL
+        value: https://notell.onrender.com/api
+
+databases:
+  - name: notels05
+    plan: free
+    region: singapore
+    postgresMajorVersion: "18"
+    databaseName: notelldb
+    user: notellusers
