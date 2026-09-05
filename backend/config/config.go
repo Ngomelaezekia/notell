@@ -54,7 +54,7 @@ func Load() *Config {
 		PublicURL:          serverURL,
 		MediaPublicURL:     strings.TrimRight(strings.TrimSpace(getEnv("MEDIA_PUBLIC_URL", serverURL)), "/"),
 		StorageDriver:      strings.ToLower(strings.TrimSpace(getEnv("STORAGE_DRIVER", "local"))),
-		B2Endpoint:         strings.TrimRight(strings.TrimSpace(getEnv("B2_ENDPOINT", "")), "/"),
+		B2Endpoint:         normalizeEndpoint(getEnv("B2_ENDPOINT", "")),
 		B2Bucket:           strings.TrimSpace(getEnv("B2_BUCKET", "")),
 		B2KeyID:            strings.TrimSpace(getEnv("B2_KEY_ID", "")),
 		B2ApplicationKey:   getEnv("B2_APPLICATION_KEY", ""),
@@ -136,6 +136,18 @@ func normalizeFrontendURL(value string) string {
 		return ""
 	}
 	return strings.TrimRight(value, "/")
+}
+
+func normalizeEndpoint(value string) string {
+	value = strings.TrimRight(strings.TrimSpace(value), "/")
+	if value == "" {
+		return ""
+	}
+	parsed, err := url.Parse(value)
+	if err == nil && parsed.Scheme != "" {
+		return value
+	}
+	return "https://" + value
 }
 
 func validateFrontendURL(value string) error {
