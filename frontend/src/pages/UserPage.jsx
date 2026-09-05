@@ -5,12 +5,7 @@ import { userAPI } from "../services/user/userApi";
 import { getFileUrl } from "../utils/api";
 
 const Stat = ({ label, value, to }) => {
-  const content = (
-    <div className="min-w-24 text-center">
-      <div className="text-lg font-bold text-slate-900">{value ?? 0}</div>
-      <div className="text-xs text-slate-500">{label}</div>
-    </div>
-  );
+  const content = <div className="min-w-24 text-center"><div className="text-lg font-bold text-slate-900">{value ?? 0}</div><div className="text-xs text-slate-500">{label}</div></div>;
   return to ? <Link to={to} className="rounded-xl px-2 py-1 transition hover:bg-slate-50">{content}</Link> : content;
 };
 
@@ -24,28 +19,20 @@ export const Users = () => {
 
   const loadProfile = useCallback(async () => {
     if (!id) return;
-    setLoading(true);
-    setError(null);
+    setLoading(true); setError(null);
     try {
-      const [profileResponse, relationshipResponse] = await Promise.all([
-        userAPI.getProfile(id),
-        userAPI.getRelationship(id),
-      ]);
+      const [profileResponse, relationshipResponse] = await Promise.all([userAPI.getProfile(id), userAPI.getRelationship(id)]);
       setUser(profileResponse?.data?.user ?? null);
       setRelationship(relationshipResponse?.data ?? null);
-    } catch (err) {
-      setError(err.response?.data?.message || "Failed to load profile");
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) { setError(err.response?.data?.message || "Failed to load profile"); }
+    finally { setLoading(false); }
   }, [id]);
 
   useEffect(() => { loadProfile(); }, [loadProfile]);
 
   const handleFollow = async () => {
     if (!id || actionLoading || (!relationship?.following && !relationship?.allowFollowers)) return;
-    setActionLoading(true);
-    setError(null);
+    setActionLoading(true); setError(null);
     try {
       if (relationship.following) {
         await userAPI.unfollowUser(id);
@@ -54,24 +41,25 @@ export const Users = () => {
         await userAPI.followUser(id);
         setRelationship((current) => ({ ...current, following: true, followerCount: (current?.followerCount ?? 0) + 1 }));
       }
-    } catch (err) {
-      setError(err.response?.data?.message || "Failed to update follow status");
-    } finally {
-      setActionLoading(false);
-    }
+    } catch (err) { setError(err.response?.data?.message || "Failed to update follow status"); }
+    finally { setActionLoading(false); }
   };
 
   if (loading) return <div className="flex min-h-[60vh] items-center justify-center text-slate-500"><Loader2 className="animate-spin" /></div>;
   if (error && !user) return <div className="mx-auto max-w-xl p-6"><Link to="/" className="mb-6 inline-flex items-center gap-2 text-sm text-slate-600"><ArrowLeft size={16} /> Back</Link><div className="rounded-2xl border bg-white p-8 text-center text-red-600">{error}</div></div>;
 
   const avatar = getFileUrl(user?.profilePicture);
+  const cover = getFileUrl(user?.coverPicture);
   const joined = user?.createdAt ? new Date(user.createdAt).toLocaleDateString(undefined, { month: "long", year: "numeric" }) : "";
 
   return (
     <div className="mx-auto w-full max-w-3xl p-4 sm:p-6">
       <Link to="/" className="mb-5 inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900"><ArrowLeft size={16} /> Back</Link>
       <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-        <div className="h-28 bg-gradient-to-r from-slate-900 via-indigo-900 to-slate-800 sm:h-36" />
+        <div className="relative h-36 overflow-hidden bg-gradient-to-r from-slate-900 via-indigo-900 to-slate-800 sm:h-48">
+          {cover && <img src={cover} alt={`${user?.username} cover`} className="h-full w-full object-cover" />}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/25 to-transparent" />
+        </div>
         <div className="px-5 pb-6 sm:px-8">
           <div className="-mt-12 flex flex-col gap-4 sm:-mt-14 sm:flex-row sm:items-end sm:justify-between">
             <div className="flex items-end gap-4">
@@ -87,10 +75,7 @@ export const Users = () => {
           </div>
           {user?.bio && <p className="mt-5 max-w-2xl text-sm leading-6 text-slate-700">{user.bio}</p>}
           {(user?.city || user?.country) && <div className="mt-3 flex items-center gap-1.5 text-xs text-slate-500"><MapPin size={14} /> {[user.city, user.country].filter(Boolean).join(", ")}</div>}
-          <div className="mt-6 flex items-center gap-8 border-t border-slate-100 pt-5">
-            <Stat label="Followers" value={relationship?.followerCount} to={`/users/${id}/followers`} />
-            <Stat label="Following" value={relationship?.followingCount} to={`/users/${id}/following`} />
-          </div>
+          <div className="mt-6 flex items-center gap-8 border-t border-slate-100 pt-5"><Stat label="Followers" value={relationship?.followerCount} to={`/users/${id}/followers`} /><Stat label="Following" value={relationship?.followingCount} to={`/users/${id}/following`} /></div>
           {relationship?.follower && !relationship?.following && <div className="mt-4 flex items-center gap-2 text-xs text-slate-500"><UsersIcon size={14} /> This user follows you</div>}
           {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
         </div>
