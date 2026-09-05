@@ -35,8 +35,6 @@ var allowedUploadTypes = map[string]string{
 	"video/quicktime": ".mov",
 }
 
-// NewUploadHandler keeps the existing two-argument call shape valid for
-// lightweight callers while allowing production to inject durable storage.
 func NewUploadHandler(db *gorm.DB, publicURL string, storage ...services.MediaStorage) *UploadHandler {
 	var mediaStorage services.MediaStorage
 	if len(storage) > 0 {
@@ -80,8 +78,6 @@ func (h *UploadHandler) cleanupUnclaimedUploads() {
 		key := services.MediaObjectKey(claimed.Filename)
 		if h.Storage != nil {
 			if err := h.Storage.Delete(context.Background(), key); err != nil {
-				// The database row is already gone. The reconciler can retry this
-				// cleanup on R2 without risking a claim/delete race.
 				continue
 			}
 		}
@@ -179,7 +175,10 @@ func (h *UploadHandler) UploadMedia(c *gin.Context) {
 
 	h.cleanupUnclaimedUploads()
 
-	fileURL := services.MediaPublicURL(h.PublicURL, filename)
+	fileURL := h.Storage.PublicURL(key)
+	if fileURL == "/" || fileURL == "" {
+		fileURL = services.MediaPublicURL(h.PublicURL, key)
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"message": "upload successful",
 		"url":     fileURL,
