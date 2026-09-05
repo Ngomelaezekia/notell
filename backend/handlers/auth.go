@@ -35,11 +35,6 @@ const sessionLifetime = 72 * time.Hour
 
 func (h *AuthHandler) setSessionCookie(c *gin.Context, name, value string, maxAge int) {
 	if h.Config.AppEnv == "production" {
-		// The frontend and API are normally deployed on different HTTPS
-		// origins (for example, Vercel + Render). SameSite=None is required
-		// for the browser to send the HttpOnly session cookie on credentialed
-		// cross-origin API requests. CSRFProtection separately validates the
-		// browser Origin for cookie-authenticated state-changing requests.
 		c.SetSameSite(http.SameSiteNoneMode)
 	} else {
 		c.SetSameSite(http.SameSiteLaxMode)
@@ -61,18 +56,41 @@ func (h *AuthHandler) clearSession(c *gin.Context) {
 }
 
 type registerInput struct {
-	Username string  `json:"username" binding:"required,max=50"`
-	Email    string  `json:"email" binding:"required,email,max=254"`
-	Password string  `json:"password" binding:"required,min=6,max=72"`
-	Country  *string `json:"country" binding:"max=100"`
-	City     *string `json:"city" binding:"max=100"`
-	Bio      *string `json:"bio" binding:"max=2000"`
+	Username string `json:"username" binding:"required,max=50"`
+	Email    string `json:"email" binding:"required,email,max=254"`
+	Password string `json:"password" binding:"required,min=6,max=72"`
+	Country  string `json:"country"`
+	City     string `json:"city"`
+	Bio      string `json:"bio"`
 }
 
 func (h *AuthHandler) Register(c *gin.Context) {
 	var input registerInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+		return
+	}
+
+	input.Username = strings.TrimSpace(input.Username)
+	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
+	input.Country = strings.TrimSpace(input.Country)
+	input.City = strings.TrimSpace(input.City)
+	input.Bio = strings.TrimSpace(input.Bio)
+
+	if input.Username == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "username cannot be empty"})
+		return
+	}
+	if len([]rune(input.Country)) > 100 {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "country must be 100 characters or fewer"})
+		return
+	}
+	if len([]rune(input.City)) > 100 {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "city must be 100 characters or fewer"})
+		return
+	}
+	if len([]rune(input.Bio)) > 2000 {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "bio must be 2000 characters or fewer"})
 		return
 	}
 
@@ -83,17 +101,20 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	}
 	hashString := string(hash)
 	user := models.User{
-		Username:     strings.TrimSpace(input.Username),
-		Email:        strings.ToLower(strings.TrimSpace(input.Email)),
+		Username:     input.Username,
+		Email:        input.Email,
 		PasswordHash: &hashString,
-		Country:      input.Country,
-		City:         input.City,
-		Bio:          input.Bio,
 	}
-	if user.Username == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "username cannot be empty"})
-		return
+	if input.Country != "" {
+		user.Country = &input.Country
 	}
+	if input.City != "" {
+		user.City = &input.City
+	}
+	if input.Bio != "" {
+		user.Bio = &input.Bio
+	}
+
 	if err := h.DB.Create(&user).Error; err != nil {
 		if isUniqueViolation(err) {
 			c.JSON(http.StatusConflict, gin.H{"message": "username or email already exists"})
