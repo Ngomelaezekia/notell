@@ -27,11 +27,11 @@ type Config struct {
 	PublicURL          string
 	MediaPublicURL     string
 	StorageDriver      string
-	R2Endpoint         string
-	R2Bucket           string
-	R2AccessKeyID      string
-	R2SecretAccessKey  string
-	R2Region           string
+	B2Endpoint         string
+	B2Bucket           string
+	B2KeyID            string
+	B2ApplicationKey   string
+	B2Region           string
 }
 
 func Load() *Config {
@@ -54,11 +54,11 @@ func Load() *Config {
 		PublicURL:          serverURL,
 		MediaPublicURL:     strings.TrimRight(strings.TrimSpace(getEnv("MEDIA_PUBLIC_URL", serverURL)), "/"),
 		StorageDriver:      strings.ToLower(strings.TrimSpace(getEnv("STORAGE_DRIVER", "local"))),
-		R2Endpoint:         strings.TrimRight(strings.TrimSpace(getEnv("R2_ENDPOINT", "")), "/"),
-		R2Bucket:           strings.TrimSpace(getEnv("R2_BUCKET", "")),
-		R2AccessKeyID:      strings.TrimSpace(getEnv("R2_ACCESS_KEY_ID", "")),
-		R2SecretAccessKey:  getEnv("R2_SECRET_ACCESS_KEY", ""),
-		R2Region:           strings.TrimSpace(getEnv("R2_REGION", "auto")),
+		B2Endpoint:         strings.TrimRight(strings.TrimSpace(getEnv("B2_ENDPOINT", "")), "/"),
+		B2Bucket:           strings.TrimSpace(getEnv("B2_BUCKET", "")),
+		B2KeyID:            strings.TrimSpace(getEnv("B2_KEY_ID", "")),
+		B2ApplicationKey:   getEnv("B2_APPLICATION_KEY", ""),
+		B2Region:           strings.TrimSpace(getEnv("B2_REGION", "")),
 	}
 
 	if err := cfg.Validate(); err != nil {
@@ -87,8 +87,8 @@ func (c *Config) Validate() error {
 	if storageDriver == "" {
 		storageDriver = "local"
 	}
-	if storageDriver != "local" && storageDriver != "r2" {
-		return errors.New("STORAGE_DRIVER must be local or r2")
+	if storageDriver != "local" && storageDriver != "r2" && storageDriver != "b2" {
+		return errors.New("STORAGE_DRIVER must be local, r2, or b2")
 	}
 
 	if appEnv == "production" {
@@ -113,20 +113,17 @@ func (c *Config) Validate() error {
 		if err := validatePublicURL(c.PublicURL); err != nil {
 			return fmt.Errorf("SERVER_URL: %w", err)
 		}
-		if storageDriver != "r2" {
-			return errors.New("STORAGE_DRIVER must be r2 in production")
-		}
-		if err := validatePublicURL(c.MediaPublicURL); err != nil {
-			return fmt.Errorf("MEDIA_PUBLIC_URL: %w", err)
-		}
-		if c.R2Endpoint == "" || c.R2Bucket == "" || c.R2AccessKeyID == "" || c.R2SecretAccessKey == "" {
-			return errors.New("R2 storage configuration must be set in production")
-		}
-		if err := validateAbsoluteURL(c.R2Endpoint); err != nil {
-			return fmt.Errorf("R2_ENDPOINT: %w", err)
-		}
-		if c.R2Region == "" {
-			return errors.New("R2_REGION must not be empty")
+
+		switch storageDriver {
+		case "r2":
+			return errors.New("R2 is not configured in this deployment; use STORAGE_DRIVER=b2 for Backblaze B2")
+		case "b2":
+			if err := validateAbsoluteURL(c.B2Endpoint); err != nil {
+				return fmt.Errorf("B2_ENDPOINT: %w", err)
+			}
+			if c.B2Bucket == "" || c.B2KeyID == "" || c.B2ApplicationKey == "" || c.B2Region == "" {
+				return errors.New("Backblaze B2 storage configuration must be set in production")
+			}
 		}
 	}
 
