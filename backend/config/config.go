@@ -38,6 +38,7 @@ func Load() *Config {
 	_ = godotenv.Load()
 
 	serverURL := strings.TrimRight(strings.TrimSpace(getEnv("SERVER_URL", "http://localhost:8080")), "/")
+	b2Region := strings.Trim(strings.TrimSpace(getEnv("B2_REGION", "")), "\"'")
 	cfg := &Config{
 		AppEnv:             strings.ToLower(strings.TrimSpace(getEnv("APP_ENV", "development"))),
 		Port:               strings.TrimSpace(getEnv("PORT", "8080")),
@@ -54,11 +55,11 @@ func Load() *Config {
 		PublicURL:          serverURL,
 		MediaPublicURL:     strings.TrimRight(strings.TrimSpace(getEnv("MEDIA_PUBLIC_URL", serverURL)), "/"),
 		StorageDriver:      strings.ToLower(strings.TrimSpace(getEnv("STORAGE_DRIVER", "local"))),
-		B2Endpoint:         normalizeEndpoint(getEnv("B2_ENDPOINT", "")),
-		B2Bucket:           strings.TrimSpace(getEnv("B2_BUCKET", "")),
-		B2KeyID:            strings.TrimSpace(getEnv("B2_KEY_ID", "")),
+		B2Endpoint:         normalizeEndpoint(getEnv("B2_ENDPOINT", ""), b2Region),
+		B2Bucket:           strings.Trim(strings.TrimSpace(getEnv("B2_BUCKET", "")), "\"'"),
+		B2KeyID:            strings.Trim(strings.TrimSpace(getEnv("B2_KEY_ID", "")), "\"'"),
 		B2ApplicationKey:   getEnv("B2_APPLICATION_KEY", ""),
-		B2Region:           strings.TrimSpace(getEnv("B2_REGION", "")),
+		B2Region:           b2Region,
 	}
 
 	if err := cfg.Validate(); err != nil {
@@ -138,16 +139,28 @@ func normalizeFrontendURL(value string) string {
 	return strings.TrimRight(value, "/")
 }
 
-func normalizeEndpoint(value string) string {
-	value = strings.TrimRight(strings.TrimSpace(value), "/")
-	if value == "" {
-		return ""
+func normalizeEndpoint(value, region string) string {
+	value = strings.Trim(strings.TrimSpace(value), "\"'")
+	value = strings.TrimRight(value, "/")
+	region = strings.Trim(strings.TrimSpace(region), "\"'")
+
+	if value != "" {
+		parsed, err := url.Parse(value)
+		if err == nil && parsed.Host != "" && (parsed.Scheme == "http" || parsed.Scheme == "https") {
+			return value
+		}
+		if parsed, err := url.Parse("https://" + value); err == nil && parsed.Host != "" && parsed.Path == "" {
+			return "https://" + value
+		}
 	}
-	parsed, err := url.Parse(value)
-	if err == nil && parsed.Scheme != "" {
-		return value
+
+	// Backblaze B2's S3-compatible endpoint is deterministic from the bucket region.
+	// This also protects production startup when B2_ENDPOINT is blank or contains
+	// accidental surrounding quotes.
+	if region != "" {
+		return "https://s3." + region + ".backblazeb2.com"
 	}
-	return "https://" + value
+	return ""
 }
 
 func validateFrontendURL(value string) error {
