@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -23,6 +24,7 @@ import (
 type MediaStorage interface {
 	Put(ctx context.Context, key, localPath, contentType string) error
 	Delete(ctx context.Context, key string) error
+	Open(ctx context.Context, key string) (io.ReadCloser, string, int64, error)
 	PublicURL(key string) string
 }
 
@@ -68,7 +70,20 @@ func NewMediaStorage(cfg *config.Config) (MediaStorage, error) {
 
 func (s *localMediaStorage) Put(context.Context, string, string, string) error { return nil }
 func (s *localMediaStorage) Delete(context.Context, string) error                { return nil }
-func (s *localMediaStorage) PublicURL(key string) string                         { return MediaPublicURL("", key) }
+func (s *localMediaStorage) Open(_ context.Context, key string) (io.ReadCloser, string, int64, error) {
+	path := filepath.Join(".", filepath.FromSlash(key))
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, "", 0, err
+	}
+	info, err := file.Stat()
+	if err != nil {
+		file.Close()
+		return nil, "", 0, err
+	}
+	return file, "", info.Size(), nil
+}
+func (s *localMediaStorage) PublicURL(key string) string { return MediaPublicURL("", key) }
 
 func (s *s3MediaStorage) Put(ctx context.Context, key, localPath, contentType string) error {
 	file, err := os.Open(localPath)
@@ -88,7 +103,7 @@ func (s *s3MediaStorage) Put(ctx context.Context, key, localPath, contentType st
 		Body:          file,
 		ContentType:   aws.String(contentType),
 		ContentLength: aws.Int64(info.Size()),
-		CacheControl:  aws.String("public, max-age=31536000, immutable"),
+		CacheControl:  aws.String("private, max-age=31536000, immutable"),
 	})
 	if err != nil {
 		return fmt.Errorf("upload media to Backblaze B2: %w", err)
@@ -102,6 +117,25 @@ func (s *s3MediaStorage) Delete(ctx context.Context, key string) error {
 		return fmt.Errorf("delete media from Backblaze B2: %w", err)
 	}
 	return nil
+}
+
+func (s *s3MediaStorage) Open(ctx context.Context, key string) (io.ReadCloser, string, int64, error) {
+	output, err := s.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil, "", 0, fmt.Errorf("read media from Backblaze B2: %w", err)
+	}
+	contentType := "application/octet-stream"
+	if output.ContentType != nil && strings.TrimSpace(*output.ContentType) != "" {
+		contentType = *output.ContentType
+	}
+	contentLength := int64(0)
+	if output.ContentLength != nil {
+		contentLength = *output.ContentLength
+	}
+	return output.Body, contentType, contentLength, nil
 }
 
 func (s *s3MediaStorage) PublicURL(key string) string {
