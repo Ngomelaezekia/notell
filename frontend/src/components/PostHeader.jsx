@@ -9,10 +9,17 @@ export const Headerposts = () => {
   const badge = unreadCount > 99 ? "99+" : unreadCount;
 
   return (
-    <header className="flex w-full shrink-0 items-center justify-between border-b border-neutral-800 bg-neutral-950 px-3 py-2.5 sm:px-4 sm:py-3">
-      <h1 className="text-sm font-semibold tracking-wide text-neutral-100">Notell</h1>
+    <header className="flex w-full shrink-0 items-center justify-between border-b border-neutral-800/80 bg-neutral-950/95 px-3 py-2 sm:px-4 sm:py-2.5">
+      <button
+        type="button"
+        onClick={() => navigate("/")}
+        className="cursor-pointer rounded-lg px-1.5 py-1 text-left transition hover:bg-neutral-900 active:scale-[0.98]"
+        aria-label="Go to home feed"
+      >
+        <span className="block text-[15px] font-bold tracking-tight text-white">Notell</span>
+      </button>
 
-      <div className="flex items-center gap-1">
+      <nav className="flex items-center gap-0.5" aria-label="Feed actions">
         <button
           type="button"
           onClick={() => navigate("/search")}
@@ -20,7 +27,7 @@ export const Headerposts = () => {
           title="Search"
           aria-label="Search"
         >
-          <Search size={19} />
+          <Search size={19} strokeWidth={2} />
         </button>
 
         <button
@@ -30,7 +37,7 @@ export const Headerposts = () => {
           title="Notifications"
           aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications"}
         >
-          <Bell size={19} />
+          <Bell size={19} strokeWidth={2} />
           {unreadCount > 0 && (
             <span className="absolute right-0.5 top-0.5 flex min-w-4 items-center justify-center rounded-full border-2 border-neutral-950 bg-red-500 px-1 text-[9px] font-bold leading-3 text-white">
               {badge}
@@ -45,9 +52,9 @@ export const Headerposts = () => {
           title="Create Post"
           aria-label="Create Post"
         >
-          <PlusIcon size={20} />
+          <PlusIcon size={20} strokeWidth={2.2} />
         </button>
-      </div>
+      </nav>
     </header>
   );
 };
