@@ -19,8 +19,9 @@ type Post struct {
 	CreatedAt   time.Time `gorm:"index:idx_posts_user_created,priority:2" json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
 
-	LikeCount int  `gorm:"-" json:"likeCount"`
-	Liked     bool `gorm:"-" json:"liked"`
+	LikeCount    int  `gorm:"-" json:"likeCount"`
+	CommentCount int  `gorm:"-" json:"commentCount"`
+	Liked        bool `gorm:"-" json:"liked"`
 
 	User     User      `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"user,omitempty"`
 	Likes    []Like    `gorm:"foreignKey:PostID;constraint:OnDelete:CASCADE" json:"likes,omitempty"`
