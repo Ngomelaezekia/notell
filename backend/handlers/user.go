@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"notell/models"
 
@@ -73,10 +74,28 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message":"profile updated successfully","data":gin.H{"user":updatedUser}})
 }
 
+type searchUserResult struct {
+	ID             uint      `json:"id"`
+	Username       string    `json:"username"`
+	ProfilePicture *string   `json:"profilePicture,omitempty"`
+	CoverPicture   *string   `json:"coverPicture,omitempty"`
+	Bio            *string   `json:"bio,omitempty"`
+	Country        *string   `json:"country,omitempty"`
+	City           *string   `json:"city,omitempty"`
+	Status         string    `json:"status"`
+	AllowFollowers bool      `json:"allowFollowers"`
+	CreatedAt      time.Time `json:"createdAt"`
+	Following      bool      `json:"following"`
+}
+
 func (h *UserHandler) SearchUsers(c *gin.Context) {
 	query := strings.TrimSpace(c.Query("q"))
 	if len(query) < 2 { c.JSON(http.StatusBadRequest, gin.H{"message":"search query must be at least 2 characters"}); return }
 	if len(query) > 100 { c.JSON(http.StatusBadRequest, gin.H{"message":"search query is too long"}); return }
+
+	viewerIDValue, exists := c.Get("userId")
+	if !exists { c.JSON(http.StatusUnauthorized, gin.H{"message":"unauthorized"}); return }
+	viewerID := viewerIDValue.(uint)
 
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1")); limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
 	if page < 1 { page = 1 }; if limit < 1 { limit = 20 }; if limit > 50 { limit = 50 }
@@ -94,9 +113,10 @@ func (h *UserHandler) SearchUsers(c *gin.Context) {
 	)
 	if err := base.Count(&total).Error; err != nil { c.JSON(http.StatusInternalServerError, gin.H{"message":"database error"}); return }
 
-	var users []models.User
+	var users []searchUserResult
 	orderRank := "CASE WHEN username ILIKE ? THEN 0 WHEN username ILIKE ? ESCAPE '\\' THEN 1 WHEN username ILIKE ? ESCAPE '\\' THEN 2 ELSE 3 END"
-	err := base.Select("id, username, profile_picture, cover_picture, bio, country, city, status, allow_followers, created_at").
+	followingExpr := "EXISTS (SELECT 1 FROM user_relationships ur WHERE ur.follower_id = ? AND ur.following_id = users.id AND ur.status = 'accepted')"
+	err := base.Table("users").Select("users.id, users.username, users.profile_picture, users.cover_picture, users.bio, users.country, users.city, users.status, users.allow_followers, users.created_at, "+followingExpr+" AS following", viewerID).
 		Order(orderRank, usernameQuery, prefixPattern, pattern).
 		Order("username ASC").Order("id ASC").
 		Offset((page-1)*limit).Limit(limit).Find(&users).Error
