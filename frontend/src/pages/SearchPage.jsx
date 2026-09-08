@@ -1,18 +1,28 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Search, UserRound, FileText, Loader2, ChevronDown } from "lucide-react";
+import { Search, UserRound, FileText, Loader2, ChevronDown, ArrowLeft, X, MapPin } from "lucide-react";
 import { userAPI } from "../services/user/userApi";
 import { postsAPI } from "../services/post/postsApi";
 import { getFileUrl, getApiErrorMessage } from "../utils/api";
 import { PostCard } from "../components/PostCard";
 
 const PAGE_SIZE = 20;
-
 const TABS = [
   { id: "all", label: "All" },
   { id: "people", label: "People" },
   { id: "posts", label: "Posts" },
 ];
+
+const SkeletonRow = () => (
+  <div className="flex animate-pulse items-center gap-3 rounded-2xl border border-neutral-800 bg-neutral-900/70 p-3">
+    <div className="h-12 w-12 shrink-0 rounded-full bg-neutral-800" />
+    <div className="min-w-0 flex-1 space-y-2">
+      <div className="h-3 w-32 rounded bg-neutral-800" />
+      <div className="h-2.5 w-48 max-w-full rounded bg-neutral-800" />
+    </div>
+    <div className="h-9 w-20 rounded-xl bg-neutral-800" />
+  </div>
+);
 
 export default function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -104,12 +114,10 @@ export default function SearchPage() {
   const submitSearch = (event) => {
     event.preventDefault();
     const value = query.trim();
-
     if (value.length < 2) {
       setSearchParams({});
       return;
     }
-
     const nextParams = { q: value };
     if (activeTab !== "all") nextParams.type = activeTab;
     setSearchParams(nextParams);
@@ -123,18 +131,20 @@ export default function SearchPage() {
     setSearchParams(nextParams);
   };
 
+  const clearSearch = () => {
+    setQuery("");
+    setSearchParams({});
+  };
+
   const loadMoreUsers = async () => {
     if (loadingMoreUsers || !userHasMore || query.trim().length < 2) return;
-
     const nextPage = userPage + 1;
     setLoadingMoreUsers(true);
     setUserError(null);
-
     try {
       const result = await userAPI.searchUsers(query.trim(), nextPage, PAGE_SIZE);
       const data = result?.data || {};
       const nextUsers = data.users || [];
-
       setUsers((current) => {
         const existingIds = new Set(current.map((user) => user.id));
         return [...current, ...nextUsers.filter((user) => !existingIds.has(user.id))];
@@ -150,16 +160,13 @@ export default function SearchPage() {
 
   const loadMorePosts = async () => {
     if (loadingMorePosts || !postHasMore || query.trim().length < 2) return;
-
     const nextPage = postPage + 1;
     setLoadingMorePosts(true);
     setPostError(null);
-
     try {
       const result = await postsAPI.searchPosts(query.trim(), nextPage, PAGE_SIZE);
       const data = result?.data || {};
       const nextPosts = data.posts || [];
-
       setPosts((current) => {
         const existingIds = new Set(current.map((post) => post.postId));
         return [...current, ...nextPosts.filter((post) => !existingIds.has(post.postId))];
@@ -173,105 +180,122 @@ export default function SearchPage() {
     }
   };
 
-  const removePost = (postId) => {
-    setPosts((current) => current.filter((post) => post.postId !== postId));
-  };
-
+  const removePost = (postId) => setPosts((current) => current.filter((post) => post.postId !== postId));
   const showPeople = activeTab === "all" || activeTab === "people";
   const showPosts = activeTab === "all" || activeTab === "posts";
   const hasResults = (showPeople && users.length > 0) || (showPosts && posts.length > 0);
   const hasErrors = Boolean((showPeople && userError) || (showPosts && postError));
 
   return (
-    <section className="mx-auto w-full max-w-4xl">
-      <div className="rounded-3xl border border-white/70 bg-white/80 p-5 shadow-xl backdrop-blur-xl sm:p-7">
-        <div className="mb-6">
-          <h1 className="text-2xl font-black text-slate-900">Discover</h1>
-          <p className="mt-1 text-sm text-slate-500">Find people and posts across Notell.</p>
+    <section className="min-h-[calc(100dvh-6rem)] w-full bg-neutral-950 px-3 py-3 text-neutral-100 sm:px-5 sm:py-5 md:min-h-0">
+      <div className="mx-auto w-full max-w-3xl">
+        <div className="mb-3 flex items-center gap-2">
+          <Link to="/" className="rounded-full p-2 text-neutral-400 transition hover:bg-neutral-900 hover:text-white" aria-label="Back to feed">
+            <ArrowLeft size={19} />
+          </Link>
+          <div>
+            <h1 className="text-lg font-bold tracking-tight sm:text-xl">Discover</h1>
+            <p className="text-xs text-neutral-500 sm:text-sm">Find people and posts on Notell.</p>
+          </div>
         </div>
 
         <form onSubmit={submitSearch} className="relative">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+          <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-neutral-500" size={19} />
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search people or posts..."
+            placeholder="Search people or posts"
             maxLength={100}
             autoFocus
-            className="w-full rounded-2xl border border-slate-200 bg-white py-3.5 pl-12 pr-28 text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
+            className="w-full rounded-2xl border border-neutral-800 bg-neutral-900 py-3.5 pl-11 pr-24 text-sm text-white shadow-sm outline-none transition placeholder:text-neutral-600 focus:border-neutral-600 focus:ring-2 focus:ring-white/5"
           />
-          <button type="submit" className="absolute right-2 top-1/2 -translate-y-1/2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-700">
+          {query && (
+            <button type="button" onClick={clearSearch} className="absolute right-20 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-neutral-500 hover:bg-neutral-800 hover:text-white" aria-label="Clear search">
+              <X size={16} />
+            </button>
+          )}
+          <button type="submit" className="absolute right-2 top-1/2 -translate-y-1/2 rounded-xl bg-white px-3.5 py-2 text-xs font-bold text-neutral-950 transition hover:bg-neutral-200 active:scale-95 sm:text-sm">
             Search
           </button>
         </form>
 
-        <div className="mt-5 flex gap-2 overflow-x-auto border-b border-slate-100 pb-3">
+        <div className="mt-4 flex gap-1 overflow-x-auto rounded-xl border border-neutral-800 bg-neutral-900/60 p-1">
           {TABS.map((tab) => (
-            <button key={tab.id} type="button" onClick={() => changeTab(tab.id)} className={`shrink-0 rounded-xl px-4 py-2 text-sm font-bold transition ${activeTab === tab.id ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+            <button key={tab.id} type="button" onClick={() => changeTab(tab.id)} className={`min-w-20 flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition sm:text-sm ${activeTab === tab.id ? "bg-white text-neutral-950 shadow" : "text-neutral-400 hover:bg-neutral-800 hover:text-white"}`}>
               {tab.label}
             </button>
           ))}
         </div>
 
-        <div className="mt-6">
+        <div className="mt-5">
           {loading && (
-            <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500"><Loader2 size={18} className="animate-spin" /> Searching...</div>
+            <div className="space-y-2">
+              <SkeletonRow />
+              <SkeletonRow />
+              <SkeletonRow />
+            </div>
           )}
 
-          {!loading && searched && showPeople && userError && <p className="mb-4 rounded-2xl bg-red-50 p-4 text-sm text-red-600">{userError}</p>}
-          {!loading && searched && showPosts && postError && <p className="mb-4 rounded-2xl bg-red-50 p-4 text-sm text-red-600">{postError}</p>}
+          {!loading && searched && showPeople && userError && (
+            <div className="mb-4 rounded-2xl border border-red-900/60 bg-red-950/30 p-4 text-sm text-red-300">{userError}</div>
+          )}
+          {!loading && searched && showPosts && postError && (
+            <div className="mb-4 rounded-2xl border border-red-900/60 bg-red-950/30 p-4 text-sm text-red-300">{postError}</div>
+          )}
 
           {!loading && !hasResults && !hasErrors && searched && (
-            <div className="py-12 text-center">
-              {activeTab === "people" ? <UserRound className="mx-auto text-slate-300" size={42} /> : activeTab === "posts" ? <FileText className="mx-auto text-slate-300" size={42} /> : <Search className="mx-auto text-slate-300" size={42} />}
-              <p className="mt-3 font-semibold text-slate-700">No results found</p>
-              <p className="mt-1 text-sm text-slate-500">Try a different search term.</p>
+            <div className="rounded-3xl border border-neutral-800 bg-neutral-900/50 px-5 py-14 text-center">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-neutral-800 text-neutral-500">
+                {activeTab === "people" ? <UserRound size={25} /> : activeTab === "posts" ? <FileText size={25} /> : <Search size={25} />}
+              </div>
+              <p className="mt-4 font-semibold text-neutral-200">No results found</p>
+              <p className="mt-1 text-sm text-neutral-500">Try another keyword or check the spelling.</p>
             </div>
           )}
 
           {!loading && searched && showPeople && users.length > 0 && (
-            <section className={showPosts && posts.length > 0 ? "mb-8" : ""}>
+            <section className={showPosts && posts.length > 0 ? "mb-7" : ""}>
               <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-lg font-black text-slate-900">People</h2>
-                {activeTab === "all" && <button type="button" onClick={() => changeTab("people")} className="text-sm font-bold text-indigo-600 hover:text-indigo-800">See all</button>}
+                <h2 className="text-sm font-bold text-neutral-200 sm:text-base">People</h2>
+                {activeTab === "all" && <button type="button" onClick={() => changeTab("people")} className="text-xs font-semibold text-neutral-400 hover:text-white sm:text-sm">See all</button>}
               </div>
 
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {users.map((user) => (
-                  <Link key={user.id} to={`/users/${user.id}`} className="flex items-center gap-4 rounded-2xl border border-slate-100 bg-white p-4 transition hover:border-indigo-200 hover:shadow-md">
-                    <div className="h-12 w-12 shrink-0 overflow-hidden rounded-full bg-slate-100">
-                      {user.profilePicture ? <img src={getFileUrl(user.profilePicture)} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-slate-400"><UserRound size={22} /></div>}
+                  <Link key={user.id} to={`/users/${user.id}`} className="group flex items-center gap-3 rounded-2xl border border-neutral-800 bg-neutral-900/70 p-3 transition hover:border-neutral-700 hover:bg-neutral-900">
+                    <div className="h-12 w-12 shrink-0 overflow-hidden rounded-full bg-neutral-800 ring-1 ring-neutral-700">
+                      {user.profilePicture ? <img src={getFileUrl(user.profilePicture)} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-neutral-500"><UserRound size={21} /></div>}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-bold text-slate-900">@{user.username}</p>
-                      {(user.city || user.country) && <p className="truncate text-xs text-slate-500">{[user.city, user.country].filter(Boolean).join(", ")}</p>}
-                      {user.bio && <p className="mt-1 truncate text-sm text-slate-600">{user.bio}</p>}
+                      <p className="truncate text-sm font-bold text-white">@{user.username}</p>
+                      {user.bio ? <p className="mt-0.5 truncate text-xs text-neutral-500">{user.bio}</p> : (user.city || user.country) ? <p className="mt-1 flex items-center gap-1 truncate text-xs text-neutral-500"><MapPin size={12} />{[user.city, user.country].filter(Boolean).join(", ")}</p> : <p className="mt-1 text-xs text-neutral-600">View profile</p>}
                     </div>
+                    <span className="shrink-0 rounded-xl border border-neutral-700 px-3 py-2 text-xs font-semibold text-neutral-300 transition group-hover:border-neutral-500 group-hover:text-white">View</span>
                   </Link>
                 ))}
               </div>
 
-              {userHasMore && <button type="button" onClick={loadMoreUsers} disabled={loadingMoreUsers} className="mx-auto mt-4 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">{loadingMoreUsers ? <Loader2 size={16} className="animate-spin" /> : <ChevronDown size={16} />}{loadingMoreUsers ? "Loading..." : "Load more people"}</button>}
+              {userHasMore && <button type="button" onClick={loadMoreUsers} disabled={loadingMoreUsers} className="mx-auto mt-4 flex items-center gap-2 rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-2.5 text-xs font-semibold text-neutral-300 transition hover:bg-neutral-800 disabled:opacity-50 sm:text-sm">{loadingMoreUsers ? <Loader2 size={15} className="animate-spin" /> : <ChevronDown size={15} />}{loadingMoreUsers ? "Loading..." : "Load more people"}</button>}
             </section>
           )}
 
           {!loading && searched && showPosts && posts.length > 0 && (
             <section>
               <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-lg font-black text-slate-900">Posts</h2>
-                {activeTab === "all" && <button type="button" onClick={() => changeTab("posts")} className="text-sm font-bold text-indigo-600 hover:text-indigo-800">See all</button>}
+                <h2 className="text-sm font-bold text-neutral-200 sm:text-base">Posts</h2>
+                {activeTab === "all" && <button type="button" onClick={() => changeTab("posts")} className="text-xs font-semibold text-neutral-400 hover:text-white sm:text-sm">See all</button>}
               </div>
 
               <div className="space-y-4">
                 {posts.map((post) => (
-                  <div key={post.postId} className="relative">
+                  <div key={post.postId}>
                     <PostCard post={post} onPostDeleted={removePost} />
-                    <Link to={`/posts/${post.postId}`} className="mt-2 inline-flex rounded-xl px-3 py-2 text-sm font-bold text-indigo-600 transition hover:bg-indigo-50 hover:text-indigo-800">Open post</Link>
+                    <Link to={`/posts/${post.postId}`} className="mt-2 inline-flex rounded-xl px-2 py-1.5 text-xs font-semibold text-neutral-400 transition hover:bg-neutral-900 hover:text-white">Open post →</Link>
                   </div>
                 ))}
               </div>
 
-              {postHasMore && <button type="button" onClick={loadMorePosts} disabled={loadingMorePosts} className="mx-auto mt-4 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">{loadingMorePosts ? <Loader2 size={16} className="animate-spin" /> : <ChevronDown size={16} />}{loadingMorePosts ? "Loading..." : "Load more posts"}</button>}
+              {postHasMore && <button type="button" onClick={loadMorePosts} disabled={loadingMorePosts} className="mx-auto mt-4 flex items-center gap-2 rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-2.5 text-xs font-semibold text-neutral-300 transition hover:bg-neutral-800 disabled:opacity-50 sm:text-sm">{loadingMorePosts ? <Loader2 size={15} className="animate-spin" /> : <ChevronDown size={15} />}{loadingMorePosts ? "Loading..." : "Load more posts"}</button>}
             </section>
           )}
         </div>
