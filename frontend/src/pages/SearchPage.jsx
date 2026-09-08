@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft, ChevronDown, FileText, Loader2, MapPin, Search, UserRound, X } from "lucide-react";
+import { ArrowLeft, ChevronDown, FileText, Loader2, MapPin, Search, UserRound, UserPlus, Check, X } from "lucide-react";
 import { userAPI } from "../services/user/userApi";
 import { postsAPI } from "../services/post/postsApi";
 import { getApiErrorMessage, getFileUrl } from "../utils/api";
@@ -77,6 +77,8 @@ export default function SearchPage() {
   const [suggestions, setSuggestions] = useState({ users: [], posts: [] });
   const [suggestionLoading, setSuggestionLoading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [followState, setFollowState] = useState({});
+  const [followLoading, setFollowLoading] = useState({});
   const searchTimerRef = useRef(null);
   const requestIdRef = useRef(0);
 
@@ -118,6 +120,8 @@ export default function SearchPage() {
     setQuery(value);
     setActiveTab(type);
     setShowSuggestions(false);
+    setFollowState({});
+    setFollowLoading({});
     if (value.length < MIN_QUERY_LENGTH) {
       setUsers([]); setPosts([]); setUserPage(1); setPostPage(1);
       setUserHasMore(false); setPostHasMore(false); setSearched(false);
@@ -148,6 +152,23 @@ export default function SearchPage() {
     }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [searchParams]);
+
+  const handleFollow = async (user) => {
+    if (!user?.id || followLoading[user.id]) return;
+    setFollowLoading((current) => ({ ...current, [user.id]: true }));
+    try {
+      await userAPI.followUser(user.id);
+      setFollowState((current) => ({ ...current, [user.id]: true }));
+    } catch (error) {
+      if (error?.response?.status === 409) {
+        setFollowState((current) => ({ ...current, [user.id]: true }));
+      } else {
+        setUserError(getApiErrorMessage(error, `Could not follow @${user.username}.`));
+      }
+    } finally {
+      setFollowLoading((current) => ({ ...current, [user.id]: false }));
+    }
+  };
 
   const submitSearch = (event) => {
     event.preventDefault();
@@ -234,7 +255,20 @@ export default function SearchPage() {
 
           {!loading && searched && showPeople && users.length > 0 && <section>
             <div className="mb-3 flex items-end justify-between"><div><h2 className="text-sm font-bold sm:text-base">People</h2><p className="mt-0.5 text-xs text-neutral-600">{users.length}{userHasMore ? "+" : ""} result{users.length === 1 ? "" : "s"}</p></div>{activeTab === "all" && <button type="button" onClick={() => changeTab("people")} className="text-xs font-semibold text-neutral-400 hover:text-white sm:text-sm">See all</button>}</div>
-            <div className="space-y-2">{users.map((user) => <Link key={user.id} to={`/users/${user.id}`} className="group flex items-center gap-3 rounded-2xl border border-neutral-800 bg-neutral-900/70 p-3 transition hover:border-neutral-700 hover:bg-neutral-900 focus:outline-none focus:ring-2 focus:ring-white/10 sm:p-3.5"><Avatar user={user} /><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-white">@{user.username}</p>{user.bio ? <p className="mt-0.5 truncate text-xs text-neutral-500">{user.bio}</p> : (user.city || user.country) ? <p className="mt-1 flex items-center gap-1 truncate text-xs text-neutral-500"><MapPin size={12} />{[user.city, user.country].filter(Boolean).join(", ")}</p> : <p className="mt-1 text-xs text-neutral-600">View profile</p>}</div><span className="shrink-0 rounded-xl border border-neutral-700 px-3 py-2 text-xs font-semibold text-neutral-300 transition group-hover:border-neutral-500 group-hover:text-white">View</span></Link>)}</div>
+            <div className="space-y-2">{users.map((user) => <div key={user.id} className="flex items-center gap-3 rounded-2xl border border-neutral-800 bg-neutral-900/70 p-3 transition hover:border-neutral-700 hover:bg-neutral-900 sm:p-3.5">
+              <Link to={`/users/${user.id}`} className="shrink-0 rounded-full focus:outline-none focus:ring-2 focus:ring-white/20" aria-label={`View @${user.username}'s public profile`}><Avatar user={user} /></Link>
+              <Link to={`/users/${user.id}`} className="min-w-0 flex-1 rounded-xl focus:outline-none focus:ring-2 focus:ring-white/10" aria-label={`View @${user.username}'s public profile`}>
+                <p className="truncate text-sm font-bold text-white">@{user.username}</p>
+                {user.bio ? <p className="mt-0.5 truncate text-xs text-neutral-500">{user.bio}</p> : (user.city || user.country) ? <p className="mt-1 flex items-center gap-1 truncate text-xs text-neutral-500"><MapPin size={12} />{[user.city, user.country].filter(Boolean).join(", ")}</p> : <p className="mt-1 text-xs text-neutral-600">View public profile</p>}
+              </Link>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <Link to={`/users/${user.id}`} className="hidden rounded-xl border border-neutral-700 px-3 py-2 text-xs font-semibold text-neutral-300 transition hover:border-neutral-500 hover:text-white sm:inline-flex" aria-label={`View @${user.username}'s public profile`}>View</Link>
+                <button type="button" onClick={() => handleFollow(user)} disabled={followLoading[user.id] || followState[user.id]} className={`inline-flex min-w-[82px] items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition active:scale-95 disabled:cursor-default ${followState[user.id] ? "border border-emerald-500/20 bg-emerald-500/10 text-emerald-300" : "bg-white text-neutral-950 hover:bg-neutral-200 disabled:opacity-60"}`} aria-label={followState[user.id] ? `Following @${user.username}` : `Follow @${user.username}`}>
+                  {followLoading[user.id] ? <Loader2 size={14} className="animate-spin" /> : followState[user.id] ? <Check size={14} /> : <UserPlus size={14} />}
+                  {followLoading[user.id] ? "Following…" : followState[user.id] ? "Following" : "Follow"}
+                </button>
+              </div>
+            </div>)}</div>
             {userHasMore && <button type="button" onClick={loadMoreUsers} disabled={loadingMoreUsers} className="mx-auto mt-4 flex items-center gap-2 rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-2.5 text-xs font-semibold text-neutral-300 transition hover:bg-neutral-800 disabled:opacity-50">{loadingMoreUsers ? <Loader2 size={15} className="animate-spin" /> : <ChevronDown size={15} />}{loadingMoreUsers ? "Loading…" : "Load more people"}</button>}
           </section>}
 
