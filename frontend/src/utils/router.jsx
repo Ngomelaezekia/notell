@@ -7,6 +7,7 @@ import PostDetailPage from "../pages/PostDetailPage";
 import { CreatePost } from "../components/CreatePost";
 import UserManage from "../components/userManager/UserManager";
 import UserPage from "../pages/UserPage";
+import CurrentUserProfile from "../pages/CurrentUserProfile";
 import { FollowersPage, FollowingPage } from "../pages/RelationshipListPage";
 import SearchPage from "../pages/SearchPage";
 import NotificationsPage from "../pages/NotificationsPage";
@@ -32,6 +33,7 @@ const router = createBrowserRouter([
             children: [
               { path: "/", element: <Posts /> },
               { path: "create-post", element: <CreatePost /> },
+              { path: "user", element: <CurrentUserProfile /> },
               { path: "profile", element: <UserManage /> },
               { path: "notifications", element: <NotificationsPage /> },
               { path: "settings", element: <SettingsPage /> },
