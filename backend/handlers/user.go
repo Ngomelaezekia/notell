@@ -88,7 +88,14 @@ func (h *UserHandler) SearchUsers(c *gin.Context) {
 func (h *UserHandler) GetUserProfile(c *gin.Context) {
 	targetIDUint,err:=strconv.ParseUint(c.Param("id"),10,32); if err!=nil {c.JSON(http.StatusBadRequest,gin.H{"message":"invalid user ID"});return}; targetID:=uint(targetIDUint)
 	var user models.User
-	err=h.DB.Select("id, username, profile_picture, cover_picture, bio, country, city, allow_followers, created_at").First(&user,targetID).Error
+	err=h.DB.
+		Select("id, username, profile_picture, cover_picture, bio, country, city, allow_followers, created_at").
+		Preload("Posts", func(db *gorm.DB) *gorm.DB {
+			return db.Select("id, user_id, content_type, content_url, caption, created_at, updated_at").
+				Order("created_at DESC").
+				Limit(36)
+		}).
+		First(&user,targetID).Error
 	if err!=nil {if errors.Is(err,gorm.ErrRecordNotFound){c.JSON(http.StatusNotFound,gin.H{"message":"user not found"});return};c.JSON(http.StatusInternalServerError,gin.H{"message":"database error"});return}
 	c.JSON(http.StatusOK,gin.H{"data":gin.H{"user":user}})
 }
