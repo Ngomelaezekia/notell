@@ -38,11 +38,15 @@ const Posts = () => {
   }, [hasMore, loadMore]);
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-neutral-950 text-neutral-100 flex">
-      <main className="mx-auto flex h-full w-full max-w-2xl flex-col border-x border-neutral-800">
+    <div className="flex h-[calc(100dvh-5rem)] w-full overflow-hidden bg-neutral-950 text-neutral-100 md:h-screen">
+      <main className="mx-auto flex h-full w-full min-w-0 max-w-3xl flex-col border-x border-neutral-800">
         <Headerposts title="Feed" />
-        <section ref={scrollContainerRef} className="no-scrollbar flex-1 overflow-y-auto">
-          <div className="divide-y divide-neutral-800 px-4">
+
+        <section
+          ref={scrollContainerRef}
+          className="no-scrollbar min-h-0 flex-1 overflow-y-auto"
+        >
+          <div className="mx-auto w-full max-w-2xl px-2 py-2 sm:px-4 sm:py-4 md:px-5 md:py-5">
             {loading && (
               <div className="flex h-64 items-center justify-center text-sm text-neutral-500">
                 Loading posts...
