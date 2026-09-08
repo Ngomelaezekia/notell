@@ -3,14 +3,14 @@ import { useNavigate } from "react-router-dom";
 import { Bell, PlusIcon, Search } from "lucide-react";
 import { useNotifications } from "../hooks/useNotifications";
 
-export const Headerposts = ({ title = "Feed" }) => {
+export const Headerposts = () => {
   const navigate = useNavigate();
   const { unreadCount } = useNotifications();
   const badge = unreadCount > 99 ? "99+" : unreadCount;
 
   return (
     <header className="flex w-full shrink-0 items-center justify-between border-b border-neutral-800 bg-neutral-950 px-3 py-2.5 sm:px-4 sm:py-3">
-      <h1 className="text-sm font-semibold text-neutral-200">{title}</h1>
+      <h1 className="text-sm font-semibold tracking-wide text-neutral-100">Notell</h1>
 
       <div className="flex items-center gap-1">
         <button
