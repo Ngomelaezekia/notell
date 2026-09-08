@@ -79,9 +79,9 @@ type searchUserResult struct {
 	Username       string    `json:"username"`
 	ProfilePicture *string   `json:"profilePicture,omitempty"`
 	CoverPicture   *string   `json:"coverPicture,omitempty"`
-	Bio            *string   `json:"bio,omitempty"`
+	Bio            *string    `json:"bio,omitempty"`
 	Country        *string   `json:"country,omitempty"`
-	City           *string   `json:"city,omitempty"`
+	City           *string    `json:"city,omitempty"`
 	Status         string    `json:"status"`
 	AllowFollowers bool      `json:"allowFollowers"`
 	CreatedAt      time.Time `json:"createdAt"`
@@ -116,7 +116,11 @@ func (h *UserHandler) SearchUsers(c *gin.Context) {
 	var users []searchUserResult
 	orderRank := "CASE WHEN username ILIKE ? THEN 0 WHEN username ILIKE ? ESCAPE '\\' THEN 1 WHEN username ILIKE ? ESCAPE '\\' THEN 2 ELSE 3 END"
 	followingExpr := "EXISTS (SELECT 1 FROM user_relationships ur WHERE ur.follower_id = ? AND ur.following_id = users.id AND ur.status = 'accepted')"
-	err := base.Table("users").Select("users.id, users.username, users.profile_picture, users.cover_picture, users.bio, users.country, users.city, users.status, users.allow_followers, users.created_at, "+followingExpr+" AS following", viewerID).
+	selectExpr := gorm.Expr(
+		"users.id, users.username, users.profile_picture, users.cover_picture, users.bio, users.country, users.city, users.status, users.allow_followers, users.created_at, "+followingExpr+" AS following",
+		viewerID,
+	)
+	err := base.Table("users").Select(selectExpr).
 		Order(orderRank, usernameQuery, prefixPattern, pattern).
 		Order("username ASC").Order("id ASC").
 		Offset((page-1)*limit).Limit(limit).Find(&users).Error
