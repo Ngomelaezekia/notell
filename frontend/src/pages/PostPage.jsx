@@ -55,6 +55,30 @@ const EmptyFeed = () => {
   );
 };
 
+const FeedLoading = () => (
+  <div className="space-y-3 px-2 py-3 sm:px-4 sm:py-5 md:px-6 lg:px-8" aria-label="Loading feed">
+    {[0, 1, 2].map((item) => (
+      <div
+        key={item}
+        className="overflow-hidden rounded-2xl border border-neutral-900 bg-neutral-950/70 p-3 sm:p-4"
+      >
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 animate-pulse rounded-full bg-neutral-900" />
+          <div className="flex-1 space-y-2">
+            <div className="h-3 w-28 animate-pulse rounded-full bg-neutral-900" />
+            <div className="h-2.5 w-16 animate-pulse rounded-full bg-neutral-900" />
+          </div>
+        </div>
+        <div className="mt-4 h-56 animate-pulse rounded-xl bg-neutral-900/80 sm:h-72" />
+        <div className="mt-4 flex gap-3">
+          <div className="h-3 w-14 animate-pulse rounded-full bg-neutral-900" />
+          <div className="h-3 w-20 animate-pulse rounded-full bg-neutral-900" />
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
 const Posts = () => {
   const {
     posts,
@@ -90,28 +114,34 @@ const Posts = () => {
 
   return (
     <div className="flex h-[calc(100dvh-5rem)] w-full overflow-hidden bg-neutral-950 text-neutral-100 md:h-screen">
-      <main className="mx-auto flex h-full w-full min-w-0 max-w-4xl flex-col border-x border-neutral-800">
+      <main className="mx-auto flex h-full w-full min-w-0 max-w-4xl flex-col border-x border-neutral-800/80">
         <section
           ref={scrollContainerRef}
           className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain"
         >
-          {/* Intentionally inside the scroll region: the feed header scrolls away with the feed. */}
           <Headerposts title="Feed" />
 
-          <div className="mx-auto w-full max-w-3xl px-2 py-1 sm:px-4 sm:py-3 md:px-6 md:py-5 lg:px-8">
-            {loading && (
-              <div className="flex h-64 items-center justify-center text-sm text-neutral-500">
-                Loading posts...
+          <div className="mx-auto w-full max-w-3xl">
+            {!loading && !error && posts.length > 0 && (
+              <div className="flex items-center justify-between px-3 pb-1 pt-3 sm:px-5 sm:pt-4 md:px-6">
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-600">
+                  Your feed
+                </span>
+                <span className="text-[11px] text-neutral-700">
+                  Latest posts
+                </span>
               </div>
             )}
 
+            {loading && <FeedLoading />}
+
             {!loading && error && posts.length === 0 && (
-              <div className="flex h-64 flex-col items-center justify-center gap-4 px-4 text-center text-sm text-red-400">
-                <p>{error}</p>
+              <div className="mx-3 my-5 flex min-h-56 flex-col items-center justify-center rounded-2xl border border-neutral-900 bg-neutral-950/70 px-5 text-center sm:mx-5 md:mx-6">
+                <p className="max-w-sm text-sm leading-6 text-red-400">{error}</p>
                 <button
                   type="button"
                   onClick={refetch}
-                  className="rounded-full bg-neutral-800 px-5 py-2 text-neutral-200 transition hover:bg-neutral-700"
+                  className="mt-4 rounded-full bg-neutral-800 px-5 py-2 text-sm font-medium text-neutral-200 transition hover:bg-neutral-700 active:scale-[0.98]"
                 >
                   Try again
                 </button>
@@ -120,32 +150,40 @@ const Posts = () => {
 
             {!loading && !error && posts.length === 0 && <EmptyFeed />}
 
-            {!loading && posts.map((post) => (
-              <PostCard key={post.postId} post={post} onPostDeleted={removePost} />
-            ))}
+            {!loading && posts.length > 0 && (
+              <div className="space-y-2 px-2 pb-2 pt-2 sm:space-y-3 sm:px-4 sm:pb-3 sm:pt-3 md:px-6 lg:px-8">
+                {posts.map((post) => (
+                  <PostCard key={post.postId} post={post} onPostDeleted={removePost} />
+                ))}
+              </div>
+            )}
 
             {error && posts.length > 0 && (
-              <div className="flex items-center justify-center gap-3 py-6 text-sm text-red-400">
+              <div className="mx-2 my-2 flex items-center justify-center gap-3 rounded-xl border border-red-950/60 bg-red-950/10 px-3 py-3 text-xs text-red-400 sm:mx-4 md:mx-6 lg:mx-8">
                 <span>{error}</span>
                 <button
                   type="button"
                   onClick={loadMore}
-                  className="rounded-full bg-neutral-800 px-3 py-1.5 text-neutral-200 transition hover:bg-neutral-700"
+                  className="shrink-0 rounded-full bg-neutral-800 px-3 py-1.5 font-medium text-neutral-200 transition hover:bg-neutral-700"
                 >
                   Retry
                 </button>
               </div>
             )}
 
-            <div ref={loadMoreRef} className="flex min-h-16 items-center justify-center py-5">
+            <div ref={loadMoreRef} className="flex min-h-20 items-center justify-center px-4 py-6">
               {loadingMore && (
-                <div className="flex items-center gap-2 text-sm text-neutral-500">
-                  <Loader2 size={16} className="animate-spin" />
+                <div className="flex items-center gap-2 rounded-full border border-neutral-900 bg-neutral-950 px-4 py-2 text-xs text-neutral-500">
+                  <Loader2 size={14} className="animate-spin" />
                   Loading more posts...
                 </div>
               )}
               {!loadingMore && !hasMore && posts.length > 0 && (
-                <span className="text-xs text-neutral-600">You&apos;re all caught up.</span>
+                <div className="flex items-center gap-2 text-[11px] text-neutral-700">
+                  <span className="h-px w-8 bg-neutral-900" />
+                  You&apos;re all caught up.
+                  <span className="h-px w-8 bg-neutral-900" />
+                </div>
               )}
             </div>
           </div>
