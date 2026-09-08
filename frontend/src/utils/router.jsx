@@ -10,6 +10,7 @@ import UserPage from "../pages/UserPage";
 import { FollowersPage, FollowingPage } from "../pages/RelationshipListPage";
 import SearchPage from "../pages/SearchPage";
 import SettingsPage from "../pages/SettingsPage";
+import SettingsDetailPage from "../pages/SettingsDetailPage";
 import AppLayout from "../layout/AppLayout";
 
 const RootLayout = () => (
@@ -32,7 +33,18 @@ const router = createBrowserRouter([
               { path: "create-post", element: <CreatePost /> },
               { path: "profile", element: <UserManage /> },
               { path: "settings", element: <SettingsPage /> },
-              { path: "settings/privacy", element: <SettingsPage /> },
+              { path: "settings/privacy", element: <SettingsDetailPage section="privacy" /> },
+              { path: "settings/content", element: <SettingsDetailPage section="content" /> },
+              { path: "settings/notifications", element: <SettingsDetailPage section="notifications" /> },
+              { path: "settings/ads", element: <SettingsDetailPage section="ads" /> },
+              { path: "settings/history", element: <SettingsDetailPage section="history" /> },
+              { path: "settings/downloads", element: <SettingsDetailPage section="downloads" /> },
+              { path: "settings/storage", element: <SettingsDetailPage section="storage" /> },
+              { path: "settings/about", element: <SettingsDetailPage section="about" /> },
+              { path: "settings/terms", element: <SettingsDetailPage section="terms" /> },
+              { path: "settings/more", element: <SettingsDetailPage section="more" /> },
+              { path: "settings/help", element: <SettingsDetailPage section="help" /> },
+              { path: "settings/email", element: <SettingsDetailPage section="email" /> },
               { path: "search", element: <SearchPage /> },
               { path: "posts/:id", element: <PostDetailPage /> },
               { path: "users/:id", element: <UserPage /> },
