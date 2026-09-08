@@ -81,7 +81,7 @@ type searchUserResult struct {
 	CoverPicture   *string   `json:"coverPicture,omitempty"`
 	Bio            *string    `json:"bio,omitempty"`
 	Country        *string   `json:"country,omitempty"`
-	City           *string    `json:"city,omitempty"`
+	City           *string   `json:"city,omitempty"`
 	Status         string    `json:"status"`
 	AllowFollowers bool      `json:"allowFollowers"`
 	CreatedAt      time.Time `json:"createdAt"`
@@ -114,14 +114,19 @@ func (h *UserHandler) SearchUsers(c *gin.Context) {
 	if err := base.Count(&total).Error; err != nil { c.JSON(http.StatusInternalServerError, gin.H{"message":"database error"}); return }
 
 	var users []searchUserResult
-	orderRank := "CASE WHEN username ILIKE ? THEN 0 WHEN username ILIKE ? ESCAPE '\\' THEN 1 WHEN username ILIKE ? ESCAPE '\\' THEN 2 ELSE 3 END"
+	orderRank := gorm.Expr(
+		"CASE WHEN username ILIKE ? THEN 0 WHEN username ILIKE ? ESCAPE '\\' THEN 1 WHEN username ILIKE ? ESCAPE '\\' THEN 2 ELSE 3 END",
+		usernameQuery,
+		prefixPattern,
+		pattern,
+	)
 	followingExpr := "EXISTS (SELECT 1 FROM user_relationships ur WHERE ur.follower_id = ? AND ur.following_id = users.id AND ur.status = 'accepted')"
 	selectExpr := gorm.Expr(
 		"users.id, users.username, users.profile_picture, users.cover_picture, users.bio, users.country, users.city, users.status, users.allow_followers, users.created_at, "+followingExpr+" AS following",
 		viewerID,
 	)
 	err := base.Table("users").Select(selectExpr).
-		Order(orderRank, usernameQuery, prefixPattern, pattern).
+		Order(orderRank).
 		Order("username ASC").Order("id ASC").
 		Offset((page-1)*limit).Limit(limit).Find(&users).Error
 	if err != nil { c.JSON(http.StatusInternalServerError, gin.H{"message":"database error"}); return }
