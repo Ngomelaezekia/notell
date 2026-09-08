@@ -47,7 +47,7 @@ type createCommentInput struct {
 	ParentID *uint  `json:"parentId"`
 }
 
-const postEngagementSelect = `posts.*, (SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count, EXISTS(SELECT 1 FROM likes WHERE likes.post_id = posts.id AND likes.user_id = ?) AS liked`
+const postEngagementSelect = `posts.*, (SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count, (SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count, EXISTS(SELECT 1 FROM likes WHERE likes.post_id = posts.id AND likes.user_id = ?) AS liked`
 
 func escapeLikePattern(value string) string {
 	replacer := strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_")
@@ -240,6 +240,7 @@ func (h *PostHandler) CreatePost(c *gin.Context) {
 	}
 
 	post.LikeCount = 0
+	post.CommentCount = 0
 	post.Liked = false
 	c.JSON(http.StatusCreated, gin.H{"message": "post created successfully", "data": post})
 }
@@ -503,6 +504,12 @@ func (h *PostHandler) ToggleLike(c *gin.Context) {
 		return
 	}
 
+	var likeCount int64
+	if err := h.DB.Model(&models.Like{}).Where("post_id = ?", postIDUint).Count(&likeCount).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "like updated but failed to refresh count"})
+		return
+	}
+
 	if liked {
 		var postOwnerID uint
 		if err := h.DB.Model(&models.Post{}).Where("id = ?", postIDUint).Pluck("user_id", &postOwnerID).Error; err == nil && postOwnerID != userID {
@@ -511,7 +518,7 @@ func (h *PostHandler) ToggleLike(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "like state updated", "liked": liked})
+	c.JSON(http.StatusOK, gin.H{"message": "like state updated", "liked": liked, "likeCount": likeCount})
 }
 
 func (h *PostHandler) AddComment(c *gin.Context) {
