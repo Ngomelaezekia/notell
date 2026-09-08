@@ -1,11 +1,13 @@
 import { MoreHorizontal, Trash2, Loader2, Heart, MessageSquare } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { usePostActions } from "../hooks/usePosts";
 import { useAuth } from "../context/AuthContext";
 import { getFileUrl } from "../utils/api";
 import CommentSection from "./CommentSection";
 
 export const PostCard = ({ post, onPostDeleted }) => {
+  const navigate = useNavigate();
   const { user: currentUser } = useAuth();
   const { deletePost, toggleLike, loading } = usePostActions();
   const [showMenu, setShowMenu] = useState(false);
@@ -19,12 +21,18 @@ export const PostCard = ({ post, onPostDeleted }) => {
   const avatar = getFileUrl(author?.profilePicture);
   const mediaUrl = getFileUrl(post?.contentUrl);
   const username = author?.username || "Anonymous";
+  const authorId = author?.id ?? post?.userId;
   const isOwner = Boolean(currentUser?.id && currentUser.id === post?.userId);
 
   useEffect(() => {
     setLiked(Boolean(post?.liked));
     setLikeCount(Number(post?.likeCount ?? 0));
   }, [post?.postId, post?.liked, post?.likeCount]);
+
+  const openAuthorProfile = () => {
+    if (!authorId) return;
+    navigate(`/users/${authorId}`);
+  };
 
   const handleDelete = async () => {
     if (!postId || !window.confirm("Delete this post?")) return;
@@ -64,8 +72,14 @@ export const PostCard = ({ post, onPostDeleted }) => {
   return (
     <article className="border-b border-neutral-800 py-5 first:pt-5 last:border-b-0">
       <header className="flex items-center justify-between px-1">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-neutral-700 bg-neutral-800 font-semibold text-neutral-300">
+        <button
+          type="button"
+          onClick={openAuthorProfile}
+          disabled={!authorId}
+          className="group flex min-w-0 items-center gap-3 rounded-xl text-left transition disabled:cursor-default"
+          aria-label={`View ${username}'s profile`}
+        >
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-neutral-700 bg-neutral-800 font-semibold text-neutral-300 transition group-hover:border-neutral-500 group-hover:ring-2 group-hover:ring-neutral-800">
             {avatar ? (
               <img src={avatar} alt={`${username} avatar`} className="h-full w-full object-cover" />
             ) : (
@@ -73,12 +87,14 @@ export const PostCard = ({ post, onPostDeleted }) => {
             )}
           </div>
           <div className="min-w-0">
-            <h3 className="truncate text-sm font-semibold text-neutral-100">{username}</h3>
+            <h3 className="truncate text-sm font-semibold text-neutral-100 group-hover:underline">
+              {username}
+            </h3>
             <p className="text-xs text-neutral-500">
               {post?.createdAt ? new Date(post.createdAt).toLocaleDateString() : ""}
             </p>
           </div>
-        </div>
+        </button>
 
         {isOwner && (
           <div className="relative">
@@ -148,7 +164,14 @@ export const PostCard = ({ post, onPostDeleted }) => {
 
         {post?.caption && (
           <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-neutral-200">
-            <span className="mr-2 font-semibold text-neutral-100">{username}</span>
+            <button
+              type="button"
+              onClick={openAuthorProfile}
+              disabled={!authorId}
+              className="mr-2 font-semibold text-neutral-100 hover:underline disabled:cursor-default"
+            >
+              {username}
+            </button>
             {post.caption}
           </p>
         )}
