@@ -9,8 +9,8 @@ const EmptyFeed = () => {
   const navigate = useNavigate();
 
   return (
-    <div className="flex min-h-[calc(100dvh-9rem)] flex-col items-center justify-center px-5 py-16 text-center sm:min-h-[28rem]">
-      <div className="relative mb-6">
+    <div className="flex min-h-[calc(100dvh-9rem)] flex-col items-center justify-center px-4 py-12 text-center sm:min-h-[28rem] sm:px-5 sm:py-16">
+      <div className="relative mb-5 sm:mb-6">
         <div className="flex h-20 w-20 items-center justify-center rounded-full border border-neutral-800 bg-neutral-900 shadow-xl shadow-black/20">
           <MessageCircle size={34} strokeWidth={1.7} className="text-neutral-400" />
         </div>
@@ -27,7 +27,7 @@ const EmptyFeed = () => {
         something yourself and start the conversation.
       </p>
 
-      <div className="mt-6 flex w-full max-w-xs flex-col gap-2.5 sm:flex-row sm:max-w-none sm:justify-center">
+      <div className="mt-5 flex w-full max-w-xs flex-col gap-2 sm:mt-6 sm:max-w-none sm:flex-row sm:justify-center sm:gap-2.5">
         <button
           type="button"
           onClick={() => navigate("/search")}
@@ -47,7 +47,7 @@ const EmptyFeed = () => {
       <button
         type="button"
         onClick={() => navigate("/search")}
-        className="mt-5 inline-flex items-center gap-1.5 text-xs font-medium text-neutral-600 transition hover:text-neutral-300"
+        className="mt-4 inline-flex items-center gap-1.5 text-xs font-medium text-neutral-600 transition hover:text-neutral-300 sm:mt-5"
       >
         <Compass size={13} /> Explore Notell
       </button>
@@ -90,14 +90,14 @@ const Posts = () => {
 
   return (
     <div className="flex h-[calc(100dvh-5rem)] w-full overflow-hidden bg-neutral-950 text-neutral-100 md:h-screen">
-      <main className="mx-auto flex h-full w-full min-w-0 max-w-3xl flex-col border-x border-neutral-800">
+      <main className="mx-auto flex h-full w-full min-w-0 max-w-4xl flex-col border-x border-neutral-800">
         <Headerposts title="Feed" />
 
         <section
           ref={scrollContainerRef}
           className="no-scrollbar min-h-0 flex-1 overflow-y-auto"
         >
-          <div className="mx-auto w-full max-w-2xl px-2 py-2 sm:px-4 sm:py-4 md:px-5 md:py-5">
+          <div className="mx-auto w-full max-w-3xl px-2 py-1 sm:px-4 sm:py-3 md:px-6 md:py-5 lg:px-8">
             {loading && (
               <div className="flex h-64 items-center justify-center text-sm text-neutral-500">
                 Loading posts...
