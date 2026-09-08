@@ -119,51 +119,58 @@ export const PostCard = ({ post, onPostDeleted }) => {
 
   return (
     <article className="border-b border-neutral-800 py-4 first:pt-3 last:border-b-0 sm:py-5 sm:first:pt-4">
-      <header className="flex items-center justify-between px-1 sm:px-0">
+      <header className="flex items-center justify-between gap-3 px-1 sm:px-0">
         <button
           type="button"
           onClick={openAuthorProfile}
           disabled={!authorId}
-          className="group flex min-w-0 items-center gap-2.5 rounded-xl text-left transition disabled:cursor-default sm:gap-3"
+          className="group flex min-w-0 flex-1 items-center gap-2.5 rounded-xl text-left transition disabled:cursor-default sm:gap-3"
           aria-label={`View ${username}'s profile`}
         >
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-neutral-700 bg-neutral-800 text-sm font-semibold text-neutral-300 transition group-hover:border-neutral-500 group-hover:ring-2 group-hover:ring-neutral-800 sm:h-10 sm:w-10">
+          <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-neutral-700 bg-neutral-800 text-sm font-semibold text-neutral-300 transition group-hover:border-neutral-500 group-hover:ring-2 group-hover:ring-neutral-800 sm:h-10 sm:w-10">
             {avatar ? (
               <img src={avatar} alt={`${username} avatar`} className="h-full w-full object-cover" />
             ) : (
               username.charAt(0).toUpperCase()
             )}
           </div>
-          <div className="min-w-0">
-            <h3 className="truncate text-sm font-semibold text-neutral-100 group-hover:underline">
-              {username}
-            </h3>
-            <p className="text-[11px] text-neutral-500 sm:text-xs" title={post?.createdAt ? new Date(post.createdAt).toLocaleString() : undefined}>
-              {formatRelativeTime(post?.createdAt)}
-            </p>
+          <div className="min-w-0 leading-tight">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <h3 className="truncate text-sm font-semibold text-neutral-100 group-hover:underline">
+                {username}
+              </h3>
+            </div>
+            <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-neutral-500 sm:text-xs">
+              <span>{formatRelativeTime(post?.createdAt)}</span>
+              <span aria-hidden="true" className="text-neutral-700">·</span>
+              <span>Notell</span>
+            </div>
           </div>
         </button>
 
         {isOwner && (
-          <div className="relative">
+          <div className="relative shrink-0">
             <button
               type="button"
               onClick={() => setShowMenu((previous) => !previous)}
               disabled={loading}
               aria-label="Post options"
-              className="rounded-full p-2 text-neutral-400 transition hover:bg-neutral-900 hover:text-neutral-200"
+              aria-expanded={showMenu}
+              className={`flex h-9 w-9 items-center justify-center rounded-full text-neutral-500 transition active:scale-95 ${
+                showMenu ? "bg-neutral-900 text-neutral-200" : "hover:bg-neutral-900 hover:text-neutral-200"
+              }`}
             >
-              {loading ? <Loader2 size={18} className="animate-spin" /> : <MoreHorizontal size={18} />}
+              {loading ? <Loader2 size={18} className="animate-spin" /> : <MoreHorizontal size={19} />}
             </button>
             {showMenu && (
-              <div className="absolute right-0 z-20 mt-1 w-36 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950 shadow-xl">
+              <div className="absolute right-0 z-20 mt-1 w-40 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950 p-1 shadow-2xl shadow-black/40">
                 <button
                   type="button"
                   onClick={handleDelete}
                   disabled={loading}
-                  className="flex w-full items-center gap-2 px-4 py-3 text-sm text-red-400 transition hover:bg-red-950/40"
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-red-400 transition hover:bg-red-950/40 active:bg-red-950/60"
                 >
-                  <Trash2 size={15} /> Delete
+                  <Trash2 size={15} /> Delete post
                 </button>
               </div>
             )}
