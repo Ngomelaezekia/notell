@@ -34,10 +34,10 @@ const CommentItem = ({ comment, onReply }) => {
       </div>
 
       <div className="min-w-0 flex-1">
-        <div className="rounded-2xl bg-neutral-900 px-3 py-2">
+        <div className="rounded-2xl bg-neutral-900 px-3 py-2.5">
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
             <span className="text-xs font-semibold text-neutral-100">{user.username ?? "User"}</span>
-            <span className="text-[11px] text-neutral-500">{formatDate(comment.createdAt)}</span>
+            <span className="text-[11px] text-neutral-600">{formatDate(comment.createdAt)}</span>
           </div>
           <p className="mt-0.5 whitespace-pre-wrap break-words text-sm leading-5 text-neutral-300">{comment.content}</p>
         </div>
@@ -46,7 +46,7 @@ const CommentItem = ({ comment, onReply }) => {
           <button
             type="button"
             onClick={() => onReply(comment)}
-            className="ml-2 mt-1 inline-flex items-center gap-1 px-1 text-[11px] font-semibold text-neutral-500 transition hover:text-neutral-200"
+            className="ml-2 mt-1 inline-flex min-h-7 items-center gap-1 rounded-full px-2 text-[11px] font-semibold text-neutral-500 transition hover:bg-neutral-900 hover:text-neutral-200 active:scale-95"
           >
             <Reply size={12} /> Reply
           </button>
@@ -105,26 +105,29 @@ export default function CommentSection({ postId }) {
   const totalCount = comments.length + replyCount;
 
   return (
-    <section className="mt-3 border-t border-neutral-800 pt-3" aria-label="Comments">
-      <div className="mb-3 flex items-center justify-between">
+    <section className="mt-3 border-t border-neutral-900 pt-3" aria-label="Comments">
+      <div className="mb-3 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-sm font-semibold text-neutral-200">
-          <MessageSquare size={16} />
+          <MessageSquare size={16} className="text-neutral-500" />
           <span>{totalCount ? `${totalCount} ${totalCount === 1 ? "comment" : "comments"}` : "Comments"}</span>
         </div>
         {replyTo && (
           <button
             type="button"
             onClick={() => setReplyTo(null)}
-            className="inline-flex items-center gap-1 text-xs text-neutral-500 hover:text-neutral-200"
+            className="inline-flex min-h-7 items-center gap-1 rounded-full px-2 text-xs text-neutral-500 transition hover:bg-neutral-900 hover:text-neutral-200"
           >
-            <X size={13} /> Cancel reply
+            <X size={13} /> Cancel
           </button>
         )}
       </div>
 
       {replyTo && (
-        <div className="mb-2 rounded-lg bg-neutral-900 px-3 py-2 text-xs text-neutral-400">
-          Replying to <span className="font-semibold text-neutral-200">@{replyTo.user?.username ?? "user"}</span>
+        <div className="mb-2.5 flex items-center justify-between rounded-xl border border-neutral-800 bg-neutral-900/70 px-3 py-2 text-xs text-neutral-500">
+          <span>Replying to <span className="font-semibold text-neutral-200">@{replyTo.user?.username ?? "user"}</span></span>
+          <button type="button" onClick={() => setReplyTo(null)} aria-label="Cancel reply" className="text-neutral-600 transition hover:text-neutral-200">
+            <X size={14} />
+          </button>
         </div>
       )}
 
@@ -134,13 +137,13 @@ export default function CommentSection({ postId }) {
           onChange={(event) => setContent(event.target.value)}
           maxLength={2000}
           placeholder={replyTo ? "Write a reply..." : "Add a comment..."}
-          className="min-w-0 flex-1 rounded-full border border-neutral-800 bg-neutral-900 px-4 py-2.5 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 transition focus:border-neutral-600"
+          className="min-w-0 flex-1 rounded-full border border-neutral-800 bg-neutral-900 px-4 py-2.5 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 transition focus:border-neutral-600 focus:bg-neutral-900/90"
         />
         <button
           type="submit"
           disabled={!content.trim() || submitting}
           aria-label="Send comment"
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-950 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-950 transition hover:bg-white active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {submitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
         </button>
