@@ -17,7 +17,6 @@ import { userAPI } from "../services/user/userApi";
 import { getFileUrl } from "../utils/api";
 
 const URL_PATTERN = /https?:\/\/[^\s]+/gi;
-
 const cleanUrl = (value) => value.replace(/[),.;]+$/g, "");
 
 const getLinkLabel = (value) => {
@@ -38,10 +37,10 @@ const extractBioLinks = (bio = "") => {
 const Stat = ({ label, value, to }) => (
   <Link
     to={to}
-    className="group min-w-[100px] rounded-2xl px-3 py-2 text-center transition hover:bg-slate-50"
+    className="group min-w-[92px] rounded-xl px-2 py-1.5 text-center transition hover:bg-slate-50"
   >
-    <div className="text-lg font-bold text-slate-900 group-hover:text-indigo-600">{value ?? 0}</div>
-    <div className="text-xs font-medium text-slate-500">{label}</div>
+    <div className="text-base font-bold text-slate-900 group-hover:text-indigo-600">{value ?? 0}</div>
+    <div className="text-[11px] font-medium text-slate-500">{label}</div>
   </Link>
 );
 
@@ -52,7 +51,7 @@ const MediaTile = ({ post }) => {
   return (
     <Link
       to={`/posts/${post?.postId}`}
-      className="group relative aspect-square overflow-hidden rounded-2xl bg-slate-100 shadow-sm ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:shadow-md"
+      className="group relative aspect-square overflow-hidden rounded-xl bg-slate-100 shadow-sm ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:shadow-md"
     >
       {isVideo ? (
         <video
@@ -72,12 +71,12 @@ const MediaTile = ({ post }) => {
       )}
       <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent opacity-0 transition group-hover:opacity-100" />
       {isVideo && (
-        <span className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm">
-          <Play size={16} fill="currentColor" />
+        <span className="absolute right-2.5 top-2.5 inline-flex h-8 w-8 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm">
+          <Play size={14} fill="currentColor" />
         </span>
       )}
       {post?.caption && (
-        <span className="absolute bottom-3 left-3 right-3 line-clamp-2 text-xs font-medium text-white opacity-0 transition group-hover:opacity-100">
+        <span className="absolute bottom-2.5 left-2.5 right-2.5 line-clamp-2 text-[11px] font-medium text-white opacity-0 transition group-hover:opacity-100">
           {post.caption}
         </span>
       )}
@@ -162,7 +161,7 @@ export const Users = () => {
   if (error && !user) {
     return (
       <div className="mx-auto max-w-xl p-6">
-        <Link to="/" className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-slate-600">
+        <Link to="/" className="mb-5 inline-flex items-center gap-2 text-sm font-medium text-slate-600">
           <ArrowLeft size={17} /> Back to home
         </Link>
         <div className="rounded-3xl border border-red-100 bg-white p-8 text-center text-red-600 shadow-sm">
@@ -173,15 +172,15 @@ export const Users = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-10">
+    <div className="min-h-screen bg-slate-50 pb-8">
       <div className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 w-full max-w-4xl items-center justify-between px-4 sm:px-6">
+        <div className="mx-auto flex h-14 w-full max-w-4xl items-center justify-between px-3 sm:px-6">
           <Link
             to="/"
             aria-label="Back to home"
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full text-slate-700 transition hover:bg-slate-100 hover:text-slate-950"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-700 transition hover:bg-slate-100 hover:text-slate-950"
           >
-            <ArrowLeft size={21} />
+            <ArrowLeft size={20} />
           </Link>
           <div className="flex min-w-0 items-center gap-2">
             <span className="truncate text-sm font-semibold text-slate-900">{user?.username}</span>
@@ -195,60 +194,49 @@ export const Users = () => {
             <Link
               to="/profile"
               aria-label="Profile settings"
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full text-slate-700 transition hover:bg-slate-100 hover:text-slate-950"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-700 transition hover:bg-slate-100 hover:text-slate-950"
             >
-              <MoreVertical size={21} />
+              <MoreVertical size={20} />
             </Link>
           ) : (
             <button
               type="button"
               aria-label="Profile menu"
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full text-slate-400"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-400"
             >
-              <MoreVertical size={21} />
+              <MoreVertical size={20} />
             </button>
           )}
         </div>
       </div>
 
-      <main className="mx-auto w-full max-w-4xl px-3 pt-3 sm:px-6 sm:pt-5">
-        <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
-          <div className="relative h-40 overflow-hidden bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-800 sm:h-56">
-            {cover && (
-              <img
-                src={cover}
-                alt={`${user?.username} cover`}
-                className="h-full w-full object-cover"
-              />
-            )}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-black/5 to-transparent" />
+      <main className="mx-auto w-full max-w-4xl px-2.5 pt-2 sm:px-6 sm:pt-4">
+        <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+          <div className="relative h-24 overflow-hidden bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-800 sm:h-32">
+            {cover && <img src={cover} alt={`${user?.username} cover`} className="h-full w-full object-cover" />}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-black/5 to-transparent" />
           </div>
 
-          <div className="px-4 pb-5 sm:px-8 sm:pb-7">
-            <div className="-mt-14 flex flex-col gap-5 sm:-mt-16 sm:flex-row sm:items-end sm:justify-between">
-              <div className="flex min-w-0 items-end gap-4">
-                <div className="relative h-28 w-28 shrink-0 sm:h-32 sm:w-32">
-                  <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full border-4 border-white bg-slate-100 text-3xl font-bold text-slate-700 shadow-lg">
-                    {avatar ? (
-                      <img src={avatar} alt={`${user?.username} avatar`} className="h-full w-full object-cover" />
-                    ) : (
-                      user?.username?.charAt(0).toUpperCase()
-                    )}
+          <div className="px-4 pb-4 sm:px-7 sm:pb-5">
+            <div className="-mt-10 flex flex-col gap-3 sm:-mt-12 sm:flex-row sm:items-end sm:justify-between">
+              <div className="flex min-w-0 items-end gap-3">
+                <div className="relative h-20 w-20 shrink-0 sm:h-24 sm:w-24">
+                  <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full border-4 border-white bg-slate-100 text-2xl font-bold text-slate-700 shadow-md">
+                    {avatar ? <img src={avatar} alt={`${user?.username} avatar`} className="h-full w-full object-cover" /> : user?.username?.charAt(0).toUpperCase()}
                   </div>
                   {isSelf && (
                     <Link
                       to="/profile"
                       aria-label="Edit profile picture"
-                      className="absolute bottom-0 right-0 inline-flex h-10 w-10 items-center justify-center rounded-full border-4 border-white bg-slate-900 text-white shadow-md transition hover:scale-105 hover:bg-indigo-600"
+                      className="absolute bottom-[-2px] right-[-2px] inline-flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-slate-900 text-white shadow transition hover:scale-105 hover:bg-indigo-600"
                     >
-                      <Camera size={17} />
+                      <Camera size={14} />
                     </Link>
                   )}
                 </div>
-
-                <div className="min-w-0 pb-1">
-                  <h1 className="truncate text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">{user?.username}</h1>
-                  {joined && <p className="mt-1 text-xs text-slate-500">Joined {joined}</p>}
+                <div className="min-w-0 pb-0.5">
+                  <h1 className="truncate text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">{user?.username}</h1>
+                  {joined && <p className="mt-0.5 text-[11px] text-slate-500">Joined {joined}</p>}
                 </div>
               </div>
 
@@ -257,102 +245,88 @@ export const Users = () => {
                   type="button"
                   onClick={handleFollow}
                   disabled={actionLoading || (!relationship?.following && !relationship?.allowFollowers)}
-                  className={`inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-2.5 text-sm font-semibold shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                  className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50 ${
                     relationship?.following
                       ? "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
                       : "bg-slate-950 text-white hover:bg-indigo-700"
                   }`}
                 >
-                  {actionLoading ? (
-                    <Loader2 size={17} className="animate-spin" />
-                  ) : relationship?.following ? (
-                    <Check size={17} />
-                  ) : (
-                    <UserPlus size={17} />
-                  )}
-                  {relationship?.following
-                    ? "Following"
-                    : relationship?.allowFollowers
-                      ? "Follow"
-                      : "Followers disabled"}
+                  {actionLoading ? <Loader2 size={15} className="animate-spin" /> : relationship?.following ? <Check size={15} /> : <UserPlus size={15} />}
+                  {relationship?.following ? "Following" : relationship?.allowFollowers ? "Follow" : "Followers disabled"}
                 </button>
               )}
             </div>
 
-            <div className="mt-5 max-w-3xl">
-              {user?.bio && (
-                <p className="whitespace-pre-line text-sm leading-6 text-slate-700">{user.bio}</p>
-              )}
+            <div className="mt-3 max-w-3xl">
+              {user?.bio && <p className="whitespace-pre-line text-sm leading-5 text-slate-700">{user.bio}</p>}
 
               {(user?.city || user?.country) && (
-                <div className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-slate-500">
-                  <MapPin size={15} />
+                <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-500">
+                  <MapPin size={13} />
                   {[user.city, user.country].filter(Boolean).join(", ")}
                 </div>
               )}
 
               {bioLinks.length > 0 && (
-                <div className="mt-4 flex flex-wrap gap-2">
+                <div className="mt-2 flex flex-wrap gap-1.5">
                   {bioLinks.map((url) => (
                     <a
                       key={url}
                       href={url}
                       target="_blank"
                       rel="noreferrer noopener"
-                      className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
+                      className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
                     >
-                      <Link2 size={13} />
+                      <Link2 size={12} />
                       {getLinkLabel(url)}
-                      <ExternalLink size={12} />
+                      <ExternalLink size={10} />
                     </a>
                   ))}
                 </div>
               )}
             </div>
 
-            <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4 sm:gap-4">
+            <div className="mt-3 flex flex-wrap items-center gap-1 border-t border-slate-100 pt-2.5 sm:gap-2">
               <Stat label="Followers" value={relationship?.followerCount} to={`/users/${id}/followers`} />
               <Stat label="Following" value={relationship?.followingCount} to={`/users/${id}/following`} />
-              <div className="flex min-w-[100px] flex-col items-center px-3 py-2 text-center">
-                <div className="text-lg font-bold text-slate-900">{posts.length}</div>
-                <div className="text-xs font-medium text-slate-500">Posts</div>
+              <div className="flex min-w-[92px] flex-col items-center px-2 py-1.5 text-center">
+                <div className="text-base font-bold text-slate-900">{posts.length}</div>
+                <div className="text-[11px] font-medium text-slate-500">Posts</div>
               </div>
             </div>
 
             {relationship?.follower && !relationship?.following && (
-              <div className="mt-3 inline-flex items-center gap-2 text-xs text-slate-500">
-                <UsersIcon size={14} /> This user follows you
+              <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-slate-500">
+                <UsersIcon size={13} /> This user follows you
               </div>
             )}
 
-            {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
+            {error && <p className="mt-3 text-xs text-red-600">{error}</p>}
           </div>
         </section>
 
-        <section className="mt-5 rounded-[28px] border border-slate-200 bg-white px-3 py-4 shadow-sm sm:px-5">
-          <div className="flex items-center justify-between border-b border-slate-100 px-2 pb-4">
+        <section className="mt-4 rounded-3xl border border-slate-200 bg-white px-2.5 py-3.5 shadow-sm sm:px-5">
+          <div className="flex items-center justify-between border-b border-slate-100 px-1.5 pb-3">
             <div>
-              <h2 className="text-base font-bold text-slate-900">Gallery</h2>
-              <p className="mt-0.5 text-xs text-slate-500">Photos and videos shared by {user?.username}</p>
+              <h2 className="text-sm font-bold text-slate-900">Gallery</h2>
+              <p className="mt-0.5 text-[11px] text-slate-500">Photos and videos shared by {user?.username}</p>
             </div>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
-              <Link2 size={12} /> {posts.length}
+            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">
+              <Link2 size={11} /> {posts.length}
             </span>
           </div>
 
           {posts.length > 0 ? (
-            <div className="mt-4 grid grid-cols-3 gap-1.5 sm:gap-3">
-              {posts.map((post) => (
-                <MediaTile key={post.postId} post={post} />
-              ))}
+            <div className="mt-3 grid grid-cols-3 gap-1 sm:gap-2.5">
+              {posts.map((post) => <MediaTile key={post.postId} post={post} />)}
             </div>
           ) : (
-            <div className="flex min-h-56 flex-col items-center justify-center px-6 py-12 text-center">
-              <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 text-slate-500">
-                <Link2 size={22} />
+            <div className="flex min-h-48 flex-col items-center justify-center px-6 py-10 text-center">
+              <div className="mb-3 inline-flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-500">
+                <Link2 size={20} />
               </div>
               <h3 className="text-sm font-bold text-slate-900">No posts yet</h3>
-              <p className="mt-1 max-w-sm text-xs leading-5 text-slate-500">
+              <p className="mt-1 max-w-sm text-[11px] leading-5 text-slate-500">
                 {isSelf ? "Share your first photo or video and it will appear here." : "Posts from this profile will appear here when they are shared."}
               </p>
             </div>
