@@ -64,7 +64,7 @@ export default function SettingsDetailPage({ section = "privacy" }) {
     let total = 0;
     for (let i = 0; i < localStorage.length; i += 1) { const key = localStorage.key(i); const value = key ? localStorage.getItem(key) || "" : ""; if (key?.startsWith(SETTINGS_PREFIX)) total += key.length + value.length; }
     return total;
-  }, [message]);
+  }, []);
 
   const save = (key, value, setter) => { setter(value); localStorage.setItem(`${SETTINGS_PREFIX}${key}`, String(value)); setMessage("Saved on this device."); };
   const clearLocalData = () => { Object.keys(localStorage).filter((key) => key.startsWith(SETTINGS_PREFIX)).forEach((key) => localStorage.removeItem(key)); setMessage("Notell local preferences and cache were cleared."); };
