@@ -9,6 +9,7 @@ import UserManage from "../components/userManager/UserManager";
 import UserPage from "../pages/UserPage";
 import { FollowersPage, FollowingPage } from "../pages/RelationshipListPage";
 import SearchPage from "../pages/SearchPage";
+import NotificationsPage from "../pages/NotificationsPage";
 import SettingsPage from "../pages/SettingsPage";
 import SettingsDetailPage from "../pages/SettingsDetailPage";
 import AppLayout from "../layout/AppLayout";
@@ -32,6 +33,7 @@ const router = createBrowserRouter([
               { path: "/", element: <Posts /> },
               { path: "create-post", element: <CreatePost /> },
               { path: "profile", element: <UserManage /> },
+              { path: "notifications", element: <NotificationsPage /> },
               { path: "settings", element: <SettingsPage /> },
               { path: "settings/privacy", element: <SettingsDetailPage section="privacy" /> },
               { path: "settings/content", element: <SettingsDetailPage section="content" /> },
