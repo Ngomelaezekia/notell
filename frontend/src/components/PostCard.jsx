@@ -81,7 +81,12 @@ export const PostCard = ({ post, onPostDeleted }) => {
 
   const handleLike = async () => {
     if (!postId || likeLoading) return;
+
+    const previousLiked = liked;
     setLikeLoading(true);
+    setLiked(!previousLiked);
+    setLikeCount((current) => Math.max(0, current + (previousLiked ? -1 : 1)));
+
     try {
       const response = await toggleLike(postId);
       const nextLiked = Boolean(response?.liked);
@@ -89,30 +94,31 @@ export const PostCard = ({ post, onPostDeleted }) => {
 
       if (typeof response?.likeCount === "number") {
         setLikeCount(response.likeCount);
-      } else {
-        setLikeCount((current) => {
-          if (nextLiked === liked) return current;
-          return Math.max(0, current + (nextLiked ? 1 : -1));
-        });
       }
     } catch (error) {
+      setLiked(previousLiked);
+      setLikeCount((current) => Math.max(0, current + (previousLiked ? 1 : -1)));
       console.error(error);
     } finally {
       setLikeLoading(false);
     }
   };
 
+  const handleMediaDoubleClick = () => {
+    if (!liked && !likeLoading) handleLike();
+  };
+
   return (
-    <article className="border-b border-neutral-800 py-5 first:pt-5 last:border-b-0">
-      <header className="flex items-center justify-between px-1">
+    <article className="border-b border-neutral-800 py-4 first:pt-3 last:border-b-0 sm:py-5 sm:first:pt-4">
+      <header className="flex items-center justify-between px-1 sm:px-0">
         <button
           type="button"
           onClick={openAuthorProfile}
           disabled={!authorId}
-          className="group flex min-w-0 items-center gap-3 rounded-xl text-left transition disabled:cursor-default"
+          className="group flex min-w-0 items-center gap-2.5 rounded-xl text-left transition disabled:cursor-default sm:gap-3"
           aria-label={`View ${username}'s profile`}
         >
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-neutral-700 bg-neutral-800 font-semibold text-neutral-300 transition group-hover:border-neutral-500 group-hover:ring-2 group-hover:ring-neutral-800">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-neutral-700 bg-neutral-800 text-sm font-semibold text-neutral-300 transition group-hover:border-neutral-500 group-hover:ring-2 group-hover:ring-neutral-800 sm:h-10 sm:w-10">
             {avatar ? (
               <img src={avatar} alt={`${username} avatar`} className="h-full w-full object-cover" />
             ) : (
@@ -123,7 +129,7 @@ export const PostCard = ({ post, onPostDeleted }) => {
             <h3 className="truncate text-sm font-semibold text-neutral-100 group-hover:underline">
               {username}
             </h3>
-            <p className="text-xs text-neutral-500" title={post?.createdAt ? new Date(post.createdAt).toLocaleString() : undefined}>
+            <p className="text-[11px] text-neutral-500 sm:text-xs" title={post?.createdAt ? new Date(post.createdAt).toLocaleString() : undefined}>
               {formatRelativeTime(post?.createdAt)}
             </p>
           </div>
@@ -157,46 +163,78 @@ export const PostCard = ({ post, onPostDeleted }) => {
       </header>
 
       {mediaUrl && (
-        <div className="mt-3 max-h-[620px] overflow-hidden rounded-xl border border-neutral-800 bg-black">
+        <div
+          className="group/media mt-2.5 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950 sm:mt-3 sm:rounded-2xl"
+          onDoubleClick={handleMediaDoubleClick}
+        >
           {post?.contentType === "video" ? (
-            <video src={mediaUrl} controls className="max-h-[620px] w-full object-contain" />
+            <video
+              src={mediaUrl}
+              controls
+              playsInline
+              className="block max-h-[min(72dvh,620px)] w-full object-contain"
+            />
           ) : (
-            <img src={mediaUrl} alt={post?.caption || "Post"} className="max-h-[620px] w-full object-contain" />
+            <img
+              src={mediaUrl}
+              alt={post?.caption || "Post"}
+              className="mx-auto block max-h-[min(72dvh,620px)] w-full object-contain"
+              loading="lazy"
+              draggable="false"
+            />
           )}
         </div>
       )}
 
-      <section className="px-1 pt-3">
-        <div className="flex items-center gap-6">
-          <button
-            type="button"
-            onClick={handleLike}
-            disabled={likeLoading}
-            aria-pressed={liked}
-            className={`flex items-center gap-2 text-sm transition disabled:opacity-60 ${
-              liked ? "text-red-500" : "text-neutral-400 hover:text-red-400"
-            }`}
-          >
-            {likeLoading ? (
-              <Loader2 size={19} className="animate-spin" />
-            ) : (
-              <Heart size={19} fill={liked ? "currentColor" : "none"} />
-            )}
-            <span>{likeCount}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowComments((previous) => !previous)}
-            className="flex items-center gap-2 text-sm text-neutral-400 transition hover:text-neutral-200"
-            aria-expanded={showComments}
-          >
-            <MessageSquare size={19} />
-            <span>Comment</span>
-          </button>
+      <section className="px-1 pt-2.5 sm:px-0 sm:pt-3">
+        <div className="flex items-center justify-between border-b border-neutral-900 pb-2.5 sm:pb-3">
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={handleLike}
+              disabled={likeLoading}
+              aria-pressed={liked}
+              aria-label={liked ? "Unlike post" : "Like post"}
+              className={`group flex min-h-9 items-center gap-2 rounded-full px-2.5 text-sm font-medium transition active:scale-95 disabled:cursor-wait disabled:opacity-70 sm:px-3 ${
+                liked
+                  ? "text-red-500 hover:bg-red-500/10"
+                  : "text-neutral-400 hover:bg-neutral-900 hover:text-neutral-100"
+              }`}
+            >
+              <Heart
+                size={19}
+                strokeWidth={liked ? 2.5 : 2}
+                fill={liked ? "currentColor" : "none"}
+                className="transition-transform duration-200 group-hover:scale-110"
+              />
+              <span className="tabular-nums">{likeCount}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowComments((previous) => !previous)}
+              className={`group flex min-h-9 items-center gap-2 rounded-full px-2.5 text-sm font-medium transition active:scale-95 sm:px-3 ${
+                showComments
+                  ? "bg-neutral-900 text-neutral-100"
+                  : "text-neutral-400 hover:bg-neutral-900 hover:text-neutral-100"
+              }`}
+              aria-expanded={showComments}
+              aria-label={showComments ? "Hide comments" : "Show comments"}
+            >
+              <MessageSquare size={19} strokeWidth={2} className="transition-transform duration-200 group-hover:scale-105" />
+              <span>Comment</span>
+            </button>
+          </div>
+
+          {likeCount > 0 && (
+            <span className="pr-1 text-[11px] text-neutral-600 sm:text-xs">
+              {likeCount === 1 ? "1 like" : `${likeCount} likes`}
+            </span>
+          )}
         </div>
 
         {post?.caption && (
-          <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-neutral-200">
+          <p className="mt-2.5 whitespace-pre-wrap text-sm leading-6 text-neutral-200 sm:mt-3">
             <button
               type="button"
               onClick={openAuthorProfile}
