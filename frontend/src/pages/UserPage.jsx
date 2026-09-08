@@ -7,8 +7,10 @@ import {
   Link2,
   Loader2,
   MapPin,
+  MessageCircle,
   MoreVertical,
   Play,
+  Settings,
   UserPlus,
   UserRound,
   Users as UsersIcon,
@@ -36,14 +38,17 @@ const extractBioLinks = (bio = "") => {
   return [...new Set(matches.map(cleanUrl))].slice(0, 5);
 };
 
-const Stat = ({ label, value, onClick }) => (
+const Stat = ({ label, value, icon: Icon, onClick }) => (
   <button
     type="button"
     onClick={onClick}
-    className="group min-w-[92px] rounded-xl px-2 py-1.5 text-center transition hover:bg-slate-50"
+    className="group flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl px-2 py-2 text-center transition hover:bg-white/10"
   >
-    <div className="text-base font-bold text-slate-900 group-hover:text-indigo-600">{value ?? 0}</div>
-    <div className="text-[11px] font-medium text-slate-500">{label}</div>
+    <Icon size={17} strokeWidth={1.8} className="text-white/75" />
+    <span>
+      <span className="block text-base font-bold leading-5 text-white">{value ?? 0}</span>
+      <span className="block text-[10px] font-medium uppercase tracking-wide text-white/55 group-hover:text-white/75">{label}</span>
+    </span>
   </button>
 );
 
@@ -54,39 +59,81 @@ const MediaTile = ({ post }) => {
   return (
     <Link
       to={`/posts/${post?.postId}`}
-      className="group relative aspect-square overflow-hidden rounded-xl bg-slate-100 shadow-sm ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:shadow-md"
+      className="group relative aspect-square overflow-hidden rounded-2xl bg-slate-900 ring-1 ring-white/10 transition hover:-translate-y-0.5 hover:ring-white/20"
     >
       {isVideo ? (
-        <video src={mediaUrl} muted playsInline preload="metadata" className="h-full w-full object-cover transition duration-300 group-hover:scale-105" />
+        <video
+          src={mediaUrl}
+          muted
+          playsInline
+          preload="metadata"
+          className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+        />
       ) : (
-        <img src={mediaUrl} alt={post?.caption || "Post"} loading="lazy" className="h-full w-full object-cover transition duration-300 group-hover:scale-105" />
+        <img
+          src={mediaUrl}
+          alt={post?.caption || "Post"}
+          loading="lazy"
+          className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+        />
       )}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent opacity-0 transition group-hover:opacity-100" />
-      {isVideo && <span className="absolute right-2.5 top-2.5 inline-flex h-8 w-8 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm"><Play size={14} fill="currentColor" /></span>}
-      {post?.caption && <span className="absolute bottom-2.5 left-2.5 right-2.5 line-clamp-2 text-[11px] font-medium text-white opacity-0 transition group-hover:opacity-100">{post.caption}</span>}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 transition group-hover:opacity-100" />
+      {isVideo && (
+        <span className="absolute right-2.5 top-2.5 inline-flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm">
+          <Play size={14} fill="currentColor" />
+        </span>
+      )}
+      {post?.caption && (
+        <span className="absolute bottom-2.5 left-2.5 right-2.5 line-clamp-2 text-[11px] font-medium text-white opacity-0 transition group-hover:opacity-100">
+          {post.caption}
+        </span>
+      )}
     </Link>
   );
 };
 
 const RelationshipPanel = ({ type, users, loading, error, onClose }) => {
   const title = type === "followers" ? "Followers" : "Following";
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/35 p-0 backdrop-blur-[2px] sm:items-center sm:p-5" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section className="flex max-h-[78vh] w-full flex-col overflow-hidden rounded-t-3xl border border-slate-200 bg-white shadow-2xl sm:max-w-md sm:rounded-3xl" role="dialog" aria-modal="true" aria-label={title}>
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-5"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        className="flex max-h-[78vh] w-full flex-col overflow-hidden rounded-t-3xl border border-slate-200 bg-white shadow-2xl sm:max-w-md sm:rounded-3xl"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+      >
         <header className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <div>
             <h2 className="text-base font-bold text-slate-950">{title}</h2>
             <p className="mt-0.5 text-[11px] text-slate-500">People connected to this profile</p>
           </div>
-          <button type="button" onClick={onClose} aria-label="Close" className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"><X size={18} /></button>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+          >
+            <X size={18} />
+          </button>
         </header>
 
         {loading ? (
-          <div className="flex min-h-52 items-center justify-center text-slate-500"><Loader2 size={22} className="animate-spin" /></div>
+          <div className="flex min-h-52 items-center justify-center text-slate-500">
+            <Loader2 size={22} className="animate-spin" />
+          </div>
         ) : error && users.length === 0 ? (
           <div className="p-8 text-center text-sm text-red-600">{error}</div>
         ) : users.length === 0 ? (
-          <div className="flex min-h-52 flex-col items-center justify-center p-8 text-center"><UserRound size={32} className="text-slate-300" /><p className="mt-3 text-sm font-medium text-slate-600">No {type} yet</p></div>
+          <div className="flex min-h-52 flex-col items-center justify-center p-8 text-center">
+            <UserRound size={32} className="text-slate-300" />
+            <p className="mt-3 text-sm font-medium text-slate-600">No {type} yet</p>
+          </div>
         ) : (
           <div className="overflow-y-auto">
             {error && <div className="border-b border-red-100 bg-red-50 px-5 py-3 text-xs text-red-600">{error}</div>}
@@ -94,7 +141,12 @@ const RelationshipPanel = ({ type, users, loading, error, onClose }) => {
               {users.map((person) => {
                 const avatar = getFileUrl(person.profilePicture);
                 return (
-                  <Link key={person.id} to={`/users/${person.id}`} onClick={onClose} className="flex items-center gap-3 px-5 py-3.5 transition hover:bg-slate-50">
+                  <Link
+                    key={person.id}
+                    to={`/users/${person.id}`}
+                    onClick={onClose}
+                    className="flex items-center gap-3 px-5 py-3.5 transition hover:bg-slate-50"
+                  >
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-100 font-semibold text-slate-600">
                       {avatar ? <img src={avatar} alt={`${person.username} avatar`} className="h-full w-full object-cover" /> : person.username?.charAt(0).toUpperCase()}
                     </div>
@@ -131,7 +183,10 @@ export const Users = () => {
     setLoading(true);
     setError(null);
     try {
-      const [profileResponse, relationshipResponse] = await Promise.all([userAPI.getProfile(id), userAPI.getRelationship(id)]);
+      const [profileResponse, relationshipResponse] = await Promise.all([
+        userAPI.getProfile(id),
+        userAPI.getRelationship(id),
+      ]);
       setUser(profileResponse?.data?.user ?? null);
       setRelationship(relationshipResponse?.data ?? null);
     } catch (err) {
@@ -141,7 +196,9 @@ export const Users = () => {
     }
   }, [id]);
 
-  useEffect(() => { loadProfile(); }, [loadProfile]);
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile]);
 
   const openRelationshipPanel = async (type) => {
     if (!id) return;
@@ -168,10 +225,18 @@ export const Users = () => {
     try {
       if (relationship.following) {
         await userAPI.unfollowUser(id);
-        setRelationship((current) => ({ ...current, following: false, followerCount: Math.max(0, (current?.followerCount ?? 1) - 1) }));
+        setRelationship((current) => ({
+          ...current,
+          following: false,
+          followerCount: Math.max(0, (current?.followerCount ?? 1) - 1),
+        }));
       } else {
         await userAPI.followUser(id);
-        setRelationship((current) => ({ ...current, following: true, followerCount: (current?.followerCount ?? 0) + 1 }));
+        setRelationship((current) => ({
+          ...current,
+          following: true,
+          followerCount: (current?.followerCount ?? 0) + 1,
+        }));
       }
     } catch (err) {
       setError(err.response?.data?.message || "Failed to update follow status");
@@ -184,66 +249,202 @@ export const Users = () => {
   const cover = getFileUrl(user?.coverPicture);
   const posts = Array.isArray(user?.posts) ? user.posts : [];
   const bioLinks = useMemo(() => extractBioLinks(user?.bio), [user?.bio]);
-  const joined = user?.createdAt ? new Date(user.createdAt).toLocaleDateString(undefined, { month: "long", year: "numeric" }) : "";
+  const joined = user?.createdAt
+    ? new Date(user.createdAt).toLocaleDateString(undefined, { month: "short", year: "numeric" })
+    : "";
   const isSelf = Boolean(relationship?.isSelf);
 
-  if (loading) return <div className="flex min-h-[60vh] items-center justify-center text-slate-500"><Loader2 className="animate-spin" size={24} /></div>;
+  if (loading) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center bg-slate-950 text-white">
+        <Loader2 className="animate-spin" size={24} />
+      </div>
+    );
+  }
 
   if (error && !user) {
-    return <div className="mx-auto max-w-xl p-6"><Link to="/" className="mb-5 inline-flex items-center gap-2 text-sm font-medium text-slate-600"><ArrowLeft size={17} /> Back to home</Link><div className="rounded-3xl border border-red-100 bg-white p-8 text-center text-red-600 shadow-sm">{error}</div></div>;
+    return (
+      <div className="mx-auto max-w-xl p-6">
+        <Link to="/" className="mb-5 inline-flex items-center gap-2 text-sm font-medium text-slate-600">
+          <ArrowLeft size={17} /> Back to home
+        </Link>
+        <div className="rounded-3xl border border-red-100 bg-white p-8 text-center text-red-600 shadow-sm">{error}</div>
+      </div>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-8">
-      <div className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl">
-        <div className="mx-auto flex h-14 w-full max-w-4xl items-center justify-between px-3 sm:px-6">
-          <Link to="/" aria-label="Back to home" className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-700 transition hover:bg-slate-100 hover:text-slate-950"><ArrowLeft size={20} /></Link>
-          <div className="flex min-w-0 items-center gap-2"><span className="truncate text-sm font-semibold text-slate-900">{user?.username}</span>{user?.status && user.status !== "free" && <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-600">{user.status}</span>}</div>
-          {isSelf ? <Link to="/settings" aria-label="Website settings" className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-700 transition hover:bg-slate-100 hover:text-slate-950"><MoreVertical size={20} /></Link> : <button type="button" aria-label="Profile menu" className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-400"><MoreVertical size={20} /></button>}
+    <div className="min-h-screen w-full bg-slate-950 pb-24 text-white lg:pb-8">
+      <div className="mx-auto w-full max-w-6xl">
+        <div className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-white/10 bg-slate-950/85 px-4 backdrop-blur-xl sm:px-6">
+          <Link
+            to="/"
+            aria-label="Back to home"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full text-white/80 transition hover:bg-white/10 hover:text-white"
+          >
+            <ArrowLeft size={20} />
+          </Link>
+          <div className="min-w-0 text-center">
+            <span className="truncate text-sm font-semibold text-white">{user?.username}</span>
+            {user?.status && user.status !== "free" && (
+              <span className="ml-2 rounded-full border border-orange-300/40 bg-orange-400/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-orange-300">
+                {user.status}
+              </span>
+            )}
+          </div>
+          {isSelf ? (
+            <Link
+              to="/settings"
+              aria-label="Profile settings"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full text-white/80 transition hover:bg-white/10 hover:text-white"
+            >
+              <Settings size={19} />
+            </Link>
+          ) : (
+            <button type="button" aria-label="Profile menu" className="inline-flex h-9 w-9 items-center justify-center rounded-full text-white/45">
+              <MoreVertical size={20} />
+            </button>
+          )}
         </div>
-      </div>
 
-      <main className="mx-auto w-full max-w-4xl px-2.5 pt-2 sm:px-6 sm:pt-4">
-        <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-          <div className="relative h-24 overflow-hidden bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-800 sm:h-32">{cover && <img src={cover} alt={`${user?.username} cover`} className="h-full w-full object-cover" />}<div className="absolute inset-0 bg-gradient-to-t from-black/40 via-black/5 to-transparent" /></div>
+        <section className="relative overflow-hidden border-b border-white/10 bg-black lg:rounded-b-[32px] lg:border-x lg:border-white/10">
+          <div className="relative h-48 overflow-hidden bg-gradient-to-br from-slate-800 via-slate-700 to-slate-950 sm:h-64 lg:h-80">
+            {cover && <img src={cover} alt={`${user?.username} cover`} className="h-full w-full object-cover" />}
+            <div className="absolute inset-0 bg-gradient-to-b from-black/5 via-black/10 to-black/90" />
+            <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black to-transparent" />
+          </div>
 
-          <div className="px-4 pb-4 sm:px-7 sm:pb-5">
-            <div className="-mt-10 flex flex-col gap-3 sm:-mt-12 sm:flex-row sm:items-end sm:justify-between">
-              <div className="flex min-w-0 items-end gap-3">
-                <div className="relative h-20 w-20 shrink-0 sm:h-24 sm:w-24">
-                  <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full border-4 border-white bg-slate-100 text-2xl font-bold text-slate-700 shadow-md">{avatar ? <img src={avatar} alt={`${user?.username} avatar`} className="h-full w-full object-cover" /> : user?.username?.charAt(0).toUpperCase()}</div>
-                  {isSelf && <Link to="/profile" aria-label="Edit profile picture" className="absolute bottom-[-2px] right-[-2px] inline-flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-slate-900 text-white shadow transition hover:scale-105 hover:bg-indigo-600"><Camera size={14} /></Link>}
+          <div className="relative mx-auto max-w-4xl px-4 pb-5 sm:px-6 lg:px-8">
+            <div className="-mt-14 flex flex-col items-center sm:-mt-16 lg:-mt-20">
+              <div className="relative">
+                <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-full border-4 border-black bg-slate-800 text-3xl font-bold text-white shadow-2xl sm:h-32 sm:w-32">
+                  {avatar ? <img src={avatar} alt={`${user?.username} avatar`} className="h-full w-full object-cover" /> : user?.username?.charAt(0).toUpperCase()}
                 </div>
-                <div className="min-w-0 pb-0.5"><h1 className="truncate text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">{user?.username}</h1>{joined && <p className="mt-0.5 text-[11px] text-slate-500">Joined {joined}</p>}</div>
+                {isSelf && (
+                  <Link
+                    to="/profile"
+                    aria-label="Edit profile picture"
+                    className="absolute bottom-1 right-0 inline-flex h-9 w-9 items-center justify-center rounded-full border-2 border-black bg-slate-800 text-white shadow-lg transition hover:bg-orange-500"
+                  >
+                    <Camera size={15} />
+                  </Link>
+                )}
               </div>
 
-              {!isSelf && <button type="button" onClick={handleFollow} disabled={actionLoading || (!relationship?.following && !relationship?.allowFollowers)} className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50 ${relationship?.following ? "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50" : "bg-slate-950 text-white hover:bg-indigo-700"}`}>{actionLoading ? <Loader2 size={15} className="animate-spin" /> : relationship?.following ? <Check size={15} /> : <UserPlus size={15} />}{relationship?.following ? "Following" : relationship?.allowFollowers ? "Follow" : "Followers disabled"}</button>}
+              <div className="mt-3 text-center">
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">{user?.username}</h1>
+                  {user?.status && user.status !== "free" && (
+                    <span className="rounded-full border border-orange-400/60 bg-orange-400/10 px-2.5 py-1 text-[9px] font-bold uppercase tracking-widest text-orange-300">
+                      {user.status}
+                    </span>
+                  )}
+                </div>
+                {joined && <p className="mt-1 text-[11px] text-white/50">Member since {joined}</p>}
+                {(user?.city || user?.country) && (
+                  <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-white/55">
+                    <MapPin size={13} />
+                    {[user.city, user.country].filter(Boolean).join(", ")}
+                  </div>
+                )}
+                {user?.bio && <p className="mx-auto mt-3 max-w-xl whitespace-pre-line text-sm leading-5 text-white/70">{user.bio}</p>}
+                {bioLinks.length > 0 && (
+                  <div className="mt-2 flex flex-wrap justify-center gap-1.5">
+                    {bioLinks.map((url) => (
+                      <a
+                        key={url}
+                        href={url}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-semibold text-white/75 transition hover:bg-white/10 hover:text-white"
+                      >
+                        <Link2 size={11} />
+                        {getLinkLabel(url)}
+                        <ExternalLink size={9} />
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {!isSelf && (
+                <div className="mt-5 flex w-full max-w-md gap-2">
+                  <button
+                    type="button"
+                    onClick={handleFollow}
+                    disabled={actionLoading || (!relationship?.following && !relationship?.allowFollowers)}
+                    className={`flex-1 inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${relationship?.following ? "border border-white/15 bg-white/10 text-white hover:bg-white/15" : "bg-orange-500 text-white hover:bg-orange-400"}`}
+                  >
+                    {actionLoading ? <Loader2 size={15} className="animate-spin" /> : relationship?.following ? <Check size={15} /> : <UserPlus size={15} />}
+                    {relationship?.following ? "Following" : relationship?.allowFollowers ? "Follow" : "Followers disabled"}
+                  </button>
+                  <button
+                    type="button"
+                    className="flex-1 inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-orange-500/70 bg-transparent px-4 text-xs font-bold text-orange-300 transition hover:bg-orange-500/10"
+                  >
+                    <MessageCircle size={15} />
+                    Chat
+                  </button>
+                </div>
+              )}
             </div>
 
-            <div className="mt-3 max-w-3xl">
-              {user?.bio && <p className="whitespace-pre-line text-sm leading-5 text-slate-700">{user.bio}</p>}
-              {(user?.city || user?.country) && <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-500"><MapPin size={13} />{[user.city, user.country].filter(Boolean).join(", ")}</div>}
-              {bioLinks.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{bioLinks.map((url) => <a key={url} href={url} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"><Link2 size={12} />{getLinkLabel(url)}<ExternalLink size={10} /></a>)}</div>}
+            <div className="mt-5 flex w-full max-w-xl mx-auto items-center rounded-2xl border border-white/10 bg-white/[0.04] p-1">
+              <Stat label="Posts" value={posts.length} icon={Camera} />
+              <div className="h-8 w-px bg-white/10" />
+              <Stat label="Followers" value={relationship?.followerCount} icon={UsersIcon} onClick={() => void openRelationshipPanel("followers")} />
+              <div className="h-8 w-px bg-white/10" />
+              <Stat label="Following" value={relationship?.followingCount} icon={UserRound} onClick={() => void openRelationshipPanel("following")} />
             </div>
 
-            <div className="mt-3 flex flex-wrap items-center gap-1 border-t border-slate-100 pt-2.5 sm:gap-2">
-              <Stat label="Followers" value={relationship?.followerCount} onClick={() => void openRelationshipPanel("followers")} />
-              <Stat label="Following" value={relationship?.followingCount} onClick={() => void openRelationshipPanel("following")} />
-              <div className="flex min-w-[92px] flex-col items-center px-2 py-1.5 text-center"><div className="text-base font-bold text-slate-900">{posts.length}</div><div className="text-[11px] font-medium text-slate-500">Posts</div></div>
-            </div>
-
-            {relationship?.follower && !relationship?.following && <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-slate-500"><UsersIcon size={13} /> This user follows you</div>}
-            {error && <p className="mt-3 text-xs text-red-600">{error}</p>}
+            {relationship?.follower && !relationship?.following && (
+              <div className="mt-3 text-center text-[10px] text-white/45">
+                <UsersIcon size={12} className="mr-1 inline" /> This user follows you
+              </div>
+            )}
+            {error && <p className="mt-3 text-center text-xs text-red-400">{error}</p>}
           </div>
         </section>
 
-        <section className="mt-4 rounded-3xl border border-slate-200 bg-white px-2.5 py-3.5 shadow-sm sm:px-5">
-          <div className="flex items-center justify-between border-b border-slate-100 px-1.5 pb-3"><div><h2 className="text-sm font-bold text-slate-900">Gallery</h2><p className="mt-0.5 text-[11px] text-slate-500">Photos and videos shared by {user?.username}</p></div><span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600"><Link2 size={11} /> {posts.length}</span></div>
-          {posts.length > 0 ? <div className="mt-3 grid grid-cols-3 gap-1 sm:gap-2.5">{posts.map((post) => <MediaTile key={post.postId} post={post} />)}</div> : <div className="flex min-h-48 flex-col items-center justify-center px-6 py-10 text-center"><div className="mb-3 inline-flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-500"><Link2 size={20} /></div><h3 className="text-sm font-bold text-slate-900">No posts yet</h3><p className="mt-1 max-w-sm text-[11px] leading-5 text-slate-500">{isSelf ? "Share your first photo or video and it will appear here." : "Posts from this profile will appear here when they are shared."}</p></div>}
-        </section>
-      </main>
+        <section className="mx-auto mt-3 max-w-6xl px-3 sm:px-6">
+          <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-2 shadow-2xl shadow-black/20 sm:p-4">
+            <div className="flex items-center justify-between border-b border-white/10 px-2 pb-3 sm:px-3">
+              <div>
+                <h2 className="text-sm font-bold text-white">All Posts</h2>
+                <p className="mt-0.5 text-[10px] text-white/40">Photos and videos from {user?.username}</p>
+              </div>
+              <button type="button" className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[10px] font-semibold text-white/60 transition hover:bg-white/10 hover:text-white">
+                Newest
+                <MoreVertical size={13} className="rotate-90" />
+              </button>
+            </div>
 
-      {relationshipPanel && <RelationshipPanel type={relationshipPanel} users={relationshipUsers} loading={relationshipLoading} error={relationshipError} onClose={() => setRelationshipPanel(null)} />}
+            {posts.length === 0 ? (
+              <div className="flex min-h-64 flex-col items-center justify-center px-6 text-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/5 text-white/35">
+                  <Camera size={23} />
+                </div>
+                <h3 className="mt-4 text-sm font-semibold text-white/80">No posts yet</h3>
+                <p className="mt-1 max-w-xs text-xs leading-5 text-white/40">Posts, images and videos will appear here when this profile shares them.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2 pt-3 sm:grid-cols-3 sm:gap-3 lg:grid-cols-4">
+                {posts.map((post) => <MediaTile key={post.postId} post={post} />)}
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+
+      {relationshipPanel && (
+        <RelationshipPanel
+          type={relationshipPanel}
+          users={relationshipUsers}
+          loading={relationshipLoading}
+          error={relationshipError}
+          onClose={() => setRelationshipPanel(null)}
+        />
+      )}
     </div>
   );
 };
