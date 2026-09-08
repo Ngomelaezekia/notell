@@ -120,8 +120,8 @@ export const PostCard = ({ post, onPostDeleted }) => {
   };
 
   return (
-    <article className="border-b border-neutral-800 py-4 first:pt-3 last:border-b-0 sm:py-5 sm:first:pt-4">
-      <header className="flex items-center justify-between gap-3 px-1 sm:px-0">
+    <article className="overflow-hidden rounded-2xl border border-neutral-900 bg-neutral-950/70 shadow-[0_8px_30px_rgba(0,0,0,0.12)] transition-colors hover:border-neutral-800 sm:rounded-[1.35rem]">
+      <header className="flex items-center justify-between gap-3 px-3 py-3 sm:px-4 sm:py-3.5">
         <button
           type="button"
           onClick={openAuthorProfile}
@@ -182,7 +182,7 @@ export const PostCard = ({ post, onPostDeleted }) => {
 
       {mediaUrl && (
         <div
-          className="group/media mt-2.5 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950 sm:mt-3 sm:rounded-2xl"
+          className="group/media relative overflow-hidden border-y border-neutral-900 bg-black"
           onDoubleClick={handleMediaDoubleClick}
         >
           {post?.contentType === "video" ? (
@@ -204,8 +204,8 @@ export const PostCard = ({ post, onPostDeleted }) => {
         </div>
       )}
 
-      <section className="px-1 pt-2.5 sm:px-0 sm:pt-3">
-        <div className="flex items-center justify-between border-b border-neutral-900 pb-2.5 sm:pb-3">
+      <section className="px-3 pb-3 sm:px-4 sm:pb-4">
+        <div className="flex items-center justify-between pt-2.5 sm:pt-3">
           <div className="flex items-center gap-1">
             <button
               type="button"
@@ -215,7 +215,7 @@ export const PostCard = ({ post, onPostDeleted }) => {
               aria-label={liked ? "Unlike post" : "Like post"}
               className={`group flex min-h-9 items-center gap-2 rounded-full px-2.5 text-sm font-medium transition active:scale-95 disabled:cursor-wait disabled:opacity-70 sm:px-3 ${
                 liked
-                  ? "text-red-500 hover:bg-red-500/10"
+                  ? "bg-red-500/10 text-red-500 hover:bg-red-500/15"
                   : "text-neutral-400 hover:bg-neutral-900 hover:text-neutral-100"
               }`}
             >
