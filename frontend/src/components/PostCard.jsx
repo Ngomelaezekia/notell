@@ -50,6 +50,7 @@ export const PostCard = ({ post, onPostDeleted }) => {
   const [showFullCaption, setShowFullCaption] = useState(false);
   const [liked, setLiked] = useState(post?.liked ?? false);
   const [likeCount, setLikeCount] = useState(post?.likeCount ?? 0);
+  const [commentCount, setCommentCount] = useState(post?.commentCount ?? 0);
   const [likeLoading, setLikeLoading] = useState(false);
 
   const postId = post?.postId;
@@ -68,8 +69,9 @@ export const PostCard = ({ post, onPostDeleted }) => {
   useEffect(() => {
     setLiked(Boolean(post?.liked));
     setLikeCount(Number(post?.likeCount ?? 0));
+    setCommentCount(Number(post?.commentCount ?? 0));
     setShowFullCaption(false);
-  }, [post?.postId, post?.liked, post?.likeCount]);
+  }, [post?.postId, post?.liked, post?.likeCount, post?.commentCount]);
 
   const openAuthorProfile = () => {
     if (!authorId) return;
@@ -239,6 +241,7 @@ export const PostCard = ({ post, onPostDeleted }) => {
             >
               <MessageSquare size={19} strokeWidth={2} className="transition-transform duration-200 group-hover:scale-105" />
               <span>Comment</span>
+              <span className="tabular-nums">{commentCount}</span>
             </button>
           </div>
 
@@ -274,7 +277,12 @@ export const PostCard = ({ post, onPostDeleted }) => {
           </div>
         )}
 
-        {showComments && <CommentSection postId={postId} />}
+        {showComments && (
+          <CommentSection
+            postId={postId}
+            onCommentCountChange={setCommentCount}
+          />
+        )}
       </section>
     </article>
   );
