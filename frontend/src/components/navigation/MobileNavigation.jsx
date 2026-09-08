@@ -1,8 +1,10 @@
 import { Link, useLocation } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
 import { mainNavigation } from "../../config/navigation.config";
 
 export default function MobileNavbar() {
   const { pathname } = useLocation();
+  const { user } = useAuth();
 
   const mobileItems = mainNavigation.filter(({ showIn }) =>
     showIn.includes("mobile")
@@ -12,7 +14,10 @@ export default function MobileNavbar() {
     <nav className="pointer-events-none fixed inset-x-0 bottom-0 z-50 px-3 pb-3 lg:hidden">
       <div className="pointer-events-auto mx-auto flex h-16 max-w-sm items-center justify-around rounded-[22px] border border-neutral-800/90 bg-neutral-950/95 px-2 shadow-[0_-12px_40px_rgba(0,0,0,0.35)] backdrop-blur-2xl">
         {mobileItems.map(({ name, path, icon: Icon, isCreate }) => {
-          const isActive = pathname === path;
+          const isProfileRoute = path === "/user";
+          const isActive =
+            pathname === path ||
+            (isProfileRoute && user?.id && pathname === `/users/${user.id}`);
 
           if (isCreate) {
             return (
