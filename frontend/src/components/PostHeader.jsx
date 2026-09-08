@@ -6,7 +6,7 @@ export const Headerposts = ({ title = "Feed" }) => {
   const navigate = useNavigate();
 
   return (
-    <header className="sticky top-0 z-20 flex w-full items-center justify-between border-b border-neutral-800 bg-neutral-950/80 px-4 py-3 backdrop-blur-md">
+    <header className="flex w-full shrink-0 items-center justify-between border-b border-neutral-800 bg-neutral-950 px-4 py-3">
       <h1 className="text-sm font-semibold text-neutral-200">{title}</h1>
       <button
         type="button"
