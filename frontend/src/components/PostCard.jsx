@@ -39,12 +39,15 @@ const formatRelativeTime = (value) => {
   return `${years}y`;
 };
 
+const CAPTION_PREVIEW_LENGTH = 220;
+
 export const PostCard = ({ post, onPostDeleted }) => {
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
   const { deletePost, toggleLike, loading } = usePostActions();
   const [showMenu, setShowMenu] = useState(false);
   const [showComments, setShowComments] = useState(false);
+  const [showFullCaption, setShowFullCaption] = useState(false);
   const [liked, setLiked] = useState(post?.liked ?? false);
   const [likeCount, setLikeCount] = useState(post?.likeCount ?? 0);
   const [likeLoading, setLikeLoading] = useState(false);
@@ -56,10 +59,16 @@ export const PostCard = ({ post, onPostDeleted }) => {
   const username = author?.username || "Anonymous";
   const authorId = author?.id ?? post?.userId;
   const isOwner = Boolean(currentUser?.id && currentUser.id === post?.userId);
+  const caption = post?.caption ?? "";
+  const hasLongCaption = caption.length > CAPTION_PREVIEW_LENGTH;
+  const visibleCaption = showFullCaption || !hasLongCaption
+    ? caption
+    : `${caption.slice(0, CAPTION_PREVIEW_LENGTH).trimEnd()}…`;
 
   useEffect(() => {
     setLiked(Boolean(post?.liked));
     setLikeCount(Number(post?.likeCount ?? 0));
+    setShowFullCaption(false);
   }, [post?.postId, post?.liked, post?.likeCount]);
 
   const openAuthorProfile = () => {
@@ -177,7 +186,7 @@ export const PostCard = ({ post, onPostDeleted }) => {
           ) : (
             <img
               src={mediaUrl}
-              alt={post?.caption || "Post"}
+              alt={caption || "Post"}
               className="mx-auto block max-h-[min(72dvh,620px)] w-full object-contain"
               loading="lazy"
               draggable="false"
@@ -233,18 +242,29 @@ export const PostCard = ({ post, onPostDeleted }) => {
           )}
         </div>
 
-        {post?.caption && (
-          <p className="mt-2.5 whitespace-pre-wrap text-sm leading-6 text-neutral-200 sm:mt-3">
-            <button
-              type="button"
-              onClick={openAuthorProfile}
-              disabled={!authorId}
-              className="mr-2 font-semibold text-neutral-100 hover:underline disabled:cursor-default"
-            >
-              {username}
-            </button>
-            {post.caption}
-          </p>
+        {caption && (
+          <div className="mt-2.5 text-sm leading-6 text-neutral-200 sm:mt-3">
+            <p className="whitespace-pre-wrap break-words">
+              <button
+                type="button"
+                onClick={openAuthorProfile}
+                disabled={!authorId}
+                className="mr-2 font-semibold text-neutral-100 hover:underline disabled:cursor-default"
+              >
+                {username}
+              </button>
+              {visibleCaption}
+            </p>
+            {hasLongCaption && (
+              <button
+                type="button"
+                onClick={() => setShowFullCaption((previous) => !previous)}
+                className="mt-1 text-xs font-semibold text-neutral-500 transition hover:text-neutral-200"
+              >
+                {showFullCaption ? "Show less" : "Read more"}
+              </button>
+            )}
+          </div>
         )}
 
         {showComments && <CommentSection postId={postId} />}
