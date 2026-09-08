@@ -1,19 +1,34 @@
+import { lazy, Suspense } from "react";
 import { createBrowserRouter, Outlet } from "react-router-dom";
 import { AuthProvider } from "../context/AuthContext";
 import { ProtectedRoute, PublicOnlyRoute } from "../components/RoutGuards";
-import AuthPage from "../pages/AuthPage";
-import Posts from "../pages/PostPage";
-import PostDetailPage from "../pages/PostDetailPage";
-import { CreatePost } from "../components/CreatePost";
-import UserManage from "../components/userManager/UserManager";
-import UserPage from "../pages/UserPage";
-import CurrentUserProfile from "../pages/CurrentUserProfile";
-import { FollowersPage, FollowingPage } from "../pages/RelationshipListPage";
-import SearchPage from "../pages/SearchPage";
-import NotificationsPage from "../pages/NotificationsPage";
-import SettingsPage from "../pages/SettingsPage";
-import SettingsDetailPage from "../pages/SettingsDetailPage";
 import AppLayout from "../layout/AppLayout";
+
+const AuthPage = lazy(() => import("../pages/AuthPage"));
+const Posts = lazy(() => import("../pages/PostPage"));
+const PostDetailPage = lazy(() => import("../pages/PostDetailPage"));
+const CreatePost = lazy(() => import("../components/CreatePost").then((module) => ({ default: module.CreatePost })));
+const UserManage = lazy(() => import("../components/userManager/UserManager"));
+const UserPage = lazy(() => import("../pages/UserPage"));
+const CurrentUserProfile = lazy(() => import("../pages/CurrentUserProfile"));
+const FollowersPage = lazy(() => import("../pages/RelationshipListPage").then((module) => ({ default: module.FollowersPage })));
+const FollowingPage = lazy(() => import("../pages/RelationshipListPage").then((module) => ({ default: module.FollowingPage })));
+const SearchPage = lazy(() => import("../pages/SearchPage"));
+const NotificationsPage = lazy(() => import("../pages/NotificationsPage"));
+const SettingsPage = lazy(() => import("../pages/SettingsPage"));
+const SettingsDetailPage = lazy(() => import("../pages/SettingsDetailPage"));
+
+const PageFallback = () => (
+  <div className="flex min-h-[40vh] items-center justify-center px-4 text-sm text-neutral-500">
+    Loading…
+  </div>
+);
+
+const withSuspense = (element) => (
+  <Suspense fallback={<PageFallback />}>
+    {element}
+  </Suspense>
+);
 
 const RootLayout = () => (
   <AuthProvider>
@@ -31,36 +46,36 @@ const router = createBrowserRouter([
           {
             element: <AppLayout />,
             children: [
-              { path: "/", element: <Posts /> },
-              { path: "create-post", element: <CreatePost /> },
-              { path: "user", element: <CurrentUserProfile /> },
-              { path: "profile", element: <UserManage /> },
-              { path: "notifications", element: <NotificationsPage /> },
-              { path: "settings", element: <SettingsPage /> },
-              { path: "settings/privacy", element: <SettingsDetailPage section="privacy" /> },
-              { path: "settings/content", element: <SettingsDetailPage section="content" /> },
-              { path: "settings/notifications", element: <SettingsDetailPage section="notifications" /> },
-              { path: "settings/ads", element: <SettingsDetailPage section="ads" /> },
-              { path: "settings/history", element: <SettingsDetailPage section="history" /> },
-              { path: "settings/downloads", element: <SettingsDetailPage section="downloads" /> },
-              { path: "settings/storage", element: <SettingsDetailPage section="storage" /> },
-              { path: "settings/about", element: <SettingsDetailPage section="about" /> },
-              { path: "settings/terms", element: <SettingsDetailPage section="terms" /> },
-              { path: "settings/more", element: <SettingsDetailPage section="more" /> },
-              { path: "settings/help", element: <SettingsDetailPage section="help" /> },
-              { path: "settings/email", element: <SettingsDetailPage section="email" /> },
-              { path: "search", element: <SearchPage /> },
-              { path: "posts/:id", element: <PostDetailPage /> },
-              { path: "users/:id", element: <UserPage /> },
-              { path: "users/:id/followers", element: <FollowersPage /> },
-              { path: "users/:id/following", element: <FollowingPage /> },
+              { path: "/", element: withSuspense(<Posts />) },
+              { path: "create-post", element: withSuspense(<CreatePost />) },
+              { path: "user", element: withSuspense(<CurrentUserProfile />) },
+              { path: "profile", element: withSuspense(<UserManage />) },
+              { path: "notifications", element: withSuspense(<NotificationsPage />) },
+              { path: "settings", element: withSuspense(<SettingsPage />) },
+              { path: "settings/privacy", element: withSuspense(<SettingsDetailPage section="privacy" />) },
+              { path: "settings/content", element: withSuspense(<SettingsDetailPage section="content" />) },
+              { path: "settings/notifications", element: withSuspense(<SettingsDetailPage section="notifications" />) },
+              { path: "settings/ads", element: withSuspense(<SettingsDetailPage section="ads" />) },
+              { path: "settings/history", element: withSuspense(<SettingsDetailPage section="history" />) },
+              { path: "settings/downloads", element: withSuspense(<SettingsDetailPage section="downloads" />) },
+              { path: "settings/storage", element: withSuspense(<SettingsDetailPage section="storage" />) },
+              { path: "settings/about", element: withSuspense(<SettingsDetailPage section="about" />) },
+              { path: "settings/terms", element: withSuspense(<SettingsDetailPage section="terms" />) },
+              { path: "settings/more", element: withSuspense(<SettingsDetailPage section="more" />) },
+              { path: "settings/help", element: withSuspense(<SettingsDetailPage section="help" />) },
+              { path: "settings/email", element: withSuspense(<SettingsDetailPage section="email" />) },
+              { path: "search", element: withSuspense(<SearchPage />) },
+              { path: "posts/:id", element: withSuspense(<PostDetailPage />) },
+              { path: "users/:id", element: withSuspense(<UserPage />) },
+              { path: "users/:id/followers", element: withSuspense(<FollowersPage />) },
+              { path: "users/:id/following", element: withSuspense(<FollowingPage />) },
             ],
           },
         ],
       },
       {
         element: <PublicOnlyRoute />,
-        children: [{ path: "/auth", element: <AuthPage /> }],
+        children: [{ path: "/auth", element: withSuspense(<AuthPage />) }],
       },
     ],
   },
