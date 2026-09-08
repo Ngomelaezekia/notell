@@ -26,3 +26,108 @@ body {
     display: none;
   }
 }
+
+/* Compact public profile layout.
+   This only changes presentation; profile/API contracts remain untouched. */
+@media (max-width: 640px) {
+  /* Compact the profile top bar. */
+  .bg-slate-950 .sticky.top-0.z-30 {
+    height: 3rem;
+    min-height: 3rem;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  .bg-slate-950 .sticky.top-0.z-30 a,
+  .bg-slate-950 .sticky.top-0.z-30 button {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .bg-slate-950 .sticky.top-0.z-30 svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  /* Reduce cover height and the overlap so the profile starts faster. */
+  .bg-slate-950 .sticky.top-0.z-30 + section > div:first-child {
+    height: 8.5rem;
+  }
+
+  .bg-slate-950 .sticky.top-0.z-30 + section > div:nth-child(2) {
+    padding-bottom: 0.75rem;
+  }
+
+  .bg-slate-950 .sticky.top-0.z-30 + section > div:nth-child(2) > div:first-child {
+    margin-top: -2.5rem;
+  }
+
+  /* Smaller avatar with a clean mobile-safe touch target. */
+  .bg-slate-950 .sticky.top-0.z-30 + section > div:nth-child(2) > div:first-child > div:first-child > div {
+    width: 5rem;
+    height: 5rem;
+    border-width: 3px;
+    font-size: 1.5rem;
+  }
+
+  .bg-slate-950 .sticky.top-0.z-30 + section > div:nth-child(2) > div:first-child > div:first-child > a {
+    width: 1.75rem;
+    height: 1.75rem;
+    bottom: 0;
+    right: -0.1rem;
+  }
+
+  .bg-slate-950 .sticky.top-0.z-30 + section > div:nth-child(2) > div:first-child > div:first-child > a svg {
+    width: 13px;
+    height: 13px;
+  }
+
+  /* Compress identity information without hiding backend-provided data. */
+  .bg-slate-950 .sticky.top-0.z-30 + section h1 {
+    font-size: 1.25rem;
+    line-height: 1.5rem;
+  }
+
+  .bg-slate-950 .sticky.top-0.z-30 + section > div:nth-child(2) > div:first-child > div:nth-child(2) {
+    margin-top: 0.5rem;
+  }
+
+  .bg-slate-950 .sticky.top-0.z-30 + section p {
+    line-height: 1.25rem;
+  }
+
+  /* Keep actions and stats compact while preserving their tap area. */
+  .bg-slate-950 .sticky.top-0.z-30 + section button {
+    min-height: 2.5rem;
+  }
+
+  .bg-slate-950 .sticky.top-0.z-30 + section .text-base {
+    font-size: 0.875rem;
+    line-height: 1.125rem;
+  }
+
+  /* Reduce excess spacing before the profile posts/grid. */
+  .bg-slate-950 .sticky.top-0.z-30 + section .max-w-4xl {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 1024px) {
+  /* Tablet: compact the hero without making it feel cramped. */
+  .bg-slate-950 .sticky.top-0.z-30 + section > div:first-child {
+    height: 12rem;
+  }
+
+  .bg-slate-950 .sticky.top-0.z-30 + section > div:nth-child(2) > div:first-child {
+    margin-top: -3.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bg-slate-950 * {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
