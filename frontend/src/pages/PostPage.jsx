@@ -91,12 +91,13 @@ const Posts = () => {
   return (
     <div className="flex h-[calc(100dvh-5rem)] w-full overflow-hidden bg-neutral-950 text-neutral-100 md:h-screen">
       <main className="mx-auto flex h-full w-full min-w-0 max-w-4xl flex-col border-x border-neutral-800">
-        <Headerposts title="Feed" />
-
         <section
           ref={scrollContainerRef}
-          className="no-scrollbar min-h-0 flex-1 overflow-y-auto"
+          className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain"
         >
+          {/* Intentionally inside the scroll region: the feed header scrolls away with the feed. */}
+          <Headerposts title="Feed" />
+
           <div className="mx-auto w-full max-w-3xl px-2 py-1 sm:px-4 sm:py-3 md:px-6 md:py-5 lg:px-8">
             {loading && (
               <div className="flex h-64 items-center justify-center text-sm text-neutral-500">
