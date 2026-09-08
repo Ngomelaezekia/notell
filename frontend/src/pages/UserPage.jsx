@@ -253,6 +253,7 @@ export const Users = () => {
     ? new Date(user.createdAt).toLocaleDateString(undefined, { month: "short", year: "numeric" })
     : "";
   const isSelf = Boolean(relationship?.isSelf);
+  const canFollow = Boolean(relationship?.following || relationship?.allowFollowers);
 
   if (loading) {
     return (
@@ -368,22 +369,30 @@ export const Users = () => {
               </div>
 
               {!isSelf && (
-                <div className="mt-5 flex w-full max-w-md gap-2">
+                <div className="mt-5 flex w-full max-w-lg items-stretch gap-2 sm:gap-3">
                   <button
                     type="button"
                     onClick={handleFollow}
-                    disabled={actionLoading || (!relationship?.following && !relationship?.allowFollowers)}
-                    className={`flex-1 inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${relationship?.following ? "border border-white/15 bg-white/10 text-white hover:bg-white/15" : "bg-orange-500 text-white hover:bg-orange-400"}`}
+                    disabled={actionLoading || !canFollow}
+                    aria-pressed={Boolean(relationship?.following)}
+                    aria-label={relationship?.following ? `Unfollow ${user?.username}` : `Follow ${user?.username}`}
+                    className={`group relative inline-flex min-h-12 flex-[1.5] items-center justify-center gap-2.5 rounded-2xl px-5 text-sm font-bold shadow-lg transition-all duration-200 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-14 sm:text-[15px] ${relationship?.following ? "border border-white/20 bg-white/10 text-white shadow-black/20 hover:bg-white/15" : "bg-orange-500 text-white shadow-orange-950/30 hover:bg-orange-400 hover:shadow-orange-950/40"}`}
                   >
-                    {actionLoading ? <Loader2 size={15} className="animate-spin" /> : relationship?.following ? <Check size={15} /> : <UserPlus size={15} />}
-                    {relationship?.following ? "Following" : relationship?.allowFollowers ? "Follow" : "Followers disabled"}
+                    {actionLoading ? (
+                      <Loader2 size={18} className="animate-spin" />
+                    ) : relationship?.following ? (
+                      <Check size={18} strokeWidth={2.5} />
+                    ) : (
+                      <UserPlus size={18} strokeWidth={2.5} />
+                    )}
+                    <span>{actionLoading ? "Updating…" : relationship?.following ? "Following" : canFollow ? "Follow" : "Followers disabled"}</span>
                   </button>
                   <button
                     type="button"
-                    className="flex-1 inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-orange-500/70 bg-transparent px-4 text-xs font-bold text-orange-300 transition hover:bg-orange-500/10"
+                    aria-label={`Chat with ${user?.username}`}
+                    className="inline-flex min-h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-orange-500/60 bg-orange-500/5 text-orange-300 transition-all hover:bg-orange-500/10 hover:text-orange-200 active:scale-[0.98] sm:min-h-14 sm:w-14"
                   >
-                    <MessageCircle size={15} />
-                    Chat
+                    <MessageCircle size={19} />
                   </button>
                 </div>
               )}
