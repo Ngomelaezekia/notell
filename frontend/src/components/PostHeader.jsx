@@ -1,6 +1,6 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, PlusIcon } from "lucide-react";
+import { Bell, PlusIcon, Search } from "lucide-react";
 import { useNotifications } from "../hooks/useNotifications";
 
 export const Headerposts = ({ title = "Feed" }) => {
@@ -13,6 +13,16 @@ export const Headerposts = ({ title = "Feed" }) => {
       <h1 className="text-sm font-semibold text-neutral-200">{title}</h1>
 
       <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => navigate("/search")}
+          className="cursor-pointer rounded-full p-2 text-neutral-300 transition hover:bg-neutral-900 hover:text-white active:scale-95"
+          title="Search"
+          aria-label="Search"
+        >
+          <Search size={19} />
+        </button>
+
         <button
           type="button"
           onClick={() => navigate("/notifications")}
