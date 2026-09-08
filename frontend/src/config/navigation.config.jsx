@@ -1,4 +1,4 @@
-import { Home, UserCircle, Radio, MessageCircle } from "lucide-react";
+import { Home, UserCircle, Radio, MessageCircle, Triangle } from "lucide-react";
 
 export const mainNavigation = [
   {
@@ -6,6 +6,13 @@ export const mainNavigation = [
     path: "/",
     icon: Home,
     showIn: ["desktop", "mobile", "drawer"],
+  },
+  {
+    name: "Create",
+    path: "/create-post",
+    icon: Triangle,
+    showIn: ["mobile"],
+    isCreate: true,
   },
   {
     name: "Live",
