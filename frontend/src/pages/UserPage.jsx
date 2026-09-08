@@ -199,7 +199,7 @@ export const Users = () => {
         <div className="mx-auto flex h-14 w-full max-w-4xl items-center justify-between px-3 sm:px-6">
           <Link to="/" aria-label="Back to home" className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-700 transition hover:bg-slate-100 hover:text-slate-950"><ArrowLeft size={20} /></Link>
           <div className="flex min-w-0 items-center gap-2"><span className="truncate text-sm font-semibold text-slate-900">{user?.username}</span>{user?.status && user.status !== "free" && <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-600">{user.status}</span>}</div>
-          {isSelf ? <Link to="/profile" aria-label="Profile settings" className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-700 transition hover:bg-slate-100 hover:text-slate-950"><MoreVertical size={20} /></Link> : <button type="button" aria-label="Profile menu" className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-400"><MoreVertical size={20} /></button>}
+          {isSelf ? <Link to="/settings" aria-label="Website settings" className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-700 transition hover:bg-slate-100 hover:text-slate-950"><MoreVertical size={20} /></Link> : <button type="button" aria-label="Profile menu" className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-400"><MoreVertical size={20} /></button>}
         </div>
       </div>
 
