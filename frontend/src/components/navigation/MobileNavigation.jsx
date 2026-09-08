@@ -9,8 +9,8 @@ export default function MobileNavbar() {
   );
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 px-3 pb-safe lg:hidden">
-      <div className="mx-auto flex h-[72px] max-w-md items-center justify-around rounded-[28px] border border-white/70 bg-white/90 px-2 shadow-[0_-8px_30px_rgba(15,23,42,0.10)] backdrop-blur-2xl">
+    <nav className="pointer-events-none fixed inset-x-0 bottom-0 z-50 px-3 pb-3 lg:hidden">
+      <div className="pointer-events-auto mx-auto flex h-16 max-w-sm items-center justify-around rounded-[22px] border border-neutral-800/90 bg-neutral-950/95 px-2 shadow-[0_-12px_40px_rgba(0,0,0,0.35)] backdrop-blur-2xl">
         {mobileItems.map(({ name, path, icon: Icon, isCreate }) => {
           const isActive = pathname === path;
 
@@ -24,23 +24,17 @@ export default function MobileNavbar() {
                 className="group flex h-full w-20 items-center justify-center"
               >
                 <span
-                  className={`relative flex h-14 w-14 items-center justify-center rounded-[20px] border bg-white transition-all duration-200 ${
+                  className={`relative flex h-[52px] w-[52px] items-center justify-center rounded-[18px] border transition-all duration-200 active:scale-95 ${
                     isActive
-                      ? "-translate-y-1 border-indigo-200 shadow-xl shadow-indigo-500/20"
-                      : "border-slate-200 shadow-lg shadow-slate-900/10 group-hover:-translate-y-1 group-hover:shadow-xl"
+                      ? "-translate-y-2 border-neutral-500 bg-neutral-100 shadow-xl shadow-black/40"
+                      : "-translate-y-1 border-neutral-700 bg-neutral-100 shadow-lg shadow-black/30 group-hover:-translate-y-2 group-hover:border-white"
                   }`}
                 >
-                  <span
-                    className={`absolute inset-1 rounded-[17px] transition ${
-                      isActive ? "bg-indigo-50" : "bg-slate-50 group-hover:bg-indigo-50"
-                    }`}
-                  />
+                  <span className="absolute inset-1 rounded-[15px] bg-neutral-200 transition group-hover:bg-white" />
                   <Icon
-                    size={27}
-                    strokeWidth={2.4}
-                    className={`relative z-10 transition-colors ${
-                      isActive ? "fill-indigo-600 text-indigo-600" : "text-slate-700 group-hover:text-indigo-600"
-                    }`}
+                    size={25}
+                    strokeWidth={2.5}
+                    className="relative z-10 text-neutral-950"
                   />
                 </span>
               </Link>
@@ -52,20 +46,20 @@ export default function MobileNavbar() {
               key={path}
               to={path}
               aria-current={isActive ? "page" : undefined}
-              className="flex h-full w-20 flex-col items-center justify-center gap-1"
+              className="group flex h-full w-20 flex-col items-center justify-center gap-0.5 active:scale-95"
             >
               <span
-                className={`flex h-9 w-9 items-center justify-center rounded-2xl transition-all duration-200 ${
+                className={`flex h-9 w-12 items-center justify-center rounded-xl transition-all duration-200 ${
                   isActive
-                    ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/30"
-                    : "text-slate-500"
+                    ? "bg-neutral-800 text-neutral-100"
+                    : "text-neutral-500 group-hover:bg-neutral-900 group-hover:text-neutral-200"
                 }`}
               >
                 <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
               </span>
               <span
-                className={`text-[10px] font-semibold transition-colors ${
-                  isActive ? "text-indigo-600" : "text-slate-500"
+                className={`text-[10px] font-medium transition-colors ${
+                  isActive ? "text-neutral-100" : "text-neutral-500"
                 }`}
               >
                 {name}
