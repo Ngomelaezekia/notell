@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Search, UserRound, FileText, Loader2, ChevronDown, ArrowLeft, X, MapPin } from "lucide-react";
 import { userAPI } from "../services/user/userApi";
 import { postsAPI } from "../services/post/postsApi";
@@ -27,6 +27,7 @@ const SkeletonRow = () => (
 );
 
 export default function SearchPage() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState(searchParams.get("q") || "");
   const [activeTab, setActiveTab] = useState(searchParams.get("type") || "all");
@@ -183,9 +184,9 @@ export default function SearchPage() {
     setSearchParams({});
   };
 
-  const selectSuggestion = () => {
+  const selectPostSuggestion = (postId) => {
     setShowSuggestions(false);
-    submitSearch({ preventDefault: () => {} });
+    navigate(`/posts/${postId}`);
   };
 
   const loadMoreUsers = async () => {
@@ -257,7 +258,7 @@ export default function SearchPage() {
             <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-40 overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl shadow-black/50">
               {suggestionLoading ? <div className="flex items-center gap-2 px-4 py-4 text-sm text-neutral-500"><Loader2 size={16} className="animate-spin" />Searching…</div> : hasSuggestions ? <div className="max-h-[min(60vh,420px)] overflow-y-auto py-2">
                 {suggestions.users.length > 0 && <div><p className="px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-neutral-600">People</p>{suggestions.users.map((user) => <Link key={user.id} to={`/users/${user.id}`} onMouseDown={(event) => event.preventDefault()} onClick={() => setShowSuggestions(false)} className="flex items-center gap-3 px-4 py-2.5 transition hover:bg-neutral-900"><div className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-neutral-800">{user.profilePicture ? <img src={getFileUrl(user.profilePicture)} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-neutral-500"><UserRound size={16} /></div>}</div><div className="min-w-0"><p className="truncate text-sm font-semibold text-neutral-100">@{user.username}</p><p className="truncate text-xs text-neutral-500">{user.bio || [user.city, user.country].filter(Boolean).join(", ") || "View profile"}</p></div></Link>)}</div>}
-                {suggestions.posts.length > 0 && <div className="border-t border-neutral-800/80 pt-1"><p className="px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-neutral-600">Posts</p>{suggestions.posts.map((post) => <button key={post.postId} type="button" onMouseDown={(event) => event.preventDefault()} onClick={selectSuggestion} className="flex w-full items-start gap-3 px-4 py-2.5 text-left transition hover:bg-neutral-900"><FileText size={16} className="mt-0.5 shrink-0 text-neutral-500" /><span className="min-w-0 truncate text-sm text-neutral-300">{post.caption || "Post matching your search"}</span></button>)}</div>}
+                {suggestions.posts.length > 0 && <div className="border-t border-neutral-800/80 pt-1"><p className="px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-neutral-600">Posts</p>{suggestions.posts.map((post) => <button key={post.postId} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => selectPostSuggestion(post.postId)} className="flex w-full items-start gap-3 px-4 py-2.5 text-left transition hover:bg-neutral-900"><FileText size={16} className="mt-0.5 shrink-0 text-neutral-500" /><span className="min-w-0 truncate text-sm text-neutral-300">{post.caption || "Post matching your search"}</span></button>)}</div>}
               </div> : <div className="px-4 py-4 text-sm text-neutral-500">No matching suggestions yet.</div>}
             </div>
           )}
