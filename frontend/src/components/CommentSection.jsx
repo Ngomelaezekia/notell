@@ -56,7 +56,7 @@ const CommentItem = ({ comment, onReply }) => {
   );
 };
 
-export default function CommentSection({ postId }) {
+export default function CommentSection({ postId, onCommentCountChange }) {
   const [comments, setComments] = useState([]);
   const [content, setContent] = useState("");
   const [replyTo, setReplyTo] = useState(null);
@@ -70,13 +70,19 @@ export default function CommentSection({ postId }) {
     setError(null);
     try {
       const response = await postsAPI.getComments(postId);
-      setComments(response.data ?? []);
+      const nextComments = response.data ?? [];
+      setComments(nextComments);
+      const nextCount = nextComments.reduce(
+        (total, comment) => total + 1 + (comment.replies?.length ?? 0),
+        0,
+      );
+      onCommentCountChange?.(nextCount);
     } catch (err) {
       setError(getApiErrorMessage(err, "Failed to load comments."));
     } finally {
       setLoading(false);
     }
-  }, [postId]);
+  }, [postId, onCommentCountChange]);
 
   useEffect(() => {
     void loadComments();
