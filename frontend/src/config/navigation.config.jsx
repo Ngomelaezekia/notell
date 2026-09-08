@@ -29,8 +29,8 @@ export const mainNavigation = [
     comingSoon: true,
   },
   {
-    name: "Account",
-    path: "/profile",
+    name: "Profile",
+    path: "/user",
     icon: UserCircle,
     showIn: ["desktop", "mobile", "drawer"],
   },
