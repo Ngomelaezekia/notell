@@ -50,6 +50,13 @@ export const userAPI = {
     return response.data;
   },
 
+  removeFollower: async (userId) => {
+    const response = await API.delete(`/users/followers/${userId}`);
+    const data = getRelationshipData(response);
+    publishRelationshipChange(userId, { following: false, follower: false, ...data });
+    return response.data;
+  },
+
   getFollowers: async (userId, page = 1, limit = 20) => {
     const response = await API.get(`/users/${userId}/followers`, {
       params: { page, limit },
