@@ -69,7 +69,7 @@ func serveMedia(storage services.MediaStorage) gin.HandlerFunc {
 		// responses can be cached aggressively by the browser/CDN.
 		c.Header("Cache-Control", "public, max-age=31536000, immutable")
 		if contentType != "" { c.Header("Content-Type", contentType) }
-		if contentLength > 0 { c.Header("Content-Length", strconv.FormatInt(contentLength, 10) }
+		if contentLength > 0 { c.Header("Content-Length", strconv.FormatInt(contentLength, 10)) }
 		if _, err := io.Copy(c.Writer, body); err != nil { log.Printf("failed streaming media %q: %v", key, err) }
 	}
 }
