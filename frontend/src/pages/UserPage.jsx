@@ -4,11 +4,9 @@ import {
   Camera,
   Check,
   ExternalLink,
-  Flag,
   Link2,
   Loader2,
   MapPin,
-  MessageCircle,
   MoreVertical,
   Play,
   Settings,
@@ -71,15 +69,11 @@ function RelationshipPanel({ type, users, loading, error, onClose }) {
   );
 }
 
-function ProfileMenu({ onClose, onReport }) {
+function ProfileMenu({ onClose }) {
   const [copied, setCopied] = useState(false);
   const copyProfile = async () => { try { await navigator.clipboard.writeText(window.location.href); setCopied(true); window.setTimeout(() => setCopied(false), 1600); } catch {} };
   const shareProfile = async () => { const url = window.location.href; try { if (navigator.share) await navigator.share({ title: document.title, text: "Check out this Notell profile", url }); else { await navigator.clipboard.writeText(url); setCopied(true); window.setTimeout(() => setCopied(false), 1600); } } catch (error) { if (error?.name !== "AbortError") await copyProfile(); } };
-  return <><button type="button" aria-label="Close profile menu" className="fixed inset-0 z-40 cursor-default" onClick={onClose} /><div className="absolute right-3 top-12 z-50 w-56 overflow-hidden rounded-2xl border border-white/10 bg-slate-900/95 p-1.5 shadow-2xl backdrop-blur-xl" role="menu"><button type="button" role="menuitem" onClick={shareProfile} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-xs font-semibold text-white/80 hover:bg-white/10"><Share2 size={15} />Share profile</button><button type="button" role="menuitem" onClick={copyProfile} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-xs font-semibold text-white/80 hover:bg-white/10"><Link2 size={15} />{copied ? "Profile link copied" : "Copy profile link"}</button><div className="my-1 h-px bg-white/10" /><button type="button" role="menuitem" onClick={onReport} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-xs font-semibold text-red-300 hover:bg-red-500/10"><Flag size={15} />Report profile</button></div></>;
-}
-
-function ReportDialog({ username, onClose }) {
-  return <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:p-5"><section className="w-full rounded-t-3xl border border-white/10 bg-slate-900 p-5 shadow-2xl sm:max-w-md sm:rounded-3xl" role="dialog" aria-modal="true"><div className="flex items-start gap-3"><div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-500/10 text-red-300"><Flag size={18} /></div><div><h2 className="text-base font-bold text-white">Report profile?</h2><p className="mt-1 text-xs leading-5 text-white/55">You’re about to report <span className="font-semibold text-white/80">@{username}</span>. Reporting will be connected to moderation once the server endpoint is available.</p></div></div><div className="mt-5 flex gap-2"><button type="button" onClick={onClose} className="min-h-11 flex-1 rounded-xl border border-white/10 bg-white/[0.05] px-4 text-xs font-bold text-white/75">Cancel</button><button type="button" onClick={onClose} className="min-h-11 flex-1 rounded-xl bg-red-500/15 px-4 text-xs font-bold text-red-300 ring-1 ring-red-400/20">Report</button></div></section></div>;
+  return <><button type="button" aria-label="Close profile menu" className="fixed inset-0 z-40 cursor-default" onClick={onClose} /><div className="absolute right-3 top-12 z-50 w-56 overflow-hidden rounded-2xl border border-white/10 bg-slate-900/95 p-1.5 shadow-2xl backdrop-blur-xl" role="menu"><button type="button" role="menuitem" onClick={shareProfile} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-xs font-semibold text-white/80 hover:bg-white/10"><Share2 size={15} />Share profile</button><button type="button" role="menuitem" onClick={copyProfile} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-xs font-semibold text-white/80 hover:bg-white/10"><Link2 size={15} />{copied ? "Profile link copied" : "Copy profile link"}</button></div></>;
 }
 
 export const Users = () => {
@@ -97,7 +91,6 @@ export const Users = () => {
   const [relationshipLoading, setRelationshipLoading] = useState(false);
   const [relationshipError, setRelationshipError] = useState(null);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
-  const [reportOpen, setReportOpen] = useState(false);
 
   const loadProfile = useCallback(async () => {
     if (!id) return;
@@ -187,7 +180,7 @@ export const Users = () => {
       <Link to="/" aria-label="Back to home" className="inline-flex h-9 w-9 items-center justify-center rounded-full text-white/80 hover:bg-white/10"><ArrowLeft size={20} /></Link>
       <div className="min-w-0 text-center"><span className="truncate text-sm font-semibold text-white">{user?.username}</span>{user?.status && user.status !== "free" && <span className="ml-2 rounded-full border border-orange-300/40 bg-orange-400/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-orange-300">{user.status}</span>}</div>
       {isSelf ? <Link to="/settings" aria-label="Profile settings" className="inline-flex h-9 w-9 items-center justify-center rounded-full text-white/80 hover:bg-white/10"><Settings size={19} /></Link> : <button type="button" onClick={() => setProfileMenuOpen((v) => !v)} aria-label="Profile menu" className="inline-flex h-9 w-9 items-center justify-center rounded-full text-white/70 hover:bg-white/10"><MoreVertical size={20} /></button>}
-      {profileMenuOpen && <ProfileMenu onClose={() => setProfileMenuOpen(false)} onReport={() => { setProfileMenuOpen(false); setReportOpen(true); }} />}
+      {profileMenuOpen && <ProfileMenu onClose={() => setProfileMenuOpen(false)} />}
     </div>
 
     <section className="relative overflow-hidden border-b border-white/10 bg-black lg:rounded-b-[32px] lg:border-x lg:border-white/10">
@@ -195,7 +188,7 @@ export const Users = () => {
       <div className="relative mx-auto max-w-4xl px-4 pb-5 sm:px-6 lg:px-8"><div className="-mt-14 flex flex-col items-center sm:-mt-16 lg:-mt-20">
         <div className="relative"><div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-full border-4 border-black bg-slate-800 text-3xl font-bold shadow-2xl sm:h-32 sm:w-32">{avatar ? <img src={avatar} alt={`${user?.username} avatar`} className="h-full w-full object-cover" /> : user?.username?.charAt(0).toUpperCase()}</div>{isSelf && <Link to="/profile" aria-label="Edit profile picture" className="absolute bottom-1 right-0 inline-flex h-9 w-9 items-center justify-center rounded-full border-2 border-black bg-slate-800 hover:bg-orange-500"><Camera size={15} /></Link>}</div>
         <div className="mt-3 text-center"><div className="flex flex-wrap items-center justify-center gap-2"><h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{user?.username}</h1>{user?.status && user.status !== "free" && <span className="rounded-full border border-orange-400/60 bg-orange-400/10 px-2.5 py-1 text-[9px] font-bold uppercase tracking-widest text-orange-300">{user.status}</span>}</div>{joined && <p className="mt-1 text-[11px] text-white/50">Member since {joined}</p>}{(user?.city || user?.country) && <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-white/55"><MapPin size={13} />{[user.city, user.country].filter(Boolean).join(", ")}</div>}{user?.bio && <p className="mx-auto mt-3 max-w-xl whitespace-pre-line text-sm leading-5 text-white/70">{user.bio}</p>}{bioLinks.length > 0 && <div className="mt-3 flex max-w-xl flex-wrap justify-center gap-1.5">{bioLinks.map((url) => <a key={url} href={url} target="_blank" rel="noreferrer noopener" className="inline-flex min-h-9 max-w-full items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-[10px] font-semibold text-white/80 hover:border-orange-400/40"><Link2 size={12} className="text-orange-300" /><span className="max-w-[9rem] truncate">{getLinkLabel(url)}</span><ExternalLink size={10} className="text-white/45" /></a>)}</div>}</div>
-        {!isSelf && <div className="mt-5 flex w-full max-w-lg items-stretch gap-2 sm:gap-3"><button type="button" onClick={handleFollow} disabled={actionLoading || !canFollow} aria-pressed={Boolean(relationship?.following)} className={`group relative inline-flex min-h-12 flex-[1.5] items-center justify-center gap-2.5 rounded-2xl px-5 text-sm font-bold shadow-lg disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-14 sm:text-[15px] ${relationship?.following ? "border border-white/20 bg-white/10 text-white" : "bg-orange-500 text-white hover:bg-orange-400"}`}>{actionLoading ? <Loader2 size={18} className="animate-spin" /> : relationship?.following ? <Check size={18} /> : <UserPlus size={18} />}<span>{actionLoading ? "Updating…" : relationship?.following ? "Following" : canFollow ? "Follow" : "Followers disabled"}</span></button><button type="button" aria-label={`Chat with ${user?.username}`} className="inline-flex min-h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-orange-500/60 bg-orange-500/5 text-orange-300 sm:min-h-14 sm:w-14"><MessageCircle size={19} /></button></div>}
+        {!isSelf && <div className="mt-5 flex w-full max-w-lg items-stretch"><button type="button" onClick={handleFollow} disabled={actionLoading || !canFollow} aria-pressed={Boolean(relationship?.following)} className={`group relative inline-flex min-h-12 w-full items-center justify-center gap-2.5 rounded-2xl px-5 text-sm font-bold shadow-lg disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-14 sm:text-[15px] ${relationship?.following ? "border border-white/20 bg-white/10 text-white" : "bg-orange-500 text-white hover:bg-orange-400"}`}>{actionLoading ? <Loader2 size={18} className="animate-spin" /> : relationship?.following ? <Check size={18} /> : <UserPlus size={18} />}<span>{actionLoading ? "Updating…" : relationship?.following ? "Following" : canFollow ? "Follow" : "Followers disabled"}</span></button></div>}
       </div>
       <div className="mx-auto mt-5 flex w-full max-w-xl items-center rounded-2xl border border-white/10 bg-white/[0.04] p-1"><Stat label="Posts" value={postCount} icon={Camera} /><div className="h-8 w-px bg-white/10" /><Stat label="Followers" value={relationship?.followerCount} icon={UsersIcon} onClick={() => void openRelationshipPanel("followers")} /><div className="h-8 w-px bg-white/10" /><Stat label="Following" value={relationship?.followingCount} icon={UserRound} onClick={() => void openRelationshipPanel("following")} /></div>
       {relationship?.follower && !relationship?.following && <div className="mt-3 text-center text-[10px] text-white/45"><UsersIcon size={12} className="mr-1 inline" />This user follows you</div>}{error && <p className="mt-3 text-center text-xs text-red-400">{error}</p>}
@@ -207,7 +200,6 @@ export const Users = () => {
     </div></section>
   </div>
   {relationshipPanel && <RelationshipPanel type={relationshipPanel} users={relationshipUsers} loading={relationshipLoading} error={relationshipError} onClose={() => setRelationshipPanel(null)} />}
-  {reportOpen && <ReportDialog username={user?.username} onClose={() => setReportOpen(false)} />}
   </div>;
 };
 
