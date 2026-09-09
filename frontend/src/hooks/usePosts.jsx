@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { postsAPI } from "../services/post/postsApi";
 import { getApiErrorMessage } from "../utils/api";
 
@@ -19,11 +19,7 @@ const readFeedCache = (category) => {
 
 const writeFeedCache = (category, posts, pagination) => {
   try {
-    sessionStorage.setItem(`${FEED_CACHE_PREFIX}${category}`, JSON.stringify({
-      timestamp: Date.now(),
-      posts,
-      pagination,
-    }));
+    sessionStorage.setItem(`${FEED_CACHE_PREFIX}${category}`, JSON.stringify({ timestamp: Date.now(), posts, pagination }));
   } catch {
     // Storage can be unavailable/full; the network path still works normally.
   }
@@ -31,6 +27,7 @@ const writeFeedCache = (category, posts, pagination) => {
 
 export const usePosts = (page = 1, limit = 20, category = "all") => {
   const cached = readFeedCache(category);
+  const hasContentRef = useRef(Boolean(cached?.posts?.length));
   const [posts, setPosts] = useState(cached?.posts || []);
   const [loading, setLoading] = useState(!cached?.posts?.length);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -39,36 +36,33 @@ export const usePosts = (page = 1, limit = 20, category = "all") => {
   const [error, setError] = useState(null);
 
   const fetchPosts = useCallback(async () => {
-    const hasVisibleContent = posts.length > 0;
-    setLoading(!hasVisibleContent);
+    setLoading(!hasContentRef.current);
     setError(null);
     try {
       const response = await postsAPI.getFeed(page, limit, category);
       const nextPosts = Array.isArray(response.data) ? response.data : [];
       const pagination = response.pagination || {};
       setPosts(nextPosts);
+      hasContentRef.current = nextPosts.length > 0;
       setCurrentPage(pagination.page ?? page);
       setHasMore(pagination.hasMore ?? false);
       writeFeedCache(category, nextPosts, pagination);
     } catch (err) {
       setError(getApiErrorMessage(err, "Failed to fetch posts"));
-      if (!hasVisibleContent) setHasMore(false);
+      if (!hasContentRef.current) setHasMore(false);
     } finally {
       setLoading(false);
     }
-  }, [category, limit, page, posts.length]);
+  }, [category, limit, page]);
 
   const loadMore = useCallback(async () => {
     if (loading || loadingMore || !hasMore) return;
-
     setLoadingMore(true);
     setError(null);
     const nextPage = currentPage + 1;
-
     try {
       const response = await postsAPI.getFeed(nextPage, limit, category);
       const incomingPosts = Array.isArray(response.data) ? response.data : [];
-
       setPosts((current) => {
         const existingIds = new Set(current.map((post) => post.postId));
         const uniquePosts = incomingPosts.filter((post) => !existingIds.has(post.postId));
@@ -95,19 +89,9 @@ export const usePosts = (page = 1, limit = 20, category = "all") => {
 
   useEffect(() => {
     fetchPosts();
-    // The category/page/limit identity is already represented by fetchPosts.
   }, [fetchPosts]);
 
-  return {
-    posts,
-    loading,
-    loadingMore,
-    hasMore,
-    error,
-    refetch: fetchPosts,
-    loadMore,
-    removePost,
-  };
+  return { posts, loading, loadingMore, hasMore, error, refetch: fetchPosts, loadMore, removePost };
 };
 
 export const usePostActions = () => {
@@ -115,49 +99,27 @@ export const usePostActions = () => {
   const [error, setError] = useState(null);
 
   const createPost = async (postData) => {
-    setLoading(true);
-    setError(null);
-    try {
-      return await postsAPI.create(postData);
-    } catch (err) {
-      const message = getApiErrorMessage(err, "Failed to create post");
-      setError(message);
-      throw new Error(message, { cause: err });
-    } finally {
-      setLoading(false);
-    }
+    setLoading(true); setError(null);
+    try { return await postsAPI.create(postData); }
+    catch (err) { const message = getApiErrorMessage(err, "Failed to create post"); setError(message); throw new Error(message, { cause: err }); }
+    finally { setLoading(false); }
   };
 
   const deletePost = async (postId) => {
-    setLoading(true);
-    setError(null);
-    try {
-      return await postsAPI.delete(postId);
-    } catch (err) {
-      const message = getApiErrorMessage(err, "Failed to delete post");
-      setError(message);
-      throw new Error(message, { cause: err });
-    } finally {
-      setLoading(false);
-    }
+    setLoading(true); setError(null);
+    try { return await postsAPI.delete(postId); }
+    catch (err) { const message = getApiErrorMessage(err, "Failed to delete post"); setError(message); throw new Error(message, { cause: err }); }
+    finally { setLoading(false); }
   };
 
   const toggleLike = async (postId) => {
-    try {
-      return await postsAPI.toggleLike(postId);
-    } catch (err) {
-      const message = getApiErrorMessage(err, "Failed to update like");
-      throw new Error(message, { cause: err });
-    }
+    try { return await postsAPI.toggleLike(postId); }
+    catch (err) { throw new Error(getApiErrorMessage(err, "Failed to update like"), { cause: err }); }
   };
 
   const addComment = async (postId, content, parentId = null) => {
-    try {
-      return await postsAPI.addComment(postId, content, parentId);
-    } catch (err) {
-      const message = getApiErrorMessage(err, "Failed to add comment");
-      throw new Error(message, { cause: err });
-    }
+    try { return await postsAPI.addComment(postId, content, parentId); }
+    catch (err) { throw new Error(getApiErrorMessage(err, "Failed to add comment"), { cause: err }); }
   };
 
   return { createPost, deletePost, toggleLike, addComment, loading, error };
