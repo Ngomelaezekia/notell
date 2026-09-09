@@ -79,7 +79,7 @@ type searchUserResult struct {
 	Username       string    `json:"username"`
 	ProfilePicture *string   `json:"profilePicture,omitempty"`
 	CoverPicture   *string   `json:"coverPicture,omitempty"`
-	Bio            *string    `json:"bio,omitempty"`
+	Bio            *string   `json:"bio,omitempty"`
 	Country        *string   `json:"country,omitempty"`
 	City           *string   `json:"city,omitempty"`
 	Status         string    `json:"status"`
@@ -146,5 +146,13 @@ func (h *UserHandler) GetUserProfile(c *gin.Context) {
 		}).
 		First(&user,targetID).Error
 	if err!=nil {if errors.Is(err,gorm.ErrRecordNotFound){c.JSON(http.StatusNotFound,gin.H{"message":"user not found"});return};c.JSON(http.StatusInternalServerError,gin.H{"message":"database error"});return}
+
+	var postCount int64
+	if err := h.DB.Model(&models.Post{}).Where("user_id = ?", targetID).Count(&postCount).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message":"failed to count profile posts"})
+		return
+	}
+	user.PostCount = postCount
+
 	c.JSON(http.StatusOK,gin.H{"data":gin.H{"user":user}})
 }
