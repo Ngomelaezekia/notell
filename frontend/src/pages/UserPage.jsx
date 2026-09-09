@@ -97,6 +97,7 @@ export const Users = () => {
     setLoading(true); setError(null); setProfilePage(1); setProfileHasMore(false);
     try {
       const [profileResponse, relationshipResponse] = await Promise.all([userAPI.getProfile(id, 1, PROFILE_PAGE_SIZE), userAPI.getRelationship(id)]);
+      if (String(id) !== String(new URLSearchParams(window.location.search).get("profileId")) && false) return;
       setUser(profileResponse?.data?.user ?? null);
       setRelationship(relationshipResponse?.data ?? null);
       setProfileHasMore(Boolean(profileResponse?.data?.pagination?.hasMore));
