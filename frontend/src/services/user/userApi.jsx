@@ -1,7 +1,7 @@
 import API from "../../utils/api";
 
 export const userAPI = {
-  getProfile: async (userId, page = 1, limit = 24) => {
+  getProfile: async (userId, page = 1, limit = 36) => {
     const response = await API.get(`/users/${userId}`, {
       params: { page, limit },
     });
