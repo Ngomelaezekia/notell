@@ -17,15 +17,19 @@ Profile update input is bounded server-side. Username/email uniqueness is enforc
 
 Canonical post keys are `postId`, `userId`, `contentType`, `contentUrl`, `caption`, `createdAt`, `updatedAt`, and `user`.
 
-`contentUrl` must be an absolute managed media URL under `/uploads/`. In production this normally points to the configured durable media origin (such as the R2 public domain); legacy media may still use the API server origin during migration. Post creation verifies the media URL origin/path, validates the media type, verifies ownership through the upload record, and prevents reuse by another post.
+Managed posts also expose the linked `upload` relation when available, including `upload.mediaMetadata` for processing/playback metadata. The API keeps the existing `contentUrl` field for frontend compatibility.
 
-Feed ordering is deterministic: `created_at DESC, id DESC`, with one-record lookahead pagination.
+`contentUrl` must be an absolute managed media URL under `/uploads/`. The application validates the managed media origin/path, validates the media type, verifies ownership through the upload record, and prevents reuse by another post.
+
+Feed ordering is deterministic: `created_at DESC, id DESC`, with one-record lookahead pagination. The categorized feed endpoint may apply its documented engagement/freshness ranking before the deterministic ID tie-breaker.
 
 ## Uploads
 
 `POST /api/upload` accepts multipart field `file` and returns `{message,url}`. Supported types are JPEG, PNG, WebP, MP4, and MOV. The server ceiling is 100 MiB.
 
 Upload records retain ownership and claim metadata so unowned/reused media cannot be attached to arbitrary posts. A post claims exactly one upload as part of the same database transaction that creates the post. New production uploads are stored in durable object storage; the local file is treated as temporary instance-local storage. Deleting a post removes its associated upload record and schedules/removes the corresponding stored object through the storage cleanup path.
+
+`MediaMetadata` is created with each successful upload and currently records the uploaded file size and processing status. Duration, dimensions, codec, and thumbnail fields remain empty until a real media-processing pipeline populates them; the API does not fabricate those values.
 
 ## Search
 
@@ -39,7 +43,7 @@ Replies may target top-level comments only. Parent comments must belong to the s
 
 ## Relationships
 
-Follower/following lists are paginated. Follow operations respect the target user's `allowFollowers` setting.
+Follower/following lists are paginated. Follow operations respect the target user's `allowFollowers` setting and return authoritative relationship counts after mutations.
 
 ## Notifications
 
@@ -47,4 +51,4 @@ Notifications support list/read/read-all operations. Ordering is deterministic w
 
 ## Active models
 
-The database currently migrates User, Post, Comment, Like, Relationship, Channel, Notification, and Upload. Channel remains schema-only until channel routes/UI are implemented.
+The database currently migrates User, Post, Comment, Like, Relationship, Channel, Notification, Upload, and MediaMetadata. Channel remains schema-only until channel routes/UI are implemented.
