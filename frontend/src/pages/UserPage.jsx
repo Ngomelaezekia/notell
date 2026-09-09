@@ -118,10 +118,24 @@ export const Users = () => {
       const change = event.detail;
       if (!change || String(change.userId) !== String(id)) return;
       setRelationship((current) => ({ ...current, ...change }));
+      if (relationshipPanel) {
+        const refreshPanel = async () => {
+          try {
+            const response = relationshipPanel === "followers"
+              ? await userAPI.getFollowers(id, 1, 100)
+              : await userAPI.getFollowing(id, 1, 100);
+            setRelationshipUsers(Array.isArray(response?.data) ? response.data : []);
+            setRelationshipError(null);
+          } catch (err) {
+            setRelationshipError(err.response?.data?.message || `Failed to refresh ${relationshipPanel}`);
+          }
+        };
+        void refreshPanel();
+      }
     };
     window.addEventListener("notell:relationship-changed", handleRelationshipChange);
     return () => window.removeEventListener("notell:relationship-changed", handleRelationshipChange);
-  }, [id]);
+  }, [id, relationshipPanel]);
 
   const loadMorePosts = useCallback(async () => {
     if (!id || profileLoadingMore || !profileHasMore) return;
