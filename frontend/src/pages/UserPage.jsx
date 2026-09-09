@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Camera,
@@ -91,21 +91,27 @@ export const Users = () => {
   const [relationshipLoading, setRelationshipLoading] = useState(false);
   const [relationshipError, setRelationshipError] = useState(null);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const profileRequestRef = useRef(0);
 
   const loadProfile = useCallback(async () => {
     if (!id) return;
-    setLoading(true); setError(null); setProfilePage(1); setProfileHasMore(false);
+    const requestId = ++profileRequestRef.current;
+    setLoading(true); setError(null); setUser(null); setRelationship(null); setProfilePage(1); setProfileHasMore(false); setProfileMenuOpen(false); setRelationshipPanel(null);
     try {
       const [profileResponse, relationshipResponse] = await Promise.all([userAPI.getProfile(id, 1, PROFILE_PAGE_SIZE), userAPI.getRelationship(id)]);
-      if (String(id) !== String(new URLSearchParams(window.location.search).get("profileId")) && false) return;
+      if (requestId !== profileRequestRef.current) return;
       setUser(profileResponse?.data?.user ?? null);
       setRelationship(relationshipResponse?.data ?? null);
       setProfileHasMore(Boolean(profileResponse?.data?.pagination?.hasMore));
-    } catch (err) { setError(err.response?.data?.message || "Failed to load profile"); }
-    finally { setLoading(false); }
+    } catch (err) {
+      if (requestId !== profileRequestRef.current) return;
+      setError(err.response?.data?.message || "Failed to load profile");
+    } finally {
+      if (requestId === profileRequestRef.current) setLoading(false);
+    }
   }, [id]);
 
-  useEffect(() => { loadProfile(); }, [loadProfile]);
+  useEffect(() => { void loadProfile(); }, [loadProfile]);
 
   useEffect(() => {
     const handleRelationshipChange = (event) => {
