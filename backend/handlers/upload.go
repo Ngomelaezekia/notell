@@ -166,7 +166,17 @@ func (h *UploadHandler) UploadMedia(c *gin.Context) {
 		Path:      filepath.ToSlash(filePath),
 		MediaType: contentType,
 	}
-	if err := h.DB.Create(&upload).Error; err != nil {
+	metadata := models.MediaMetadata{
+		FileSize: file.Size,
+		Status:   "uploaded",
+	}
+	if err := h.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&upload).Error; err != nil {
+			return err
+		}
+		metadata.UploadID = upload.ID
+		return tx.Create(&metadata).Error
+	}); err != nil {
 		_ = h.Storage.Delete(context.Background(), key)
 		_ = os.Remove(filePath)
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed recording uploaded file"})
