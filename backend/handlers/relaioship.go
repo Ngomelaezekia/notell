@@ -50,17 +50,30 @@ func (h *RelationshipHandler) FollowUser(c *gin.Context) {
 	if result.Error != nil { c.JSON(http.StatusInternalServerError, gin.H{"message":"failed to follow user"}); return }
 	if result.RowsAffected == 0 { c.JSON(http.StatusConflict, gin.H{"message":"already following this user"}); return }
 	_ = CreateNotification(h.DB, followingID, followerID, "follow", nil, nil)
-	c.JSON(http.StatusOK, gin.H{"message":"successfully followed user", "data":gin.H{"following":true,"status":relationshipStatus}})
+
+	var followerCount int64
+	if err := h.DB.Model(&models.Relationship{}).Where("following_id = ? AND status = ?", followingID, relationshipStatus).Count(&followerCount).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message":"failed to count followers"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message":"successfully followed user", "data":gin.H{"following":true,"status":relationshipStatus,"followerCount":followerCount}})
 }
 
 func (h *RelationshipHandler) UnfollowUser(c *gin.Context) {
 	followerID := c.MustGet("userId").(uint)
 	targetID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil { c.JSON(http.StatusBadRequest, gin.H{"message":"invalid user ID"}); return }
-	result := h.DB.Where("follower_id = ? AND following_id = ?", followerID, uint(targetID)).Delete(&models.Relationship{})
+	followingID := uint(targetID)
+	result := h.DB.Where("follower_id = ? AND following_id = ?", followerID, followingID).Delete(&models.Relationship{})
 	if result.Error != nil { c.JSON(http.StatusInternalServerError, gin.H{"message":"failed to unfollow user"}); return }
 	if result.RowsAffected == 0 { c.JSON(http.StatusNotFound, gin.H{"message":"not following this user"}); return }
-	c.JSON(http.StatusOK, gin.H{"message":"successfully unfollowed user", "data":gin.H{"following":false}})
+
+	var followerCount int64
+	if err := h.DB.Model(&models.Relationship{}).Where("following_id = ? AND status = ?", followingID, relationshipStatus).Count(&followerCount).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message":"failed to count followers"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message":"successfully unfollowed user", "data":gin.H{"following":false,"followerCount":followerCount}})
 }
 
 func (h *RelationshipHandler) GetRelationshipStatus(c *gin.Context) {
