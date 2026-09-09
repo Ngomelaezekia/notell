@@ -18,6 +18,20 @@ const formatDate = (value) => {
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 };
 
+const normalizeComments = (items) => {
+  const source = Array.isArray(items) ? items : [];
+  const roots = source.filter((comment) => !comment?.parentId).map((comment) => ({ ...comment, replies: [] }));
+  const rootById = new Map(roots.map((comment) => [comment.commentId, comment]));
+
+  for (const comment of source) {
+    if (!comment?.parentId) continue;
+    const parent = rootById.get(comment.parentId);
+    if (parent) parent.replies.push(comment);
+  }
+
+  return roots;
+};
+
 const CommentSkeleton = () => (
   <div className="flex gap-2.5" aria-hidden="true">
     <div className="h-8 w-8 shrink-0 animate-pulse rounded-full bg-neutral-900" />
@@ -74,7 +88,7 @@ export default function CommentSection({ postId, onCommentCountChange }) {
     setError(null);
     try {
       const response = await postsAPI.getComments(postId);
-      const nextComments = response.data ?? [];
+      const nextComments = normalizeComments(response.data);
       setComments(nextComments);
       const nextCount = nextComments.reduce((total, comment) => total + 1 + (comment.replies?.length ?? 0), 0);
       onCommentCountChange?.(nextCount);
