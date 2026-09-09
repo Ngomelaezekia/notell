@@ -21,16 +21,30 @@ func (mediaTestStorage) Open(context.Context, string) (io.ReadCloser, string, in
 	return io.NopCloser(errorReader{}), "image/jpeg", 0, nil
 }
 
+type trackingMediaStorage struct {
+	opened bool
+}
+
+func (s *trackingMediaStorage) Put(context.Context, string, string, string) error { return nil }
+func (s *trackingMediaStorage) Delete(context.Context, string) error { return nil }
+func (s *trackingMediaStorage) PublicURL(string) string { return "" }
+func (s *trackingMediaStorage) Open(context.Context, string) (io.ReadCloser, string, int64, error) {
+	s.opened = true
+	return io.NopCloser(errorReader{}), "image/jpeg", 0, nil
+}
+
 type errorReader struct{}
 func (errorReader) Read([]byte) (int, error) { return 0, errors.New("unexpected read") }
 
 var _ services.MediaStorage = mediaTestStorage{}
+var _ services.MediaStorage = (*trackingMediaStorage)(nil)
 
 func TestServeMediaRejectsUnclaimedMedia(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	storage := &trackingMediaStorage{}
 	r := gin.New()
 	called := false
-	r.GET("/uploads/:filename", serveMedia(mediaTestStorage{}, func(context.Context, string) (bool, error) {
+	r.GET("/uploads/:filename", serveMedia(storage, func(context.Context, string) (bool, error) {
 		called = true
 		return false, nil
 	}))
@@ -44,6 +58,9 @@ func TestServeMediaRejectsUnclaimedMedia(t *testing.T) {
 	}
 	if !called {
 		t.Fatal("expected claim check to run")
+	}
+	if storage.opened {
+		t.Fatal("storage must not be opened for unclaimed media")
 	}
 }
 
