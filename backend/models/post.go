@@ -31,25 +31,6 @@ type Post struct {
 	Comments []Comment `gorm:"foreignKey:PostID;constraint:OnDelete:CASCADE" json:"comments,omitempty"`
 }
 
-// AfterFind completes the managed-media relation for post responses when the
-// caller did not explicitly preload it. This keeps existing handlers compatible
-// while ensuring Upload -> MediaMetadata is available everywhere a Post is read.
-func (p *Post) AfterFind(tx *gorm.DB) error {
-	if p.UploadID == nil || p.Upload != nil {
-		return nil
-	}
-
-	var upload Upload
-	if err := tx.Preload("MediaMetadata").First(&upload, *p.UploadID).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil
-		}
-		return err
-	}
-	p.Upload = &upload
-	return nil
-}
-
 // BeforeCreate enforces the persisted upload/content-type contract at the
 // database boundary. The HTTP handler performs the same validation earlier,
 // but this prevents another Post creation path from bypassing it.
