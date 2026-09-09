@@ -1,102 +1,10 @@
 import { useEffect, useState } from "react";
-import {
-  ArrowLeft,
-  Check,
-  ChevronDown,
-  Loader2,
-  UserPlus,
-  UserRound,
-  Users,
-} from "lucide-react";
+import { ArrowLeft, ChevronDown, Loader2, UserRound, Users } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { userAPI } from "../services/user/userApi";
 import { getApiErrorMessage, getFileUrl } from "../utils/api";
 
 const PAGE_SIZE = 20;
-
-const RelationshipRow = ({ user, type, onChanged }) => {
-  const [following, setFollowing] = useState(Boolean(user.following));
-  const [loading, setLoading] = useState(false);
-  const canFollow = user.allowFollowers !== false;
-
-  const toggleFollow = async () => {
-    if (loading || !user.id || !canFollow) return;
-    setLoading(true);
-    try {
-      if (following) {
-        await userAPI.unfollowUser(user.id);
-        setFollowing(false);
-        onChanged?.(user.id, false);
-      } else {
-        await userAPI.followUser(user.id);
-        setFollowing(true);
-        onChanged?.(user.id, true);
-      }
-    } catch {
-      // Keep the current state when the relationship request fails.
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const avatar = getFileUrl(user.profilePicture);
-  const isFollowerList = type === "followers";
-
-  return (
-    <div className="group flex items-center gap-3 px-4 py-3.5 transition hover:bg-white/[0.035] sm:px-5">
-      <Link
-        to={`/users/${user.id}`}
-        className="flex min-w-0 flex-1 items-center gap-3"
-      >
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-orange-400/20 to-white/5 text-sm font-bold text-white ring-1 ring-white/10">
-          {avatar ? (
-            <img
-              src={avatar}
-              alt={`${user.username} avatar`}
-              className="h-full w-full object-cover"
-              loading="lazy"
-            />
-          ) : (
-            user.username?.charAt(0).toUpperCase()
-          )}
-        </div>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-white">
-            {user.username}
-          </p>
-          <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-white/40">
-            {(user.city || user.country) && (
-              <span className="truncate">
-                {[user.city, user.country].filter(Boolean).join(", ")}
-              </span>
-            )}
-            {user.bio && (user.city || user.country) && <span>·</span>}
-            {user.bio && <span className="truncate">{user.bio}</span>}
-          </div>
-        </div>
-      </Link>
-
-      {!user.isSelf && (
-        <button
-          type="button"
-          onClick={toggleFollow}
-          disabled={loading || !canFollow}
-          aria-label={`${following ? "Unfollow" : "Follow"} ${user.username}`}
-          className={`inline-flex h-9 min-w-[84px] shrink-0 items-center justify-center gap-1.5 rounded-xl px-3 text-[11px] font-bold transition active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-45 ${following ? "border border-white/10 bg-white/[0.06] text-white/75 hover:bg-white/10" : "bg-orange-500 text-white shadow-lg shadow-orange-950/20 hover:bg-orange-400"}`}
-        >
-          {loading ? (
-            <Loader2 size={14} className="animate-spin" />
-          ) : following ? (
-            <Check size={14} />
-          ) : (
-            <UserPlus size={14} />
-          )}
-          <span>{following ? "Following" : "Follow"}</span>
-        </button>
-      )}
-    </div>
-  );
-};
 
 const RelationshipListPage = ({ type }) => {
   const { id } = useParams();
@@ -208,13 +116,46 @@ const RelationshipListPage = ({ type }) => {
                 </div>
               )}
               <div className="divide-y divide-white/[0.07]">
-                {users.map((user) => (
-                  <RelationshipRow
-                    key={user.id}
-                    user={user}
-                    type={type}
-                  />
-                ))}
+                {users.map((user) => {
+                  const avatar = getFileUrl(user.profilePicture);
+                  return (
+                    <Link
+                      key={user.id}
+                      to={`/users/${user.id}`}
+                      className="group flex items-center gap-3 px-4 py-3.5 transition hover:bg-white/[0.035] sm:px-5"
+                    >
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-orange-400/20 to-white/5 text-sm font-bold text-white ring-1 ring-white/10 transition group-hover:ring-orange-400/30">
+                        {avatar ? (
+                          <img
+                            src={avatar}
+                            alt={`${user.username} avatar`}
+                            className="h-full w-full object-cover"
+                            loading="lazy"
+                          />
+                        ) : (
+                          user.username?.charAt(0).toUpperCase()
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-white transition group-hover:text-orange-200">
+                          {user.username}
+                        </p>
+                        <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-white/40">
+                          {(user.city || user.country) && (
+                            <span className="truncate">
+                              {[user.city, user.country].filter(Boolean).join(", ")}
+                            </span>
+                          )}
+                          {user.bio && (user.city || user.country) && <span>·</span>}
+                          {user.bio && <span className="truncate">{user.bio}</span>}
+                        </div>
+                      </div>
+                      <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.035] px-2 py-1 text-[9px] font-semibold text-white/35 opacity-70 transition group-hover:border-orange-400/20 group-hover:text-orange-300">
+                        View
+                      </span>
+                    </Link>
+                  );
+                })}
               </div>
               {hasMore && (
                 <div className="border-t border-white/[0.07] p-4 text-center">
