@@ -12,13 +12,13 @@ import (
 	"gorm.io/gorm"
 )
 
-// GetCategorizedFeed serves the complete discoverable feed with explicit
-// categories. Pagination is retained so the client can progressively fetch
-// every page without loading the whole database into memory at once.
+// GetCategorizedFeed serves the home feed categories without loading the whole
+// database into memory. The client can page through each category until hasMore
+// is false.
 func (h *PostHandler) GetCategorizedFeed(c *gin.Context) {
 	userID := c.MustGet("userId").(uint)
 	category := strings.ToLower(strings.TrimSpace(c.DefaultQuery("category", "all")))
-	if category == "friends" {
+	if category == "friends" || category == "my-friends" {
 		category = "following"
 	}
 	if category != "all" && category != "popular" && category != "local" && category != "following" {
@@ -35,14 +35,13 @@ func (h *PostHandler) GetCategorizedFeed(c *gin.Context) {
 		limit = 20
 	}
 
-	query := h.DB.Model(&models.Post{}).
-		Select(postEngagementSelect, userID)
+	query := h.DB.Model(&models.Post{}).Select(postEngagementSelect, userID)
 
 	switch category {
 	case "following":
 		query = query.
-			Joins(`JOIN user_relationships ON user_relationships.following_id = posts.user_id AND user_relationships.follower_id = ? AND user_relationships.status = ?`, userID, "accepted").
-			Where("posts.user_id <> ?", userID)
+			Joins(`LEFT JOIN user_relationships ON user_relationships.following_id = posts.user_id AND user_relationships.follower_id = ? AND user_relationships.status = ?`, userID, "accepted").
+			Where(`posts.user_id = ? OR user_relationships.follower_id IS NOT NULL`, userID)
 	case "local":
 		var viewer models.User
 		if err := h.DB.Select("city", "country").First(&viewer, userID).Error; err != nil {
@@ -59,27 +58,31 @@ func (h *PostHandler) GetCategorizedFeed(c *gin.Context) {
 		if city == "" && country == "" {
 			c.JSON(http.StatusOK, gin.H{
 				"data": []models.Post{},
-				"pagination": gin.H{"page": page, "limit": limit, "hasMore": false},
 				"category": category,
+				"pagination": gin.H{"page": page, "limit": limit, "total": 0, "hasMore": false},
 			})
 			return
 		}
 
-		query = query.Joins("JOIN users ON users.id = posts.user_id")
-		if city != "" && country != "" {
-			query = query.Where("LOWER(users.city) = LOWER(?) AND LOWER(users.country) = LOWER(?)", city, country)
-		} else if city != "" {
-			query = query.Where("LOWER(users.city) = LOWER(?)", city)
+		query = query.Joins("JOIN users feed_users ON feed_users.id = posts.user_id")
+		if city != "" {
+			query = query.Where("LOWER(feed_users.city) = LOWER(?)", city)
 		} else {
-			query = query.Where("LOWER(users.country) = LOWER(?)", country)
+			query = query.Where("LOWER(feed_users.country) = LOWER(?)", country)
 		}
 	case "popular":
-		// Popularity combines engagement with a gentle age decay so an old
-		// viral post does not permanently dominate the feed.
+		// Engagement is weighted more heavily than age, while age decay keeps
+		// old viral posts from permanently occupying the top of the feed.
 		query = query.Order(gorm.Expr(`(
 			(COALESCE((SELECT COUNT(*) FROM likes l WHERE l.post_id = posts.id), 0) * 3) +
-			(COALESCE((SELECT COUNT(*) FROM comments cm WHERE cm.post_id = posts.id), 0) * 2)
+			(COALESCE((SELECT COUNT(*) FROM comments cm WHERE cm.post_id = posts.id), 0) * 2) + 1
 		) / POWER((EXTRACT(EPOCH FROM (NOW() - posts.created_at)) / 3600.0) + 2, 0.5) DESC`))
+	}
+
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to count feed posts"})
+		return
 	}
 
 	if category != "popular" {
@@ -87,16 +90,15 @@ func (h *PostHandler) GetCategorizedFeed(c *gin.Context) {
 	} else {
 		query = query.Order("posts.created_at DESC")
 	}
-	query = query.Order("posts.id DESC")
-
-	var posts []models.Post
-	if err := query.
+	query = query.Order("posts.id DESC").
 		Preload("User", func(db *gorm.DB) *gorm.DB {
 			return db.Select("id", "username", "profile_picture")
 		}).
 		Offset((page - 1) * limit).
-		Limit(limit + 1).
-		Find(&posts).Error; err != nil {
+		Limit(limit + 1)
+
+	var posts []models.Post
+	if err := query.Find(&posts).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to fetch feed"})
 		return
 	}
@@ -107,9 +109,14 @@ func (h *PostHandler) GetCategorizedFeed(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"data":       posts,
-		"category":   category,
-		"pagination": gin.H{"page": page, "limit": limit, "hasMore": hasMore},
+		"data":     posts,
+		"category": category,
+		"pagination": gin.H{
+			"page":    page,
+			"limit":   limit,
+			"total":   total,
+			"hasMore": hasMore,
+		},
 	})
 }
 
