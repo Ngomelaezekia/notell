@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { postsAPI } from "../services/post/postsApi";
 import { getApiErrorMessage } from "../utils/api";
 
-export const usePosts = (page = 1, limit = 10) => {
+export const usePosts = (page = 1, limit = 20, category = "all") => {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -13,49 +13,49 @@ export const usePosts = (page = 1, limit = 10) => {
   const fetchPosts = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setPosts([]);
+    setCurrentPage(page);
 
     try {
-      const response = await postsAPI.getFeed(page, limit);
+      const response = await postsAPI.getFeed(page, limit, category);
       setPosts(response.data || []);
       setCurrentPage(response.pagination?.page ?? page);
       setHasMore(response.pagination?.hasMore ?? false);
     } catch (err) {
       setError(getApiErrorMessage(err, "Failed to fetch posts"));
+      setHasMore(false);
     } finally {
       setLoading(false);
     }
-  }, [page, limit]);
+  }, [page, limit, category]);
 
   const loadMore = useCallback(async () => {
     if (loading || loadingMore || !hasMore) return;
 
     setLoadingMore(true);
     setError(null);
-
     const nextPage = currentPage + 1;
 
     try {
-      const response = await postsAPI.getFeed(nextPage, limit);
+      const response = await postsAPI.getFeed(nextPage, limit, category);
       const incomingPosts = response.data || [];
 
       setPosts((current) => {
         const existingIds = new Set(current.map((post) => post.postId));
         const uniquePosts = incomingPosts.filter(
-          (post) => !existingIds.has(post.postId)
+          (post) => !existingIds.has(post.postId),
         );
         return [...current, ...uniquePosts];
       });
-
       setCurrentPage(response.pagination?.page ?? nextPage);
       setHasMore(response.pagination?.hasMore ?? false);
     } catch (err) {
       const message = getApiErrorMessage(err, "Failed to load more posts");
       setError(message);
-      throw new Error(message, { cause: err });
     } finally {
       setLoadingMore(false);
     }
-  }, [currentPage, hasMore, limit, loading, loadingMore]);
+  }, [category, currentPage, hasMore, limit, loading, loadingMore]);
 
   const removePost = useCallback((postId) => {
     setPosts((current) => current.filter((post) => post.postId !== postId));
@@ -127,12 +127,5 @@ export const usePostActions = () => {
     }
   };
 
-  return {
-    createPost,
-    deletePost,
-    toggleLike,
-    addComment,
-    loading,
-    error,
-  };
+  return { createPost, deletePost, toggleLike, addComment, loading, error };
 };
