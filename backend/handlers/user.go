@@ -147,7 +147,8 @@ func (h *UserHandler) GetUserProfile(c *gin.Context) {
 	err=h.DB.
 		Select("id, username, profile_picture, cover_picture, bio, city, country, allow_followers, created_at").
 		Preload("Posts", func(db *gorm.DB) *gorm.DB {
-			return db.Select("id, user_id, content_type, content_url, caption, created_at, updated_at").
+			return db.Select("id, user_id, upload_id, content_type, content_url, caption, created_at, updated_at").
+				Preload("Upload.MediaMetadata").
 				Order("created_at DESC").
 				Offset((page-1)*limit).
 				Limit(limit)
