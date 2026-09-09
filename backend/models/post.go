@@ -16,6 +16,7 @@ type Post struct {
 	ContentType string    `gorm:"not null" json:"contentType"`
 	ContentURL  string    `gorm:"not null" json:"contentUrl"`
 	Caption     string    `gorm:"type:text" json:"caption"`
+	ViewCount   int64     `gorm:"not null;default:0;index:idx_posts_views" json:"viewCount"`
 	CreatedAt   time.Time `gorm:"index:idx_posts_user_created,priority:2" json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
 
