@@ -1,8 +1,10 @@
 import API from "../../utils/api";
 
 export const postsAPI = {
-  getFeed: async (page = 1, limit = 10) => {
-    const response = await API.get(`/posts/feed?page=${page}&limit=${limit}`);
+  getFeed: async (page = 1, limit = 20, category = "all") => {
+    const response = await API.get("/posts/feed", {
+      params: { page, limit, category },
+    });
     return response.data;
   },
 
