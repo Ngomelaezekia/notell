@@ -109,6 +109,7 @@ func (h *PostHandler) GetCategorizedFeed(c *gin.Context) {
 		Preload("User", func(db *gorm.DB) *gorm.DB {
 			return db.Select("id", "username", "profile_picture", "city", "country")
 		}).
+		Preload("Upload.MediaMetadata").
 		Offset((page - 1) * limit).
 		Limit(limit + 1)
 
