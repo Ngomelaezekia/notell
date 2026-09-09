@@ -1,15 +1,13 @@
-
-import router from "./utils/router"
-import { RouterProvider } from "react-router-dom"
+import router from "./utils/router";
+import { RouterProvider } from "react-router-dom";
+import { VideoFeedProvider } from "./context/VideoFeedContext";
 
 function App() {
-  
   return (
-    <div>
+    <VideoFeedProvider>
       <RouterProvider router={router} />
-    </div>
-          
-        )
+    </VideoFeedProvider>
+  );
 }
 
-export default App
+export default App;
