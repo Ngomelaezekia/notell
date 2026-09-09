@@ -13,6 +13,11 @@ export const postsAPI = {
     return response.data;
   },
 
+  recordView: async (id) => {
+    const response = await API.post(`/posts/${id}/view`);
+    return response.data;
+  },
+
   searchPosts: async (query, page = 1, limit = 20) => {
     const response = await API.get("/posts/search", {
       params: { q: query, page, limit },
