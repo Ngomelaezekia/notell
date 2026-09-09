@@ -55,16 +55,39 @@ func securityHeaders() gin.HandlerFunc {
 	}
 }
 
-func serveMedia(storage services.MediaStorage) gin.HandlerFunc {
+// serveMedia exposes only media that has been claimed by a post. Uploads that
+// are still unclaimed are temporary/private and must never become directly
+// addressable merely because their generated filename is known.
+func serveMedia(storage services.MediaStorage, isClaimed func(context.Context, string) (bool, error)) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		filename := filepath.Base(filepath.FromSlash(c.Param("filename")))
 		if filename == "." || filename == string(filepath.Separator) || filename != c.Param("filename") {
-			c.JSON(http.StatusBadRequest, gin.H{"message": "invalid media filename"}); return
+			c.JSON(http.StatusBadRequest, gin.H{"message": "invalid media filename"})
+			return
 		}
+
+		claimed, err := isClaimed(c.Request.Context(), filename)
+		if err != nil {
+			log.Printf("failed checking media authorization for %q: %v", filename, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"message": "failed checking media access"})
+			return
+		}
+		if !claimed {
+			c.JSON(http.StatusNotFound, gin.H{"message": "media not found"})
+			return
+		}
+
 		key := services.MediaObjectKey(filename)
 		body, contentType, contentLength, err := storage.Open(c.Request.Context(), key)
-		if err != nil { c.JSON(http.StatusNotFound, gin.H{"message": "media not found"}); return }
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"message": "media not found"})
+			return
+		}
 		defer body.Close()
+
+		// Claimed post media is currently public to authenticated/public post
+		// surfaces. The object itself remains private in B2; this route is the
+		// controlled application boundary. Do not cache unclaimed media.
 		c.Header("Cache-Control", "public, max-age=31536000, immutable")
 		if contentType != "" { c.Header("Content-Type", contentType) }
 		if contentLength > 0 { c.Header("Content-Length", strconv.FormatInt(contentLength, 10)) }
@@ -102,7 +125,13 @@ func main() {
 	}))
 	if cfg.AppEnv == "production" { r.Use(func(c *gin.Context) { c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains"); c.Next() }) }
 
-	r.GET("/uploads/:filename", serveMedia(mediaStorage))
+	r.GET("/uploads/:filename", serveMedia(mediaStorage, func(ctx context.Context, filename string) (bool, error) {
+		var count int64
+		err := db.Model(&models.Upload{}).
+			Where("filename = ? AND post_id IS NOT NULL", filename).
+			Count(&count).Error
+		return count > 0, err
+	}))
 	auth := handlers.NewAuthHandler(db, cfg)
 	post := handlers.NewPostHandler(db, cfg.PublicURL, cfg.MediaPublicURL)
 	userHandler := handlers.NewUserHandler(db)
