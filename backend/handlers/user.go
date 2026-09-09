@@ -136,13 +136,21 @@ func (h *UserHandler) SearchUsers(c *gin.Context) {
 
 func (h *UserHandler) GetUserProfile(c *gin.Context) {
 	targetIDUint,err:=strconv.ParseUint(c.Param("id"),10,32); if err!=nil {c.JSON(http.StatusBadRequest,gin.H{"message":"invalid user ID"});return}; targetID:=uint(targetIDUint)
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "24"))
+	if page < 1 { page = 1 }
+	if limit < 1 { limit = 24 }
+	if limit > 36 { limit = 36 }
+
 	var user models.User
 	err=h.DB.
 		Select("id, username, profile_picture, cover_picture, bio, city, country, allow_followers, created_at").
 		Preload("Posts", func(db *gorm.DB) *gorm.DB {
 			return db.Select("id, user_id, content_type, content_url, caption, created_at, updated_at").
 				Order("created_at DESC").
-				Limit(36)
+				Offset((page-1)*limit).
+				Limit(limit)
 		}).
 		First(&user,targetID).Error
 	if err!=nil {if errors.Is(err,gorm.ErrRecordNotFound){c.JSON(http.StatusNotFound,gin.H{"message":"user not found"});return};c.JSON(http.StatusInternalServerError,gin.H{"message":"database error"});return}
@@ -154,5 +162,5 @@ func (h *UserHandler) GetUserProfile(c *gin.Context) {
 	}
 	user.PostCount = postCount
 
-	c.JSON(http.StatusOK,gin.H{"data":gin.H{"user":user}})
+	c.JSON(http.StatusOK,gin.H{"data":gin.H{"user":user,"pagination":gin.H{"page":page,"limit":limit,"total":postCount,"hasMore":int64(page*limit)<postCount}}})
 }
