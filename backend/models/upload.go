@@ -12,6 +12,7 @@ type Upload struct {
 	CreatedAt time.Time `json:"createdAt"`
 	ClaimedAt *time.Time `json:"claimedAt,omitempty"`
 
-	User User `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"-"`
-	Post *Post `gorm:"foreignKey:PostID;constraint:OnDelete:SET NULL" json:"-"`
+	User         User          `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"-"`
+	Post         *Post         `gorm:"foreignKey:PostID;constraint:OnDelete:SET NULL" json:"-"`
+	MediaMetadata *MediaMetadata `gorm:"foreignKey:UploadID;constraint:OnDelete:CASCADE" json:"mediaMetadata,omitempty"`
 }
