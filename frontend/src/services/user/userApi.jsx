@@ -1,5 +1,16 @@
 import API from "../../utils/api";
 
+const getRelationshipData = (response) => response?.data?.data ?? response?.data ?? {};
+
+const publishRelationshipChange = (userId, data) => {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent("notell:relationship-changed", {
+      detail: { userId: String(userId), ...data },
+    })
+  );
+};
+
 export const userAPI = {
   getProfile: async (userId, page = 1, limit = 36) => {
     const response = await API.get(`/users/${userId}`, {
@@ -27,11 +38,15 @@ export const userAPI = {
 
   followUser: async (userId) => {
     const response = await API.post(`/users/${userId}/follow`);
+    const data = getRelationshipData(response);
+    publishRelationshipChange(userId, data);
     return response.data;
   },
 
   unfollowUser: async (userId) => {
     const response = await API.delete(`/users/${userId}/unfollow`);
+    const data = getRelationshipData(response);
+    publishRelationshipChange(userId, data);
     return response.data;
   },
 
