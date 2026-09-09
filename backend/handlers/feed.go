@@ -12,9 +12,10 @@ import (
 	"gorm.io/gorm"
 )
 
-// GetCategorizedFeed serves the home feed categories without loading the whole
-// database into memory. The client can page through each category until hasMore
-// is false.
+// GetCategorizedFeed serves ranked home-feed categories. Ranking is deliberately
+// deterministic and database-side so pagination stays cheap and the client does
+// not have to load the whole feed before sorting it. The scoring inputs can later
+// be replaced/extended by a learned ranking model without changing the API.
 func (h *PostHandler) GetCategorizedFeed(c *gin.Context) {
 	userID := c.MustGet("userId").(uint)
 	category := strings.ToLower(strings.TrimSpace(c.DefaultQuery("category", "all")))
@@ -41,7 +42,12 @@ func (h *PostHandler) GetCategorizedFeed(c *gin.Context) {
 	case "following":
 		query = query.
 			Joins(`LEFT JOIN user_relationships ON user_relationships.following_id = posts.user_id AND user_relationships.follower_id = ? AND user_relationships.status = ?`, userID, "accepted").
-			Where(`posts.user_id = ? OR user_relationships.follower_id IS NOT NULL`, userID)
+			Where(`posts.user_id = ? OR user_relationships.follower_id IS NOT NULL`, userID).
+			Order(gorm.Expr(`(
+				(COALESCE((SELECT COUNT(*) FROM likes l WHERE l.post_id = posts.id), 0) * 3) +
+				(COALESCE((SELECT COUNT(*) FROM comments cm WHERE cm.post_id = posts.id), 0) * 2) +
+				COALESCE(posts.view_count, 0) * 1
+			) / POWER((EXTRACT(EPOCH FROM (NOW() - posts.created_at)) / 3600.0) + 2, 0.35) DESC`))
 	case "local":
 		var viewer models.User
 		if err := h.DB.Select("city", "country").First(&viewer, userID).Error; err != nil {
@@ -56,11 +62,7 @@ func (h *PostHandler) GetCategorizedFeed(c *gin.Context) {
 		city := strings.TrimSpace(stringValue(viewer.City))
 		country := strings.TrimSpace(stringValue(viewer.Country))
 		if city == "" && country == "" {
-			c.JSON(http.StatusOK, gin.H{
-				"data": []models.Post{},
-				"category": category,
-				"pagination": gin.H{"page": page, "limit": limit, "total": 0, "hasMore": false},
-			})
+			c.JSON(http.StatusOK, gin.H{"data": []models.Post{}, "category": category, "pagination": gin.H{"page": page, "limit": limit, "total": 0, "hasMore": false}})
 			return
 		}
 
@@ -70,13 +72,31 @@ func (h *PostHandler) GetCategorizedFeed(c *gin.Context) {
 		} else {
 			query = query.Where("LOWER(feed_users.country) = LOWER(?)", country)
 		}
-	case "popular":
-		// Engagement is weighted more heavily than age, while age decay keeps
-		// old viral posts from permanently occupying the top of the feed.
 		query = query.Order(gorm.Expr(`(
 			(COALESCE((SELECT COUNT(*) FROM likes l WHERE l.post_id = posts.id), 0) * 3) +
-			(COALESCE((SELECT COUNT(*) FROM comments cm WHERE cm.post_id = posts.id), 0) * 2) + 1
-		) / POWER((EXTRACT(EPOCH FROM (NOW() - posts.created_at)) / 3600.0) + 2, 0.5) DESC`))
+			(COALESCE((SELECT COUNT(*) FROM comments cm WHERE cm.post_id = posts.id), 0) * 2) +
+			COALESCE(posts.view_count, 0)
+		) / POWER((EXTRACT(EPOCH FROM (NOW() - posts.created_at)) / 3600.0) + 2, 0.45) DESC`))
+	case "popular":
+		query = query.Joins("JOIN users feed_users ON feed_users.id = posts.user_id").
+			Order(gorm.Expr(`(
+				(COALESCE((SELECT COUNT(*) FROM likes l WHERE l.post_id = posts.id), 0) * 3) +
+				(COALESCE((SELECT COUNT(*) FROM comments cm WHERE cm.post_id = posts.id), 0) * 2) +
+				(COALESCE(posts.view_count, 0) * 4) +
+				(COALESCE((SELECT COUNT(*) FROM user_relationships r WHERE r.following_id = posts.user_id AND r.status = 'accepted'), 0) * 0.5)
+			) / POWER((EXTRACT(EPOCH FROM (NOW() - posts.created_at)) / 3600.0) + 2, 0.5) DESC`))
+	case "all":
+		// The default feed is a blended ranking: engagement + views + author
+		// reach, with a mild freshness decay. It intentionally does not sort by
+		// post creation time, preventing a burst of new posts from dominating.
+		query = query.Joins("JOIN users feed_users ON feed_users.id = posts.user_id").
+			Order(gorm.Expr(`(
+				(COALESCE((SELECT COUNT(*) FROM likes l WHERE l.post_id = posts.id), 0) * 3) +
+				(COALESCE((SELECT COUNT(*) FROM comments cm WHERE cm.post_id = posts.id), 0) * 2) +
+				(COALESCE(posts.view_count, 0) * 4) +
+				(COALESCE((SELECT COUNT(*) FROM user_relationships r WHERE r.following_id = posts.user_id AND r.status = 'accepted'), 0) * 0.5) +
+				CASE WHEN posts.user_id = ? THEN 4 ELSE 0 END
+			) / POWER((EXTRACT(EPOCH FROM (NOW() - posts.created_at)) / 3600.0) + 2, 0.45) DESC`, userID))
 	}
 
 	var total int64
@@ -85,14 +105,9 @@ func (h *PostHandler) GetCategorizedFeed(c *gin.Context) {
 		return
 	}
 
-	if category != "popular" {
-		query = query.Order("posts.created_at DESC")
-	} else {
-		query = query.Order("posts.created_at DESC")
-	}
 	query = query.Order("posts.id DESC").
 		Preload("User", func(db *gorm.DB) *gorm.DB {
-			return db.Select("id", "username", "profile_picture")
+			return db.Select("id", "username", "profile_picture", "city", "country")
 		}).
 		Offset((page - 1) * limit).
 		Limit(limit + 1)
@@ -109,12 +124,12 @@ func (h *PostHandler) GetCategorizedFeed(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"data":     posts,
+		"data": posts,
 		"category": category,
 		"pagination": gin.H{
-			"page":    page,
-			"limit":   limit,
-			"total":   total,
+			"page": page,
+			"limit": limit,
+			"total": total,
 			"hasMore": hasMore,
 		},
 	})
