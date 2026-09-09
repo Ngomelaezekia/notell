@@ -114,6 +114,23 @@ export default function SearchPage() {
   useEffect(() => () => searchTimerRef.current && clearTimeout(searchTimerRef.current), []);
 
   useEffect(() => {
+    const handleRelationshipChange = (event) => {
+      const change = event.detail;
+      const userId = String(change?.userId ?? "");
+      if (!userId) return;
+      const following = Boolean(change.following);
+      setFollowState((current) => ({ ...current, [userId]: following }));
+      setUsers((current) => current.map((user) => String(user.id) === userId ? { ...user, following } : user));
+      setSuggestions((current) => ({
+        ...current,
+        users: current.users.map((user) => String(user.id) === userId ? { ...user, following } : user),
+      }));
+    };
+    window.addEventListener("notell:relationship-changed", handleRelationshipChange);
+    return () => window.removeEventListener("notell:relationship-changed", handleRelationshipChange);
+  }, []);
+
+  useEffect(() => {
     const value = searchParams.get("q")?.trim() || "";
     const requestedType = searchParams.get("type") || "all";
     const type = TABS.some((tab) => tab.id === requestedType) ? requestedType : "all";
@@ -138,7 +155,10 @@ export default function SearchPage() {
       if (cancelled) return;
       if (userResult.status === "fulfilled") {
         const data = userResult.value?.data || {};
-        setUsers(data.users || []); setUserHasMore(Boolean(data.pagination?.hasMore));
+        const resultUsers = data.users || [];
+        setUsers(resultUsers);
+        setFollowState(Object.fromEntries(resultUsers.filter((user) => user?.id).map((user) => [String(user.id), Boolean(user.following)])));
+        setUserHasMore(Boolean(data.pagination?.hasMore));
       } else {
         setUsers([]); setUserHasMore(false); setUserError(getApiErrorMessage(userResult.reason, "People search failed."));
       }
@@ -155,18 +175,28 @@ export default function SearchPage() {
 
   const handleFollow = async (user) => {
     if (!user?.id || followLoading[user.id]) return;
-    setFollowLoading((current) => ({ ...current, [user.id]: true }));
+    const userId = String(user.id);
+    const isFollowing = Boolean(followState[userId] ?? user.following);
+    setFollowLoading((current) => ({ ...current, [userId]: true }));
+    setUserError(null);
     try {
-      await userAPI.followUser(user.id);
-      setFollowState((current) => ({ ...current, [user.id]: true }));
+      const response = isFollowing ? await userAPI.unfollowUser(user.id) : await userAPI.followUser(user.id);
+      const data = response?.data?.data ?? response?.data ?? {};
+      const following = data.following ?? !isFollowing;
+      setFollowState((current) => ({ ...current, [userId]: Boolean(following) }));
+      setUsers((current) => current.map((item) => String(item.id) === userId ? { ...item, following: Boolean(following) } : item));
+      setSuggestions((current) => ({
+        ...current,
+        users: current.users.map((item) => String(item.id) === userId ? { ...item, following: Boolean(following) } : item),
+      }));
     } catch (error) {
       if (error?.response?.status === 409) {
-        setFollowState((current) => ({ ...current, [user.id]: true }));
+        setFollowState((current) => ({ ...current, [userId]: isFollowing }));
       } else {
-        setUserError(getApiErrorMessage(error, `Could not follow @${user.username}.`));
+        setUserError(getApiErrorMessage(error, `Could not ${isFollowing ? "unfollow" : "follow"} @${user.username}.`));
       }
     } finally {
-      setFollowLoading((current) => ({ ...current, [user.id]: false }));
+      setFollowLoading((current) => ({ ...current, [userId]: false }));
     }
   };
 
@@ -197,7 +227,9 @@ export default function SearchPage() {
     const nextPage = userPage + 1; setLoadingMoreUsers(true); setUserError(null);
     try {
       const data = (await userAPI.searchUsers(query.trim(), nextPage, PAGE_SIZE))?.data || {};
-      setUsers((current) => { const ids = new Set(current.map((u) => u.id)); return [...current, ...(data.users || []).filter((u) => !ids.has(u.id))]; });
+      const incoming = data.users || [];
+      setUsers((current) => { const ids = new Set(current.map((u) => u.id)); return [...current, ...incoming.filter((u) => !ids.has(u.id))]; });
+      setFollowState((current) => ({ ...current, ...Object.fromEntries(incoming.filter((user) => user?.id).map((user) => [String(user.id), Boolean(user.following)])) }));
       setUserPage(data.pagination?.page ?? nextPage); setUserHasMore(Boolean(data.pagination?.hasMore));
     } catch (error) { setUserError(getApiErrorMessage(error, "Failed to load more people.")); }
     finally { setLoadingMoreUsers(false); }
@@ -255,7 +287,7 @@ export default function SearchPage() {
 
           {!loading && searched && showPeople && users.length > 0 && <section>
             <div className="mb-3 flex items-end justify-between"><div><h2 className="text-sm font-bold sm:text-base">People</h2><p className="mt-0.5 text-xs text-neutral-600">{users.length}{userHasMore ? "+" : ""} result{users.length === 1 ? "" : "s"}</p></div>{activeTab === "all" && <button type="button" onClick={() => changeTab("people")} className="text-xs font-semibold text-neutral-400 hover:text-white sm:text-sm">See all</button>}</div>
-            <div className="space-y-2">{users.map((user) => <div key={user.id} className="flex items-center gap-3 rounded-2xl border border-neutral-800 bg-neutral-900/70 p-3 transition hover:border-neutral-700 hover:bg-neutral-900 sm:p-3.5">
+            <div className="space-y-2">{users.map((user) => { const userId = String(user.id); const isFollowing = Boolean(followState[userId] ?? user.following); return <div key={user.id} className="flex items-center gap-3 rounded-2xl border border-neutral-800 bg-neutral-900/70 p-3 transition hover:border-neutral-700 hover:bg-neutral-900 sm:p-3.5">
               <Link to={`/users/${user.id}`} className="shrink-0 rounded-full focus:outline-none focus:ring-2 focus:ring-white/20" aria-label={`View @${user.username}'s public profile`}><Avatar user={user} /></Link>
               <Link to={`/users/${user.id}`} className="min-w-0 flex-1 rounded-xl focus:outline-none focus:ring-2 focus:ring-white/10" aria-label={`View @${user.username}'s public profile`}>
                 <p className="truncate text-sm font-bold text-white">@{user.username}</p>
@@ -263,12 +295,12 @@ export default function SearchPage() {
               </Link>
               <div className="flex shrink-0 items-center gap-1.5">
                 <Link to={`/users/${user.id}`} className="hidden rounded-xl border border-neutral-700 px-3 py-2 text-xs font-semibold text-neutral-300 transition hover:border-neutral-500 hover:text-white sm:inline-flex" aria-label={`View @${user.username}'s public profile`}>View</Link>
-                <button type="button" onClick={() => handleFollow(user)} disabled={followLoading[user.id] || followState[user.id]} className={`inline-flex min-w-[82px] items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition active:scale-95 disabled:cursor-default ${followState[user.id] ? "border border-emerald-500/20 bg-emerald-500/10 text-emerald-300" : "bg-white text-neutral-950 hover:bg-neutral-200 disabled:opacity-60"}`} aria-label={followState[user.id] ? `Following @${user.username}` : `Follow @${user.username}`}>
-                  {followLoading[user.id] ? <Loader2 size={14} className="animate-spin" /> : followState[user.id] ? <Check size={14} /> : <UserPlus size={14} />}
-                  {followLoading[user.id] ? "Following…" : followState[user.id] ? "Following" : "Follow"}
+                <button type="button" onClick={() => handleFollow(user)} disabled={followLoading[userId] || Boolean(user.isSelf)} className={`inline-flex min-w-[92px] items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition active:scale-95 disabled:cursor-default disabled:opacity-60 ${isFollowing ? "border border-emerald-500/20 bg-emerald-500/10 text-emerald-300 hover:bg-red-500/10 hover:text-red-300" : "bg-white text-neutral-950 hover:bg-neutral-200"}`} aria-label={isFollowing ? `Unfollow @${user.username}` : `Follow @${user.username}`}>
+                  {followLoading[userId] ? <Loader2 size={14} className="animate-spin" /> : isFollowing ? <Check size={14} /> : <UserPlus size={14} />}
+                  {followLoading[userId] ? "Updating…" : isFollowing ? "Following" : "Follow"}
                 </button>
               </div>
-            </div>)}</div>
+            </div>; })}</div>
             {userHasMore && <button type="button" onClick={loadMoreUsers} disabled={loadingMoreUsers} className="mx-auto mt-4 flex items-center gap-2 rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-2.5 text-xs font-semibold text-neutral-300 transition hover:bg-neutral-800 disabled:opacity-50">{loadingMoreUsers ? <Loader2 size={15} className="animate-spin" /> : <ChevronDown size={15} />}{loadingMoreUsers ? "Loading…" : "Load more people"}</button>}
           </section>}
 
