@@ -65,9 +65,11 @@ func serveMedia(storage services.MediaStorage) gin.HandlerFunc {
 		body, contentType, contentLength, err := storage.Open(c.Request.Context(), key)
 		if err != nil { c.JSON(http.StatusNotFound, gin.H{"message": "media not found"}); return }
 		defer body.Close()
-		c.Header("Cache-Control", "private, max-age=300")
+		// Upload filenames are cryptographically random and immutable, so media
+		// responses can be cached aggressively by the browser/CDN.
+		c.Header("Cache-Control", "public, max-age=31536000, immutable")
 		if contentType != "" { c.Header("Content-Type", contentType) }
-		if contentLength > 0 { c.Header("Content-Length", strconv.FormatInt(contentLength, 10)) }
+		if contentLength > 0 { c.Header("Content-Length", strconv.FormatInt(contentLength, 10) }
 		if _, err := io.Copy(c.Writer, body); err != nil { log.Printf("failed streaming media %q: %v", key, err) }
 	}
 }
@@ -87,7 +89,7 @@ func main() {
 	sqlDB.SetConnMaxIdleTime(time.Duration(envInt("DB_CONN_MAX_IDLE_MINUTES", 5)) * time.Minute)
 	defer sqlDB.Close()
 	if err := sqlDB.Ping(); err != nil { log.Fatalf("Failed to ping PostgreSQL database: %v", err) }
-	if err := db.AutoMigrate(&models.User{}, &models.Post{}, &models.Comment{}, &models.Like{}, &models.Relationship{}, &models.Channel{}, &models.Notification{}, &models.Upload{}); err != nil { log.Fatalf("Database auto-migration failed: %v", err) }
+	if err := db.AutoMigrate(&models.User{}, &models.Post{}, &models.Comment{}, &models.Like{}, &models.Relationship{}, &models.Channel{}, &models.Notification{}, &models.Upload{}, &models.PostView{}); err != nil { log.Fatalf("Database auto-migration failed: %v", err) }
 
 	mediaStorage, err := services.NewMediaStorage(cfg)
 	if err != nil { log.Fatalf("Media storage initialization failed: %v", err) }
@@ -137,6 +139,7 @@ func main() {
 			protected.POST("/posts", middleware.RateLimit(30, time.Minute), post.CreatePost)
 			protected.GET("/posts/feed", middleware.RateLimit(120, time.Minute), post.GetCategorizedFeed)
 			protected.DELETE("/posts/:id", middleware.RateLimit(30, time.Minute), post.DeletePost)
+			protected.POST("/posts/:id/view", middleware.RateLimit(240, time.Minute), post.RecordPostView)
 			protected.POST("/posts/:id/like", middleware.RateLimit(120, time.Minute), post.ToggleLike)
 			protected.POST("/posts/:id/comments", middleware.RateLimit(60, time.Minute), post.AddComment)
 			protected.POST("/users/:id/follow", middleware.RateLimit(60, time.Minute), relationshipHandler.FollowUser)
