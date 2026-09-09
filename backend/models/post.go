@@ -13,6 +13,7 @@ import (
 type Post struct {
 	ID          uint      `gorm:"primaryKey" json:"postId"`
 	UserID      uint      `gorm:"not null;index:idx_posts_user_created,priority:1" json:"userId"`
+	UploadID    *uint     `gorm:"uniqueIndex" json:"uploadId,omitempty"`
 	ContentType string    `gorm:"not null" json:"contentType"`
 	ContentURL  string    `gorm:"not null" json:"contentUrl"`
 	Caption     string    `gorm:"type:text" json:"caption"`
@@ -25,6 +26,7 @@ type Post struct {
 	Liked        bool `gorm:"-" json:"liked"`
 
 	User     User      `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"user,omitempty"`
+	Upload   *Upload   `gorm:"foreignKey:UploadID;constraint:OnDelete:SET NULL" json:"upload,omitempty"`
 	Likes    []Like    `gorm:"foreignKey:PostID;constraint:OnDelete:CASCADE" json:"likes,omitempty"`
 	Comments []Comment `gorm:"foreignKey:PostID;constraint:OnDelete:CASCADE" json:"comments,omitempty"`
 }
@@ -58,6 +60,10 @@ func (p *Post) BeforeCreate(tx *gorm.DB) error {
 	if upload.UserID != p.UserID {
 		return errors.New("uploaded media is not owned by the post author")
 	}
+	if p.UploadID != nil && *p.UploadID != upload.ID {
+		return errors.New("post upload does not match content URL")
+	}
+	p.UploadID = &upload.ID
 
 	isImage := strings.HasPrefix(strings.ToLower(upload.MediaType), "image/")
 	isVideo := strings.HasPrefix(strings.ToLower(upload.MediaType), "video/")
