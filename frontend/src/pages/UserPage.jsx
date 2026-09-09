@@ -113,6 +113,16 @@ export const Users = () => {
 
   useEffect(() => { loadProfile(); }, [loadProfile]);
 
+  useEffect(() => {
+    const handleRelationshipChange = (event) => {
+      const change = event.detail;
+      if (!change || String(change.userId) !== String(id)) return;
+      setRelationship((current) => ({ ...current, ...change }));
+    };
+    window.addEventListener("notell:relationship-changed", handleRelationshipChange);
+    return () => window.removeEventListener("notell:relationship-changed", handleRelationshipChange);
+  }, [id]);
+
   const loadMorePosts = useCallback(async () => {
     if (!id || profileLoadingMore || !profileHasMore) return;
     const nextPage = profilePage + 1;
@@ -147,13 +157,15 @@ export const Users = () => {
     if (!id || actionLoading || (!relationship?.following && !relationship?.allowFollowers)) return;
     setActionLoading(true); setError(null);
     try {
-      if (relationship.following) {
-        await userAPI.unfollowUser(id);
-        setRelationship((current) => ({ ...current, following: false, followerCount: Math.max(0, (current?.followerCount ?? 1) - 1) }));
-      } else {
-        await userAPI.followUser(id);
-        setRelationship((current) => ({ ...current, following: true, followerCount: (current?.followerCount ?? 0) + 1 }));
-      }
+      const response = relationship.following
+        ? await userAPI.unfollowUser(id)
+        : await userAPI.followUser(id);
+      const data = response?.data?.data ?? response?.data ?? {};
+      setRelationship((current) => ({
+        ...current,
+        ...data,
+        following: data.following ?? !current?.following,
+      }));
     } catch (err) { setError(err.response?.data?.message || "Failed to update follow status"); }
     finally { setActionLoading(false); }
   };
