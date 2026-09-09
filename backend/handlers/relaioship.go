@@ -98,9 +98,6 @@ func (h *RelationshipHandler) GetRelationshipStatus(c *gin.Context) {
 		err := h.DB.Where("follower_id = ? AND following_id = ? AND status = ?", viewerID, id, relationshipStatus).First(&outgoing).Error
 		if err == nil { following = true } else if !errors.Is(err, gorm.ErrRecordNotFound) { c.JSON(http.StatusInternalServerError, gin.H{"message":"failed to load relationship"}); return }
 
-		// Use a fresh model value for the reverse lookup. Reusing a populated
-		// GORM model can retain its primary-key scope and accidentally add
-		// contradictory follower/following predicates.
 		var incoming models.Relationship
 		err = h.DB.Where("follower_id = ? AND following_id = ? AND status = ?", id, viewerID, relationshipStatus).First(&incoming).Error
 		if err == nil { follower = true } else if !errors.Is(err, gorm.ErrRecordNotFound) { c.JSON(http.StatusInternalServerError, gin.H{"message":"failed to load relationship"}); return }
@@ -132,5 +129,11 @@ func (h *RelationshipHandler) RemoveFollower(c *gin.Context) {
 	result := h.DB.Where("follower_id = ? AND following_id = ?", uint(followerID), myID).Delete(&models.Relationship{})
 	if result.Error != nil { c.JSON(http.StatusInternalServerError, gin.H{"message":"failed to remove follower"}); return }
 	if result.RowsAffected == 0 { c.JSON(http.StatusNotFound, gin.H{"message":"user is not following you"}); return }
-	c.JSON(http.StatusOK, gin.H{"message":"follower removed successfully"})
+
+	var followerCount int64
+	if err := h.DB.Model(&models.Relationship{}).Where("following_id = ? AND status = ?", myID, relationshipStatus).Count(&followerCount).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message":"follower removed, but failed to refresh follower count"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message":"follower removed successfully", "data":gin.H{"following":false,"followerCount":followerCount}})
 }
