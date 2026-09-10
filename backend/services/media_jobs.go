@@ -9,6 +9,8 @@ import (
 	"gorm.io/gorm"
 )
 
+const MaxMediaAttempts = 3
+
 // CreateMediaJob creates a pending asynchronous media processing task.
 func CreateMediaJob(db *gorm.DB, uploadID uint) error {
 	job := models.MediaJob{
@@ -25,7 +27,8 @@ func ClaimPendingMediaJob(db *gorm.DB) (*models.MediaJob, error) {
 	var job models.MediaJob
 
 	err := db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("status = ?", "pending").Order("created_at ASC").First(&job).Error; err != nil {
+		if err := tx.Where("status = ? AND attempts < ?", "pending", MaxMediaAttempts).
+			Order("created_at ASC").First(&job).Error; err != nil {
 			return err
 		}
 
@@ -44,7 +47,6 @@ func ClaimPendingMediaJob(db *gorm.DB) (*models.MediaJob, error) {
 	return &job, nil
 }
 
-// CompleteMediaJob marks a job as completed.
 func CompleteMediaJob(db *gorm.DB, jobID uint) error {
 	return db.Model(&models.MediaJob{}).
 		Where("id = ?", jobID).
@@ -55,16 +57,25 @@ func CompleteMediaJob(db *gorm.DB, jobID uint) error {
 		}).Error
 }
 
-// FailMediaJob records a failed processing attempt.
 func FailMediaJob(db *gorm.DB, jobID uint, err error) error {
 	if err == nil {
 		err = errors.New("unknown media processing failure")
 	}
 
+	var job models.MediaJob
+	if findErr := db.First(&job, jobID).Error; findErr != nil {
+		return findErr
+	}
+
+	status := "pending"
+	if job.Attempts >= MaxMediaAttempts {
+		status = "failed"
+	}
+
 	return db.Model(&models.MediaJob{}).
 		Where("id = ?", jobID).
 		Updates(map[string]any{
-			"status":    "failed",
+			"status":    status,
 			"locked_at": nil,
 			"error":     err.Error(),
 		}).Error
