@@ -183,6 +183,14 @@ func (h *UploadHandler) UploadMedia(c *gin.Context) {
 		return
 	}
 
+	if err := services.CreateMediaJob(h.DB, upload.ID); err != nil {
+		_ = h.DB.Delete(&upload).Error
+		_ = h.Storage.Delete(context.Background(), key)
+		_ = os.Remove(filePath)
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed scheduling media processing"})
+		return
+	}
+
 	h.cleanupUnclaimedUploads()
 
 	fileURL := h.Storage.PublicURL(key)
