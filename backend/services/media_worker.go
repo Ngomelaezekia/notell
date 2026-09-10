@@ -6,14 +6,12 @@ import (
 	"log"
 	"time"
 
-	mediaservice "notell/services/media"
 	"notell/models"
+	mediaservice "notell/services/media"
 
 	"gorm.io/gorm"
 )
 
-// StartMediaWorker starts the asynchronous media processing loop.
-// It consumes MediaJob records and delegates actual processing to the media processor.
 func StartMediaWorker(ctx context.Context, db *gorm.DB) {
 	processor := mediaservice.NewProcessor(db)
 
