@@ -15,7 +15,8 @@ type MediaMetadata struct {
 	FileSize     int64 `json:"fileSize,omitempty"`
 	Codec        string `json:"codec,omitempty"`
 
-	Status string `gorm:"size:32;not null;default:'uploaded'" json:"status"`
+	Status           string `gorm:"size:32;not null;default:'uploaded'" json:"status"`
+	ProcessingError  string `gorm:"type:text" json:"processingError,omitempty"`
 
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
