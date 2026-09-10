@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"notell/models"
+	"notell/observability"
 	mediaservice "notell/services/media"
 
 	"gorm.io/gorm"
@@ -46,25 +47,32 @@ func processNextMediaJob(ctx context.Context, db *gorm.DB, processor *mediaservi
 		return
 	}
 
+	observability.MediaJobClaimed(job.ID)
+	observability.MediaProcessingStarted(job.ID, job.UploadID)
+
 	log.Printf("media worker processing job=%d upload=%d attempt started", job.ID, job.UploadID)
 
 	var upload models.Upload
 	if err := db.WithContext(ctx).First(&upload, job.UploadID).Error; err != nil {
+		observability.MediaProcessingFailed(job.ID, err)
 		log.Printf("media worker upload lookup failed job=%d: %v", job.ID, err)
 		_ = FailMediaJob(db, job.ID, err)
 		return
 	}
 
 	if err := processor.Process(ctx, &upload); err != nil {
+		observability.MediaProcessingFailed(job.ID, err)
 		log.Printf("media worker processing failed job=%d: %v", job.ID, err)
 		_ = FailMediaJob(db, job.ID, err)
 		return
 	}
 
 	if err := CompleteMediaJob(db, job.ID); err != nil {
+		observability.MediaProcessingFailed(job.ID, err)
 		log.Printf("media worker completion failed job=%d: %v", job.ID, err)
 		return
 	}
 
+	observability.MediaProcessingCompleted(job.ID)
 	log.Printf("media worker completed job=%d", job.ID)
 }
