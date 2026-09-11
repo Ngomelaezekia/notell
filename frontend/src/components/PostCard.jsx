@@ -88,14 +88,14 @@ export const PostCard = ({ post, onPostDeleted, priority = false }) => {
         viewRecordedRef.current = true;
         void postsAPI.recordView(postId).catch(() => {});
       }
-      if (isVideo && videoRef.current && !isLongVideo) {
-        if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+      if (isVideo && videoRef.current) {
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.25) {
           videoRef.current.muted = true;
           setVideoMuted(true);
           void videoRef.current.play().catch(() => {});
-        } else if (!entry.isIntersecting) videoRef.current.pause();
-      } else if (isVideo && videoRef.current && !entry.isIntersecting) {
-        videoRef.current.pause();
+        } else if (!entry.isIntersecting) {
+          videoRef.current.pause();
+        }
       }
     }, { threshold: [0, 0.25, 0.5, 0.6], rootMargin: "180px 0px" });
     observer.observe(target);
@@ -173,7 +173,7 @@ export const PostCard = ({ post, onPostDeleted, priority = false }) => {
         {mediaUrl && <div ref={mediaContainerRef} className="group/media relative aspect-square w-full overflow-hidden border-y border-neutral-900 bg-black" onDoubleClick={handleMediaDoubleClick}>
           {isVideo ? (
             <button type="button" onClick={openVideoFeed} className="relative block h-full w-full cursor-pointer text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-neutral-300" aria-label="Open video feed viewer">
-              <video ref={videoRef} src={mediaUrl} muted defaultMuted playsInline preload={mediaActive && !isLongVideo ? "auto" : "metadata"} onLoadedMetadata={(event) => setVideoDuration(event.currentTarget.duration || 0)} className="block h-full w-full object-cover" aria-label={caption || "Post video"} />
+              <video ref={videoRef} src={mediaUrl} muted defaultMuted autoPlay playsInline loop preload="auto" onLoadedMetadata={(event) => { setVideoDuration(event.currentTarget.duration || 0); void event.currentTarget.play().catch(() => {}); }} onCanPlay={(event) => { event.currentTarget.muted = true; void event.currentTarget.play().catch(() => {}); }} className="block h-full w-full object-cover" aria-label={caption || "Post video"} />
               {isLongVideo && <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-4 pb-4 pt-12 text-xs font-medium text-white/90">Tap to watch full video</span>}
               <span onClick={toggleAudio} className="absolute bottom-3 left-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white shadow-md backdrop-blur-sm transition hover:bg-black/80 active:scale-90 sm:h-9 sm:w-9" role="button" aria-label={videoMuted ? "Allow sound" : "Mute video"}>{videoMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}</span>
               {likeBurst && <span className="pointer-events-none absolute inset-0 flex items-center justify-center"><Heart size={82} fill="currentColor" strokeWidth={1.5} className="scale-125 text-white opacity-0 drop-shadow-[0_4px_18px_rgba(0,0,0,0.55)]" style={{ animation: "notellLikePop 420ms ease-out forwards" }} /></span>}
