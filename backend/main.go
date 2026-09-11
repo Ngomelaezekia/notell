@@ -63,19 +63,27 @@ func securityHeaders() gin.HandlerFunc {
 	}
 }
 
-func serveMedia(storage services.MediaStorage, claimed func(context.Context, string) (bool, error)) gin.HandlerFunc {
+func serveMedia(storage services.MediaStorage, access func(context.Context, string, uint) (bool, bool, error)) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		filename := filepath.Base(c.Param("filename"))
 		if filename == "." || filename == "" || filename != c.Param("filename") {
 			c.JSON(http.StatusBadRequest, gin.H{"message": "invalid media filename"})
 			return
 		}
-		isClaimed, err := claimed(c.Request.Context(), filename)
+
+		userID := uint(0)
+		if value, ok := c.Get(middleware.ContextUserIDKey); ok {
+			if id, ok := value.(uint); ok {
+				userID = id
+			}
+		}
+
+		allowed, private, err := access(c.Request.Context(), filename, userID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"message": "failed checking media"})
 			return
 		}
-		if !isClaimed {
+		if !allowed {
 			c.JSON(http.StatusNotFound, gin.H{"message": "media not found"})
 			return
 		}
@@ -95,7 +103,11 @@ func serveMedia(storage services.MediaStorage, claimed func(context.Context, str
 		defer body.Close()
 
 		c.Header("Accept-Ranges", "bytes")
-		c.Header("Cache-Control", "public, max-age=31536000, immutable")
+		if private {
+			c.Header("Cache-Control", "private, no-store")
+		} else {
+			c.Header("Cache-Control", "public, max-age=31536000, immutable")
+		}
 		if contentType != "" {
 			c.Header("Content-Type", contentType)
 		}
@@ -160,12 +172,23 @@ func main() {
 		})
 	}
 
-	r.GET("/uploads/:filename", serveMedia(mediaStorage, func(ctx context.Context, filename string) (bool, error) {
-		var count int64
-		err := db.Model(&models.Upload{}).
-			Where("filename = ? AND post_id IS NOT NULL", filename).
-			Count(&count).Error
-		return count > 0, err
+	r.GET("/uploads/:filename", middleware.OptionalAuth(cfg.JWTSecret), serveMedia(mediaStorage, func(ctx context.Context, filename string, userID uint) (bool, bool, error) {
+		var post models.Post
+		err := db.Select("user_id, visibility").
+			Joins("JOIN uploads ON uploads.post_id = posts.id").
+			Where("uploads.filename = ? AND uploads.post_id IS NOT NULL", filename).
+			First(&post).Error
+		if err != nil {
+			if err == gorm.ErrRecordNotFound {
+				return false, false, nil
+			}
+			return false, false, err
+		}
+		private := post.Visibility == "private"
+		if private && (userID == 0 || userID != post.UserID) {
+			return false, true, nil
+		}
+		return true, private, nil
 	}))
 	auth := handlers.NewAuthHandler(db, cfg)
 	post := handlers.NewPostHandler(db, cfg.PublicURL, cfg.MediaPublicURL)
