@@ -7,6 +7,7 @@ import AppLayout from "../layout/AppLayout";
 const AuthPage = lazy(() => import("../pages/AuthPage"));
 const Posts = lazy(() => import("../pages/PostPage"));
 const PostDetailPage = lazy(() => import("../pages/PostDetailPage"));
+const VideoFeedView = lazy(() => import("../pages/VideoFeedView"));
 const CreatePost = lazy(() => import("../components/CreatePost").then((module) => ({ default: module.CreatePost })));
 const UserManage = lazy(() => import("../components/userManager/UserManager"));
 const UserPage = lazy(() => import("../pages/UserPage"));
@@ -19,16 +20,10 @@ const SettingsPage = lazy(() => import("../pages/SettingsPage"));
 const SettingsDetailPage = lazy(() => import("../pages/SettingsDetailPage"));
 
 const PageFallback = () => (
-  <div className="flex min-h-[40vh] items-center justify-center px-4 text-sm text-neutral-500">
-    Loading…
-  </div>
+  <div className="flex min-h-[40vh] items-center justify-center px-4 text-sm text-neutral-500">Loading…</div>
 );
 
-const withSuspense = (element) => (
-  <Suspense fallback={<PageFallback />}>
-    {element}
-  </Suspense>
-);
+const withSuspense = (element) => <Suspense fallback={<PageFallback />}>{element}</Suspense>;
 
 const RootLayout = () => (
   <AuthProvider>
@@ -48,6 +43,7 @@ const router = createBrowserRouter([
             children: [
               { path: "/", element: withSuspense(<Posts />) },
               { path: "create-post", element: withSuspense(<CreatePost />) },
+              { path: "video-feed/:id", element: withSuspense(<VideoFeedView />) },
               { path: "user", element: withSuspense(<CurrentUserProfile />) },
               { path: "profile", element: withSuspense(<UserManage />) },
               { path: "notifications", element: withSuspense(<NotificationsPage />) },
