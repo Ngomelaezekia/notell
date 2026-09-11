@@ -79,14 +79,21 @@ func serveMedia(storage services.MediaStorage, claimed func(context.Context, str
 			c.JSON(http.StatusNotFound, gin.H{"message": "media not found"})
 			return
 		}
-		key := services.MediaObjectKey(filename)
-		body, contentType, contentLength, err := storage.Open(c.Request.Context(), key)
+
+		byteRange := c.GetHeader("Range")
+		body, contentType, contentLength, contentRange, err := storage.Open(c.Request.Context(), services.MediaObjectKey(filename), byteRange)
 		if err != nil {
+			if byteRange != "" {
+				c.Header("Content-Range", "bytes */*")
+				c.JSON(http.StatusRequestedRangeNotSatisfiable, gin.H{"message": "invalid media range"})
+				return
+			}
 			c.JSON(http.StatusNotFound, gin.H{"message": "media not found"})
 			return
 		}
 		defer body.Close()
 
+		c.Header("Accept-Ranges", "bytes")
 		c.Header("Cache-Control", "public, max-age=31536000, immutable")
 		if contentType != "" {
 			c.Header("Content-Type", contentType)
@@ -94,8 +101,12 @@ func serveMedia(storage services.MediaStorage, claimed func(context.Context, str
 		if contentLength > 0 {
 			c.Header("Content-Length", strconv.FormatInt(contentLength, 10))
 		}
+		if contentRange != "" {
+			c.Header("Content-Range", contentRange)
+			c.Status(http.StatusPartialContent)
+		}
 		if _, err := io.Copy(c.Writer, body); err != nil {
-			log.Printf("failed streaming media %q: %v", key, err)
+			log.Printf("failed streaming media %q: %v", services.MediaObjectKey(filename), err)
 		}
 	}
 }
@@ -118,7 +129,7 @@ func main() {
 	sqlDB.SetMaxOpenConns(envInt("DB_MAX_OPEN_CONNS", 25))
 	sqlDB.SetMaxIdleConns(envInt("DB_MAX_IDLE_CONNS", 10))
 	sqlDB.SetConnMaxLifetime(time.Duration(envInt("DB_CONN_MAX_LIFETIME_MINUTES", 30)) * time.Minute)
-	sqlDB.SetConnMaxIdleTime(time.Duration(envInt("DB_CONN_MAX_IDLE_MINUTES", 5)) * time.Minute)
+	sqlDB.SetConnMaxIdleTime(time.Duration(envInt("DB_MAX_IDLE_MINUTES", 5)) * time.Minute)
 	defer sqlDB.Close()
 	if err := sqlDB.Ping(); err != nil {
 		log.Fatalf("Failed to ping PostgreSQL database: %v", err)
@@ -172,6 +183,9 @@ func main() {
 			defer cancel()
 			if err := sqlDB.PingContext(ctx); err != nil {
 				c.JSON(http.StatusServiceUnavailable, gin.H{"status": "not_ready"})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"status": "ready"})
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{"status": "ready"})
