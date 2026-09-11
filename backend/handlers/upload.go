@@ -175,28 +175,24 @@ func (h *UploadHandler) UploadMedia(c *gin.Context) {
 			return err
 		}
 		metadata.UploadID = upload.ID
-		return tx.Create(&metadata).Error
+		if err := tx.Create(&metadata).Error; err != nil {
+			return err
+		}
+		return services.CreateMediaJob(tx, upload.ID)
 	}); err != nil {
+		// The object was written before the database transaction. Roll it back
+		// when its ownership record cannot be committed.
 		_ = h.Storage.Delete(context.Background(), key)
 		_ = os.Remove(filePath)
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed recording uploaded file"})
 		return
 	}
 
-	if err := services.CreateMediaJob(h.DB, upload.ID); err != nil {
-		_ = h.DB.Delete(&upload).Error
-		_ = h.Storage.Delete(context.Background(), key)
-		_ = os.Remove(filePath)
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed scheduling media processing"})
-		return
-	}
-
 	h.cleanupUnclaimedUploads()
 
-	fileURL := h.Storage.PublicURL(key)
-	if fileURL == "/" || fileURL == "" {
-		fileURL = services.MediaPublicURL(h.PublicURL, key)
-	}
+	// Always return the application playback route. Returning an object-store or
+	// CDN URL here would bypass the authorization check on /uploads/:filename.
+	fileURL := services.MediaPublicURL(h.PublicURL, key)
 	c.JSON(http.StatusOK, gin.H{
 		"message": "upload successful",
 		"url":     fileURL,
