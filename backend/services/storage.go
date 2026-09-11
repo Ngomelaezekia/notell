@@ -37,9 +37,9 @@ type mediaPlaybackSigner interface {
 type localMediaStorage struct{}
 
 type s3MediaStorage struct {
-	client   *s3.Client
-	bucket   string
-	signer   *B2MediaSigner
+	client *s3.Client
+	bucket string
+	signer *B2MediaSigner
 }
 
 var mediaStorageRegistry struct {
@@ -135,12 +135,12 @@ func (s *s3MediaStorage) Put(ctx context.Context, key, localPath, contentType st
 	}
 
 	_, err = s.client.PutObject(ctx, &s3.PutObjectInput{
-		Bucket:        aws.String(s.bucket),
-		Key:           aws.String(key),
-		Body:          file,
-		ContentType:   aws.String(contentType),
+		Bucket: aws.String(s.bucket),
+		Key: aws.String(key),
+		Body: file,
+		ContentType: aws.String(contentType),
 		ContentLength: aws.Int64(info.Size()),
-		CacheControl:  aws.String("private, max-age=31536000, immutable"),
+		CacheControl: aws.String("private, max-age=31536000, immutable"),
 	})
 	if err != nil {
 		observability.MediaStorageFailed("put", err)
@@ -226,58 +226,42 @@ func parseByteRange(value string, size int64) (int64, int64, bool) {
 	if len(parts) != 2 {
 		return 0, 0, false
 	}
-
 	if parts[0] == "" {
-		if parts[1] == "" || size < 0 {
-			return 0, 0, false
-		}
+		if parts[1] == "" || size < 0 { return 0, 0, false }
 		suffix, err := strconv.ParseInt(parts[1], 10, 64)
-		if err != nil || suffix <= 0 || size <= 0 {
-			return 0, 0, false
-		}
-		if suffix > size {
-			suffix = size
-		}
+		if err != nil || suffix <= 0 || size <= 0 { return 0, 0, false }
+		if suffix > size { suffix = size }
 		return size - suffix, size - 1, true
 	}
-
 	start, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil || start < 0 {
-		return 0, 0, false
-	}
-
+	if err != nil || start < 0 { return 0, 0, false }
 	var end int64
 	if parts[1] == "" {
-		if size < 0 {
-			return 0, 0, false
-		}
+		if size < 0 { return 0, 0, false }
 		end = size - 1
 	} else {
 		end, err = strconv.ParseInt(parts[1], 10, 64)
-		if err != nil || end < start {
-			return 0, 0, false
-		}
+		if err != nil || end < start { return 0, 0, false }
 	}
-
 	if size >= 0 {
-		if start >= size {
-			return 0, 0, false
-		}
-		if end >= size {
-			end = size - 1
-		}
+		if start >= size { return 0, 0, false }
+		if end >= size { end = size - 1 }
 	}
 	return start, end, true
 }
 
 func StartMediaReconciler(ctx context.Context, storage MediaStorage, db *gorm.DB) {
 	SetMediaStorage(storage)
-	s3Store, ok := storage.(*s3MediaStorage)
-	if !ok {
-		return
-	}
 
 	reconcile := func() {
+		// Repair database processing state independently of the physical storage
+		// driver, so local development and B2 production both recover missing jobs.
+		ReconcileMediaState(db)
+
+		s3Store, ok := storage.(*s3MediaStorage)
+		if !ok {
+			return
+		}
 		if err := s3Store.reconcile(ctx, db); err != nil {
 			observability.MediaStorageFailed("reconcile", err)
 			log.Printf("media reconciliation failed: %v", err)
@@ -300,50 +284,25 @@ func StartMediaReconciler(ctx context.Context, storage MediaStorage, db *gorm.DB
 }
 
 func (s *s3MediaStorage) reconcile(ctx context.Context, db *gorm.DB) error {
-	paginator := s3.NewListObjectsV2Paginator(s.client, &s3.ListObjectsV2Input{
-		Bucket: aws.String(s.bucket),
-		Prefix: aws.String("uploads/"),
-	})
+	paginator := s3.NewListObjectsV2Paginator(s.client, &s3.ListObjectsV2Input{Bucket: aws.String(s.bucket), Prefix: aws.String("uploads/")})
 	cutoff := time.Now().Add(-orphanMediaGracePeriod)
-
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
-		if err != nil {
-			return fmt.Errorf("list Backblaze B2 media: %w", err)
-		}
+		if err != nil { return fmt.Errorf("list Backblaze B2 media: %w", err) }
 		for _, object := range page.Contents {
-			if object.Key == nil || !strings.HasPrefix(*object.Key, "uploads/") {
-				continue
-			}
-			if object.LastModified != nil && object.LastModified.After(cutoff) {
-				continue
-			}
+			if object.Key == nil || !strings.HasPrefix(*object.Key, "uploads/") { continue }
+			if object.LastModified != nil && object.LastModified.After(cutoff) { continue }
 			filename := filepath.Base(strings.TrimPrefix(*object.Key, "uploads/"))
-			if filename == "." || filename == "" {
-				continue
-			}
-
+			if filename == "." || filename == "" { continue }
 			var upload models.Upload
 			err := db.Select("id").Where("filename = ?", filename).First(&upload).Error
-			if err == nil {
-				continue
-			}
-			if !errors.Is(err, gorm.ErrRecordNotFound) {
-				return fmt.Errorf("check B2 media ownership for %q: %w", filename, err)
-			}
-
-			if err := s.Delete(ctx, *object.Key); err != nil {
-				log.Printf("failed to delete orphaned B2 media %q: %v", *object.Key, err)
-			}
+			if err == nil { continue }
+			if !errors.Is(err, gorm.ErrRecordNotFound) { return fmt.Errorf("check B2 media ownership for %q: %w", filename, err) }
+			if err := s.Delete(ctx, *object.Key); err != nil { log.Printf("failed to delete orphaned B2 media %q: %v", *object.Key, err) }
 		}
 	}
 	return nil
 }
 
-func MediaObjectKey(filename string) string {
-	return "uploads/" + filepath.Base(filename)
-}
-
-func MediaPublicURL(baseURL, key string) string {
-	return strings.TrimRight(baseURL, "/") + "/" + strings.TrimLeft(key, "/")
-}
+func MediaObjectKey(filename string) string { return "uploads/" + filepath.Base(filename) }
+func MediaPublicURL(baseURL, key string) string { return strings.TrimRight(baseURL, "/") + "/" + strings.TrimLeft(key, "/") }
