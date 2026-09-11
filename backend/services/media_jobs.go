@@ -51,13 +51,21 @@ func ClaimPendingMediaJob(db *gorm.DB) (*models.MediaJob, error) {
 		job.LockedAt = &now
 		job.Attempts++
 
-		return tx.Model(&models.MediaJob{}).
+		result := tx.Model(&models.MediaJob{}).
 			Where("id = ? AND status = ?", job.ID, "pending").
 			Updates(map[string]any{
 				"status":    job.Status,
 				"locked_at": job.LockedAt,
 				"attempts": job.Attempts,
-			}).Error
+			})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return gorm.ErrRecordNotFound
+		}
+
+		return nil
 	})
 
 	if err != nil {
@@ -67,23 +75,41 @@ func ClaimPendingMediaJob(db *gorm.DB) (*models.MediaJob, error) {
 	return &job, nil
 }
 
-func CompleteMediaJob(db *gorm.DB, jobID uint) error {
-	return db.Model(&models.MediaJob{}).
-		Where("id = ?", jobID).
+// CompleteMediaJob completes only the specific processing lease supplied by
+// the worker. This prevents a stale worker from completing a newer retry.
+func CompleteMediaJob(db *gorm.DB, jobID uint, expectedLockedAt *time.Time) error {
+	if expectedLockedAt == nil {
+		return errors.New("media job lease is missing")
+	}
+
+	result := db.Model(&models.MediaJob{}).
+		Where("id = ? AND status = ? AND locked_at = ?", jobID, "processing", *expectedLockedAt).
 		Updates(map[string]any{
 			"status":    "completed",
 			"locked_at": nil,
 			"error":     "",
-		}).Error
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
-func FailMediaJob(db *gorm.DB, jobID uint, err error) error {
+// FailMediaJob fails or requeues only the specific processing lease supplied
+// by the worker. This prevents a stale worker from overwriting a newer retry.
+func FailMediaJob(db *gorm.DB, jobID uint, err error, expectedLockedAt *time.Time) error {
 	if err == nil {
 		err = errors.New("unknown media processing failure")
 	}
+	if expectedLockedAt == nil {
+		return errors.New("media job lease is missing")
+	}
 
 	var job models.MediaJob
-	if findErr := db.First(&job, jobID).Error; findErr != nil {
+	if findErr := db.Where("id = ? AND status = ? AND locked_at = ?", jobID, "processing", *expectedLockedAt).First(&job).Error; findErr != nil {
 		return findErr
 	}
 
@@ -92,11 +118,18 @@ func FailMediaJob(db *gorm.DB, jobID uint, err error) error {
 		status = "failed"
 	}
 
-	return db.Model(&models.MediaJob{}).
-		Where("id = ?", jobID).
+	result := db.Model(&models.MediaJob{}).
+		Where("id = ? AND status = ? AND locked_at = ?", jobID, "processing", *expectedLockedAt).
 		Updates(map[string]any{
 			"status":    status,
 			"locked_at": nil,
 			"error":     err.Error(),
-		}).Error
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
