@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"notell/config"
@@ -36,6 +37,11 @@ type s3MediaStorage struct {
 	client    *s3.Client
 	bucket    string
 	publicURL string
+}
+
+var mediaStorageRegistry struct {
+	sync.RWMutex
+	storage MediaStorage
 }
 
 const orphanMediaGracePeriod = time.Hour
@@ -71,7 +77,17 @@ func NewMediaStorage(cfg *config.Config) (MediaStorage, error) {
 }
 
 func (s *localMediaStorage) Put(context.Context, string, string, string) error { return nil }
-func (s *localMediaStorage) Delete(context.Context, string) error                { return nil }
+func (s *localMediaStorage) Delete(_ context.Context, key string) error {
+	cleanKey := filepath.Clean(filepath.FromSlash(key))
+	if cleanKey == "." || filepath.IsAbs(cleanKey) || cleanKey == ".." || strings.HasPrefix(cleanKey, ".."+string(filepath.Separator)) {
+		return errors.New("invalid local media key")
+	}
+	path := filepath.Join(".", cleanKey)
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("delete local media: %w", err)
+	}
+	return nil
+}
 func (s *localMediaStorage) Open(_ context.Context, key, byteRange string) (io.ReadCloser, string, int64, string, error) {
 	path := filepath.Join(".", filepath.FromSlash(key))
 	file, err := os.Open(path)
@@ -170,6 +186,22 @@ func (s *s3MediaStorage) PublicURL(key string) string {
 	return MediaPublicURL(s.publicURL, key)
 }
 
+func SetMediaStorage(storage MediaStorage) {
+	mediaStorageRegistry.Lock()
+	mediaStorageRegistry.storage = storage
+	mediaStorageRegistry.Unlock()
+}
+
+func DeleteMediaObject(ctx context.Context, key string) error {
+	mediaStorageRegistry.RLock()
+	storage := mediaStorageRegistry.storage
+	mediaStorageRegistry.RUnlock()
+	if storage == nil {
+		return errors.New("media storage is not registered")
+	}
+	return storage.Delete(ctx, key)
+}
+
 type limitedReadCloser struct {
 	io.Reader
 	Closer io.Closer
@@ -231,6 +263,7 @@ func parseByteRange(value string, size int64) (int64, int64, bool) {
 }
 
 func StartMediaReconciler(ctx context.Context, storage MediaStorage, db *gorm.DB) {
+	SetMediaStorage(storage)
 	s3Store, ok := storage.(*s3MediaStorage)
 	if !ok {
 		return
