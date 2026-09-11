@@ -81,7 +81,8 @@ func serveMedia(storage services.MediaStorage, claimed func(context.Context, str
 		}
 
 		byteRange := c.GetHeader("Range")
-		body, contentType, contentLength, contentRange, err := storage.Open(c.Request.Context(), services.MediaObjectKey(filename), byteRange)
+		key := services.MediaObjectKey(filename)
+		body, contentType, contentLength, contentRange, err := storage.Open(c.Request.Context(), key, byteRange)
 		if err != nil {
 			if byteRange != "" {
 				c.Header("Content-Range", "bytes */*")
@@ -98,15 +99,13 @@ func serveMedia(storage services.MediaStorage, claimed func(context.Context, str
 		if contentType != "" {
 			c.Header("Content-Type", contentType)
 		}
-		if contentLength > 0 {
-			c.Header("Content-Length", strconv.FormatInt(contentLength, 10))
-		}
+		c.Header("Content-Length", strconv.FormatInt(contentLength, 10))
 		if contentRange != "" {
 			c.Header("Content-Range", contentRange)
 			c.Status(http.StatusPartialContent)
 		}
 		if _, err := io.Copy(c.Writer, body); err != nil {
-			log.Printf("failed streaming media %q: %v", services.MediaObjectKey(filename), err)
+			log.Printf("failed streaming media %q: %v", key, err)
 		}
 	}
 }
@@ -129,7 +128,7 @@ func main() {
 	sqlDB.SetMaxOpenConns(envInt("DB_MAX_OPEN_CONNS", 25))
 	sqlDB.SetMaxIdleConns(envInt("DB_MAX_IDLE_CONNS", 10))
 	sqlDB.SetConnMaxLifetime(time.Duration(envInt("DB_CONN_MAX_LIFETIME_MINUTES", 30)) * time.Minute)
-	sqlDB.SetConnMaxIdleTime(time.Duration(envInt("DB_MAX_IDLE_MINUTES", 5)) * time.Minute)
+	sqlDB.SetConnMaxIdleTime(time.Duration(envInt("DB_CONN_MAX_IDLE_MINUTES", 5)) * time.Minute)
 	defer sqlDB.Close()
 	if err := sqlDB.Ping(); err != nil {
 		log.Fatalf("Failed to ping PostgreSQL database: %v", err)
@@ -152,7 +151,7 @@ func main() {
 		log.Fatalf("Invalid TRUSTED_PROXIES configuration: %v", err)
 	}
 	r.Use(securityHeaders(), middleware.MaxBodyBytes(maxJSONBodyBytes), cors.New(cors.Config{
-		AllowOrigins: []string{cfg.FrontendURL}, AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}, AllowHeaders: []string{"Origin", "Content-Type", "Accept", "Authorization"}, ExposeHeaders: []string{"Content-Length"}, AllowCredentials: true, MaxAge: 12 * time.Hour,
+		AllowOrigins: []string{cfg.FrontendURL}, AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}, AllowHeaders: []string{"Origin", "Content-Type", "Accept", "Authorization"}, ExposeHeaders: []string{"Content-Length", "Content-Range", "Accept-Ranges"}, AllowCredentials: true, MaxAge: 12 * time.Hour,
 	}))
 	if cfg.AppEnv == "production" {
 		r.Use(func(c *gin.Context) {
@@ -183,9 +182,6 @@ func main() {
 			defer cancel()
 			if err := sqlDB.PingContext(ctx); err != nil {
 				c.JSON(http.StatusServiceUnavailable, gin.H{"status": "not_ready"})
-				return
-			}
-			c.JSON(http.StatusOK, gin.H{"status": "ready"})
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{"status": "ready"})
