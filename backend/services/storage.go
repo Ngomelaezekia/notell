@@ -30,11 +30,16 @@ type MediaStorage interface {
 	Open(ctx context.Context, key, byteRange string) (io.ReadCloser, string, int64, string, error)
 }
 
+type mediaPlaybackSigner interface {
+	GeneratePlaybackURL(ctx context.Context, objectPath string, expiry time.Duration) (string, error)
+}
+
 type localMediaStorage struct{}
 
 type s3MediaStorage struct {
-	client *s3.Client
-	bucket string
+	client   *s3.Client
+	bucket   string
+	signer   *B2MediaSigner
 }
 
 var mediaStorageRegistry struct {
@@ -70,7 +75,11 @@ func NewMediaStorage(cfg *config.Config) (MediaStorage, error) {
 		options.UsePathStyle = true
 	})
 
-	return &s3MediaStorage{client: client, bucket: cfg.B2Bucket}, nil
+	return &s3MediaStorage{
+		client: client,
+		bucket: cfg.B2Bucket,
+		signer: NewB2MediaSigner(client, cfg.B2Bucket),
+	}, nil
 }
 
 func (s *localMediaStorage) Put(context.Context, string, string, string) error { return nil }
@@ -110,6 +119,7 @@ func (s *localMediaStorage) Open(_ context.Context, key, byteRange string) (io.R
 	}
 	return file, "", info.Size(), "", nil
 }
+
 func (s *s3MediaStorage) Put(ctx context.Context, key, localPath, contentType string) error {
 	file, err := os.Open(localPath)
 	if err != nil {
@@ -175,6 +185,13 @@ func (s *s3MediaStorage) Open(ctx context.Context, key, byteRange string) (io.Re
 		contentRange = *output.ContentRange
 	}
 	return output.Body, contentType, contentLength, contentRange, nil
+}
+
+func (s *s3MediaStorage) GeneratePlaybackURL(ctx context.Context, objectPath string, expiry time.Duration) (string, error) {
+	if s == nil || s.signer == nil {
+		return "", errors.New("B2 playback signer is not initialized")
+	}
+	return s.signer.GeneratePlaybackURL(ctx, objectPath, expiry)
 }
 
 func SetMediaStorage(storage MediaStorage) {
