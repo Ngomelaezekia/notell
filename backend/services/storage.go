@@ -27,6 +27,7 @@ import (
 type MediaStorage interface {
 	Put(ctx context.Context, key, localPath, contentType string) error
 	Delete(ctx context.Context, key string) error
+	Exists(ctx context.Context, key string) (bool, error)
 	Open(ctx context.Context, key, byteRange string) (io.ReadCloser, string, int64, string, error)
 }
 
@@ -94,6 +95,17 @@ func (s *localMediaStorage) Delete(_ context.Context, key string) error {
 	}
 	return nil
 }
+func (s *localMediaStorage) Exists(_ context.Context, key string) (bool, error) {
+	path := filepath.Join(".", filepath.FromSlash(key))
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	return false, fmt.Errorf("stat local media: %w", err)
+}
 func (s *localMediaStorage) Open(_ context.Context, key, byteRange string) (io.ReadCloser, string, int64, string, error) {
 	path := filepath.Join(".", filepath.FromSlash(key))
 	file, err := os.Open(path)
@@ -156,6 +168,32 @@ func (s *s3MediaStorage) Delete(ctx context.Context, key string) error {
 		return fmt.Errorf("delete media from Backblaze B2: %w", err)
 	}
 	return nil
+}
+
+func (s *s3MediaStorage) Exists(ctx context.Context, key string) (bool, error) {
+	_, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(key)})
+	if err == nil {
+		return true, nil
+	}
+	var notFound *s3.NotFound
+	if errors.As(err, &notFound) {
+		return false, nil
+	}
+	statusCode := s3StatusCode(err)
+	if statusCode == 404 {
+		return false, nil
+	}
+	observability.MediaStorageFailed("exists", err)
+	return false, fmt.Errorf("check media in Backblaze B2: %w", err)
+}
+
+func s3StatusCode(err error) int {
+	type statusCoder interface{ HTTPStatusCode() int }
+	var sc statusCoder
+	if errors.As(err, &sc) {
+		return sc.HTTPStatusCode()
+	}
+	return 0
 }
 
 func (s *s3MediaStorage) Open(ctx context.Context, key, byteRange string) (io.ReadCloser, string, int64, string, error) {
@@ -254,8 +292,6 @@ func StartMediaReconciler(ctx context.Context, storage MediaStorage, db *gorm.DB
 	SetMediaStorage(storage)
 
 	reconcile := func() {
-		// Repair database processing state independently of the physical storage
-		// driver, so local development and B2 production both recover missing jobs.
 		ReconcileMediaState(db)
 
 		s3Store, ok := storage.(*s3MediaStorage)
@@ -265,6 +301,10 @@ func StartMediaReconciler(ctx context.Context, storage MediaStorage, db *gorm.DB
 		if err := s3Store.reconcile(ctx, db); err != nil {
 			observability.MediaStorageFailed("reconcile", err)
 			log.Printf("media reconciliation failed: %v", err)
+		}
+		if err := ReconcileDatabaseMedia(ctx, storage, db); err != nil {
+			observability.MediaStorageFailed("reconcile_db", err)
+			log.Printf("media database availability reconciliation failed: %v", err)
 		}
 	}
 
@@ -281,6 +321,33 @@ func StartMediaReconciler(ctx context.Context, storage MediaStorage, db *gorm.DB
 			}
 		}
 	}()
+}
+
+func ReconcileDatabaseMedia(ctx context.Context, storage MediaStorage, db *gorm.DB) error {
+	var uploads []models.Upload
+	if err := db.Select("id, filename, post_id").Where("filename <> ''").Find(&uploads).Error; err != nil {
+		return fmt.Errorf("list database media: %w", err)
+	}
+	for _, upload := range uploads {
+		exists, err := storage.Exists(ctx, MediaObjectKey(upload.Filename))
+		if err != nil {
+			return err
+		}
+		if exists {
+			continue
+		}
+		message := "physical media object is missing from durable storage"
+		if upload.PostID == nil {
+			message = "physical media object is missing from durable storage; upload must be replaced"
+		}
+		if err := db.Model(&models.MediaMetadata{}).Where("upload_id = ?", upload.ID).Updates(map[string]any{
+			"status":           "failed",
+			"processing_error": message,
+		}).Error; err != nil {
+			return fmt.Errorf("mark missing media upload=%d: %w", upload.ID, err)
+		}
+	}
+	return nil
 }
 
 func (s *s3MediaStorage) reconcile(ctx context.Context, db *gorm.DB) error {
