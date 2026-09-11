@@ -154,9 +154,10 @@ func s3StatusCode(err error) int {
 func (s *s3MediaStorage) Open(ctx context.Context, key, byteRange string) (io.ReadCloser, string, int64, string, error) {
 	input := &s3.GetObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(key)}
 	if byteRange != "" {
-		start, end, ok := parseByteRange(byteRange, -1)
-		if !ok || start < 0 || end < start { return nil, "", 0, "", fmt.Errorf("invalid byte range") }
-		input.Range = aws.String(fmt.Sprintf("bytes=%d-%d", start, end))
+		if !validOpenEndedByteRange(byteRange) {
+			return nil, "", 0, "", fmt.Errorf("invalid byte range")
+		}
+		input.Range = aws.String(byteRange)
 	}
 	output, err := s.client.GetObject(ctx, input)
 	if err != nil { observability.MediaStorageFailed("open", err); return nil, "", 0, "", fmt.Errorf("read media from Backblaze B2: %w", err) }
@@ -167,6 +168,23 @@ func (s *s3MediaStorage) Open(ctx context.Context, key, byteRange string) (io.Re
 	contentRange := ""
 	if output.ContentRange != nil { contentRange = *output.ContentRange }
 	return output.Body, contentType, contentLength, contentRange, nil
+}
+
+func validOpenEndedByteRange(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" || !strings.HasPrefix(value, "bytes=") { return false }
+	parts := strings.Split(strings.TrimPrefix(value, "bytes="), "-")
+	if len(parts) != 2 { return false }
+	if parts[0] == "" {
+		if parts[1] == "" { return false }
+		suffix, err := strconv.ParseInt(parts[1], 10, 64)
+		return err == nil && suffix > 0
+	}
+	start, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil || start < 0 { return false }
+	if parts[1] == "" { return true }
+	end, err := strconv.ParseInt(parts[1], 10, 64)
+	return err == nil && end >= start
 }
 
 func (s *s3MediaStorage) GeneratePlaybackURL(ctx context.Context, objectPath string, expiry time.Duration) (string, error) {
@@ -258,18 +276,17 @@ func (s *s3MediaStorage) reconcile(ctx context.Context, db *gorm.DB) error {
 		if err != nil { return fmt.Errorf("list Backblaze B2 media: %w", err) }
 		for _, object := range page.Contents {
 			if object.Key == nil || !strings.HasPrefix(*object.Key, "uploads/") { continue }
-			if object.LastModified != nil && object.LastModified.After(cutoff) { continue }
-			filename := filepath.Base(strings.TrimPrefix(*object.Key, "uploads/"))
-			if filename == "." || filename == "" { continue }
+			key := *object.Key
+			filename := strings.TrimPrefix(key, "uploads/")
 			var upload models.Upload
-			err := db.Select("id").Where("filename = ?", filename).First(&upload).Error
+			err := db.Where("filename = ?", filename).First(&upload).Error
 			if err == nil { continue }
-			if !errors.Is(err, gorm.ErrRecordNotFound) { return fmt.Errorf("check B2 media ownership for %q: %w", filename, err) }
-			if err := s.Delete(ctx, *object.Key); err != nil { log.Printf("failed to delete orphaned B2 media %q: %v", *object.Key, err) }
+			if !errors.Is(err, gorm.ErrRecordNotFound) { return fmt.Errorf("find upload for %q: %w", filename, err) }
+			createdAt := time.Now()
+			if object.LastModified != nil { createdAt = *object.LastModified }
+			if createdAt.After(cutoff) { continue }
+			if err := s.Delete(ctx, key); err != nil { return fmt.Errorf("delete orphan media %q: %w", key, err) }
 		}
 	}
 	return nil
 }
-
-func MediaObjectKey(filename string) string { return "uploads/" + filepath.Base(filename) }
-func MediaPublicURL(baseURL, key string) string { return strings.TrimRight(baseURL, "/") + "/" + strings.TrimLeft(key, "/") }
