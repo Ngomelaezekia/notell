@@ -57,6 +57,45 @@ func AuthRequired(jwtSecret string) gin.HandlerFunc {
 	}
 }
 
+// OptionalAuth validates a supplied bearer token or auth cookie when present,
+// but allows anonymous requests to continue. This is used by endpoints that
+// remain public for public resources while enforcing access on private ones.
+func OptionalAuth(jwtSecret string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var tokenString string
+
+		header := strings.TrimSpace(c.GetHeader("Authorization"))
+		if header != "" {
+			parts := strings.Fields(header)
+			if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || strings.TrimSpace(parts[1]) == "" {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "Invalid authorization header format"})
+				return
+			}
+			tokenString = parts[1]
+		}
+
+		if tokenString == "" {
+			if cookie, err := c.Cookie("auth_token"); err == nil {
+				tokenString = strings.TrimSpace(cookie)
+			}
+		}
+		if tokenString == "" {
+			c.Next()
+			return
+		}
+
+		claims, err := services.ValidateToken(tokenString, jwtSecret)
+		if err != nil || claims.UserID == 0 {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "Invalid or expired token"})
+			return
+		}
+
+		c.Set(ContextUserIDKey, claims.UserID)
+		c.Set(ContextEmailKey, claims.Email)
+		c.Next()
+	}
+}
+
 func GetUserID(c *gin.Context) (uint, error) {
 	val, exists := c.Get(ContextUserIDKey)
 	if !exists {
