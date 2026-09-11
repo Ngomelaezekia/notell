@@ -1,4 +1,4 @@
-import { MoreHorizontal, Trash2, Loader2, Heart, MessageSquare, Maximize2, X } from "lucide-react";
+import { MoreHorizontal, Trash2, Loader2, Heart, MessageSquare, Volume2, VolumeX, Maximize2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { usePostActions } from "../hooks/usePosts";
@@ -6,6 +6,9 @@ import { useAuth } from "../context/AuthContext";
 import { postsAPI } from "../services/post/postsApi";
 import { getFileUrl } from "../utils/api";
 import CommentSection from "./CommentSection";
+
+const LONG_VIDEO_SECONDS = 45;
+const CAPTION_PREVIEW_LENGTH = 220;
 
 const formatRelativeTime = (value) => {
   if (!value) return "";
@@ -30,8 +33,6 @@ const formatRelativeTime = (value) => {
   return `${Math.floor(days / 365)}y`;
 };
 
-const CAPTION_PREVIEW_LENGTH = 220;
-
 export const PostCard = ({ post, onPostDeleted, priority = false }) => {
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
@@ -49,6 +50,8 @@ export const PostCard = ({ post, onPostDeleted, priority = false }) => {
   const [likeBurst, setLikeBurst] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [mediaActive, setMediaActive] = useState(priority);
+  const [videoDuration, setVideoDuration] = useState(0);
+  const [videoMuted, setVideoMuted] = useState(true);
 
   const postId = post?.postId;
   const author = post?.user ?? {};
@@ -61,6 +64,7 @@ export const PostCard = ({ post, onPostDeleted, priority = false }) => {
   const caption = post?.caption ?? "";
   const hasLongCaption = caption.length > CAPTION_PREVIEW_LENGTH;
   const visibleCaption = showFullCaption || !hasLongCaption ? caption : `${caption.slice(0, CAPTION_PREVIEW_LENGTH).trimEnd()}…`;
+  const isLongVideo = isVideo && videoDuration > LONG_VIDEO_SECONDS;
 
   useEffect(() => {
     setLiked(Boolean(post?.liked));
@@ -68,59 +72,54 @@ export const PostCard = ({ post, onPostDeleted, priority = false }) => {
     setCommentCount(Number(post?.commentCount ?? 0));
     setShowFullCaption(false);
     setMediaActive(priority);
+    setVideoDuration(0);
+    setVideoMuted(true);
     viewRecordedRef.current = false;
   }, [post?.postId, post?.liked, post?.likeCount, post?.commentCount, priority]);
 
   useEffect(() => {
     const target = mediaContainerRef.current;
     if (!target || !postId) return undefined;
-
     const observer = new IntersectionObserver((entries) => {
       const entry = entries[0];
       if (!entry) return;
       if (entry.isIntersecting && entry.intersectionRatio >= 0.25) setMediaActive(true);
-
       if (entry.isIntersecting && entry.intersectionRatio >= 0.6 && !viewRecordedRef.current) {
         viewRecordedRef.current = true;
         void postsAPI.recordView(postId).catch(() => {});
       }
-
-      if (isVideo && videoRef.current) {
+      if (isVideo && videoRef.current && !isLongVideo) {
         if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
           videoRef.current.muted = true;
+          setVideoMuted(true);
           void videoRef.current.play().catch(() => {});
-        } else if (!entry.isIntersecting) {
-          videoRef.current.pause();
-        }
+        } else if (!entry.isIntersecting) videoRef.current.pause();
+      } else if (isVideo && videoRef.current && !entry.isIntersecting) {
+        videoRef.current.pause();
       }
     }, { threshold: [0, 0.25, 0.5, 0.6], rootMargin: "180px 0px" });
-
     observer.observe(target);
     return () => observer.disconnect();
-  }, [isVideo, postId]);
+  }, [isVideo, isLongVideo, postId]);
 
   useEffect(() => {
-    if (!showMenu) return;
-    const close = (event) => {
-      if (!event.target.closest("[data-post-menu]")) setShowMenu(false);
-    };
+    if (!showMenu) return undefined;
+    const close = (event) => { if (!event.target.closest("[data-post-menu]")) setShowMenu(false); };
     document.addEventListener("click", close);
     return () => document.removeEventListener("click", close);
   }, [showMenu]);
 
   useEffect(() => {
-    if (!lightboxOpen) return;
+    if (!lightboxOpen) return undefined;
     const closeOnEscape = (event) => { if (event.key === "Escape") setLightboxOpen(false); };
     document.addEventListener("keydown", closeOnEscape);
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", closeOnEscape);
-      document.body.style.overflow = previousOverflow;
-    };
+    return () => { document.removeEventListener("keydown", closeOnEscape); document.body.style.overflow = previousOverflow; };
   }, [lightboxOpen]);
 
   const openAuthorProfile = () => { if (authorId) navigate(`/users/${authorId}`); };
+  const openVideoFeed = () => { if (postId) { videoRef.current?.pause(); navigate(`/video-feed/${postId}`); } };
 
   const handleDelete = async () => {
     if (!postId || !window.confirm("Delete this post?")) return;
@@ -149,6 +148,14 @@ export const PostCard = ({ post, onPostDeleted, priority = false }) => {
   };
 
   const handleMediaDoubleClick = () => { if (!liked && !likeLoading) handleLike(); };
+  const toggleAudio = (event) => {
+    event.stopPropagation();
+    if (!videoRef.current) return;
+    const nextMuted = !videoRef.current.muted;
+    videoRef.current.muted = nextMuted;
+    setVideoMuted(nextMuted);
+    if (!nextMuted) void videoRef.current.play().catch(() => {});
+  };
 
   return (
     <>
@@ -163,16 +170,21 @@ export const PostCard = ({ post, onPostDeleted, priority = false }) => {
           {isOwner && <div className="relative shrink-0" data-post-menu><button type="button" onClick={() => setShowMenu((previous) => !previous)} disabled={loading} aria-label="Post options" aria-expanded={showMenu} className={`flex h-9 w-9 items-center justify-center rounded-full transition active:scale-90 ${showMenu ? "bg-neutral-900 text-neutral-100" : "text-neutral-500 hover:bg-neutral-900 hover:text-neutral-200"}`}>{loading ? <Loader2 size={18} className="animate-spin" /> : <MoreHorizontal size={19} />}</button>{showMenu && <div className="absolute right-0 z-30 mt-1 w-40 origin-top-right overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950 p-1 shadow-2xl shadow-black/50"><button type="button" onClick={handleDelete} disabled={loading} className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-red-400 transition hover:bg-red-950/40 active:bg-red-950/60"><Trash2 size={15} /> Delete post</button></div>}</div>}
         </header>
 
-        {mediaUrl && <div ref={mediaContainerRef} className="group/media relative overflow-hidden border-y border-neutral-900 bg-black" onDoubleClick={handleMediaDoubleClick}>
+        {mediaUrl && <div ref={mediaContainerRef} className="group/media relative aspect-[4/5] overflow-hidden border-y border-neutral-900 bg-black" onDoubleClick={handleMediaDoubleClick}>
           {isVideo ? (
-            <video ref={videoRef} src={mediaUrl} muted defaultMuted autoPlay loop playsInline preload={mediaActive ? "auto" : "metadata"} className="block max-h-[min(72dvh,620px)] w-full object-contain" aria-label={caption || "Post video"} />
+            <button type="button" onClick={openVideoFeed} className="relative block h-full w-full cursor-pointer text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-neutral-300" aria-label="Open video feed viewer">
+              <video ref={videoRef} src={mediaUrl} muted defaultMuted playsInline preload={mediaActive && !isLongVideo ? "auto" : "metadata"} onLoadedMetadata={(event) => setVideoDuration(event.currentTarget.duration || 0)} className="block h-full w-full object-cover" aria-label={caption || "Post video"} />
+              {isLongVideo && <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-4 pb-4 pt-12 text-xs font-medium text-white/90">Tap to watch full video</span>}
+              <span onClick={toggleAudio} className="absolute bottom-3 left-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-black/65 text-white shadow-lg backdrop-blur-sm transition hover:bg-black/80 active:scale-90" role="button" aria-label={videoMuted ? "Allow sound" : "Mute video"}>{videoMuted ? <VolumeX size={17} /> : <Volume2 size={17} />}</span>
+              {likeBurst && <span className="pointer-events-none absolute inset-0 flex items-center justify-center"><Heart size={82} fill="currentColor" strokeWidth={1.5} className="scale-125 text-white opacity-0 drop-shadow-[0_4px_18px_rgba(0,0,0,0.55)]" style={{ animation: "notellLikePop 420ms ease-out forwards" }} /></span>}
+            </button>
           ) : (
-            <button type="button" onClick={() => setLightboxOpen(true)} className="relative block w-full cursor-zoom-in text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-neutral-300" aria-label="Open image viewer">
-              <img src={mediaUrl} alt={caption || "Post"} className="mx-auto block max-h-[min(72dvh,620px)] w-full object-contain transition duration-300 group-hover/media:scale-[1.008]" loading={priority ? "eager" : "lazy"} fetchPriority={priority ? "high" : "auto"} decoding="async" draggable="false" />
+            <button type="button" onClick={() => setLightboxOpen(true)} className="relative block h-full w-full cursor-zoom-in text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-neutral-300" aria-label="Open image viewer">
+              <img src={mediaUrl} alt={caption || "Post"} className="block h-full w-full object-cover transition duration-300 group-hover/media:scale-[1.008]" loading={priority ? "eager" : "lazy"} fetchPriority={priority ? "high" : "auto"} decoding="async" draggable="false" />
               <span className="pointer-events-none absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-black/55 text-white opacity-0 backdrop-blur-sm transition-opacity duration-200 group-hover/media:opacity-100"><Maximize2 size={16} /></span>
+              {likeBurst && <span className="pointer-events-none absolute inset-0 flex items-center justify-center"><Heart size={82} fill="currentColor" strokeWidth={1.5} className="scale-125 text-white opacity-0 drop-shadow-[0_4px_18px_rgba(0,0,0,0.55)]" style={{ animation: "notellLikePop 420ms ease-out forwards" }} /></span>}
             </button>
           )}
-          {likeBurst && <div className="pointer-events-none absolute inset-0 flex items-center justify-center"><Heart size={82} fill="currentColor" strokeWidth={1.5} className="scale-125 text-white opacity-0 drop-shadow-[0_4px_18px_rgba(0,0,0,0.55)]" style={{ animation: "notellLikePop 420ms ease-out forwards" }} /></div>}
         </div>}
 
         <section className="px-3 pb-3 sm:px-4 sm:pb-4">
