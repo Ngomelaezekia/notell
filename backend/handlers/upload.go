@@ -88,7 +88,10 @@ func (h *UploadHandler) UploadMedia(c *gin.Context) {
 	if err := h.Storage.Put(c.Request.Context(), key, filePath, contentType); err != nil { _ = os.Remove(filePath); c.JSON(http.StatusBadGateway, gin.H{"message": "failed storing uploaded media"}); return }
 
 	upload := models.Upload{UserID: userID, Filename: filename, Path: filepath.ToSlash(filePath), MediaType: contentType}
-	metadata := models.MediaMetadata{FileSize: file.Size, Status: "uploaded"}
+	// The object has already been durably committed to the configured storage.
+	// Mark it ready immediately so post creation is not coupled to the optional
+	// asynchronous metadata worker. The worker can still enrich this record later.
+	metadata := models.MediaMetadata{FileSize: file.Size, Status: "ready"}
 	if err := h.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&upload).Error; err != nil { return err }
 		metadata.UploadID = upload.ID
