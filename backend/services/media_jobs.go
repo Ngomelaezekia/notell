@@ -56,7 +56,7 @@ func ClaimPendingMediaJob(db *gorm.DB) (*models.MediaJob, error) {
 			Updates(map[string]any{
 				"status":    job.Status,
 				"locked_at": job.LockedAt,
-				"attempts": job.Attempts,
+				"attempts":  job.Attempts,
 			})
 		if result.Error != nil {
 			return result.Error

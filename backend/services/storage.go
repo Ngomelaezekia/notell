@@ -28,15 +28,13 @@ type MediaStorage interface {
 	Put(ctx context.Context, key, localPath, contentType string) error
 	Delete(ctx context.Context, key string) error
 	Open(ctx context.Context, key, byteRange string) (io.ReadCloser, string, int64, string, error)
-	PublicURL(key string) string
 }
 
 type localMediaStorage struct{}
 
 type s3MediaStorage struct {
-	client    *s3.Client
-	bucket    string
-	publicURL string
+	client *s3.Client
+	bucket string
 }
 
 var mediaStorageRegistry struct {
@@ -72,8 +70,7 @@ func NewMediaStorage(cfg *config.Config) (MediaStorage, error) {
 		options.UsePathStyle = true
 	})
 
-	publicURL := strings.TrimRight(cfg.MediaPublicURL, "/")
-	return &s3MediaStorage{client: client, bucket: cfg.B2Bucket, publicURL: publicURL}, nil
+	return &s3MediaStorage{client: client, bucket: cfg.B2Bucket}, nil
 }
 
 func (s *localMediaStorage) Put(context.Context, string, string, string) error { return nil }
@@ -113,8 +110,6 @@ func (s *localMediaStorage) Open(_ context.Context, key, byteRange string) (io.R
 	}
 	return file, "", info.Size(), "", nil
 }
-func (s *localMediaStorage) PublicURL(key string) string { return MediaPublicURL("", key) }
-
 func (s *s3MediaStorage) Put(ctx context.Context, key, localPath, contentType string) error {
 	file, err := os.Open(localPath)
 	if err != nil {
@@ -180,10 +175,6 @@ func (s *s3MediaStorage) Open(ctx context.Context, key, byteRange string) (io.Re
 		contentRange = *output.ContentRange
 	}
 	return output.Body, contentType, contentLength, contentRange, nil
-}
-
-func (s *s3MediaStorage) PublicURL(key string) string {
-	return MediaPublicURL(s.publicURL, key)
 }
 
 func SetMediaStorage(storage MediaStorage) {

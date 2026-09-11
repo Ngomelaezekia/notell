@@ -15,10 +15,9 @@ import (
 type mediaTestStorage struct{}
 
 func (mediaTestStorage) Put(context.Context, string, string, string) error { return nil }
-func (mediaTestStorage) Delete(context.Context, string) error { return nil }
-func (mediaTestStorage) PublicURL(string) string { return "" }
-func (mediaTestStorage) Open(context.Context, string) (io.ReadCloser, string, int64, error) {
-	return io.NopCloser(errorReader{}), "image/jpeg", 0, nil
+func (mediaTestStorage) Delete(context.Context, string) error              { return nil }
+func (mediaTestStorage) Open(context.Context, string, string) (io.ReadCloser, string, int64, string, error) {
+	return io.NopCloser(errorReader{}), "image/jpeg", 0, "", nil
 }
 
 type trackingMediaStorage struct {
@@ -26,14 +25,14 @@ type trackingMediaStorage struct {
 }
 
 func (s *trackingMediaStorage) Put(context.Context, string, string, string) error { return nil }
-func (s *trackingMediaStorage) Delete(context.Context, string) error { return nil }
-func (s *trackingMediaStorage) PublicURL(string) string { return "" }
-func (s *trackingMediaStorage) Open(context.Context, string) (io.ReadCloser, string, int64, error) {
+func (s *trackingMediaStorage) Delete(context.Context, string) error              { return nil }
+func (s *trackingMediaStorage) Open(context.Context, string, string) (io.ReadCloser, string, int64, string, error) {
 	s.opened = true
-	return io.NopCloser(errorReader{}), "image/jpeg", 0, nil
+	return io.NopCloser(errorReader{}), "image/jpeg", 0, "", nil
 }
 
 type errorReader struct{}
+
 func (errorReader) Read([]byte) (int, error) { return 0, errors.New("unexpected read") }
 
 var _ services.MediaStorage = mediaTestStorage{}
@@ -44,9 +43,9 @@ func TestServeMediaRejectsUnclaimedMedia(t *testing.T) {
 	storage := &trackingMediaStorage{}
 	r := gin.New()
 	called := false
-	r.GET("/uploads/:filename", serveMedia(storage, func(context.Context, string) (bool, error) {
+	r.GET("/uploads/:filename", serveMedia(storage, func(context.Context, string, uint) (bool, bool, error) {
 		called = true
-		return false, nil
+		return false, false, nil
 	}))
 
 	req := httptest.NewRequest("GET", "/uploads/private.jpg", nil)
@@ -67,8 +66,8 @@ func TestServeMediaRejectsUnclaimedMedia(t *testing.T) {
 func TestServeMediaAllowsClaimedMedia(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.GET("/uploads/:filename", serveMedia(mediaTestStorage{}, func(context.Context, string) (bool, error) {
-		return true, nil
+	r.GET("/uploads/:filename", serveMedia(mediaTestStorage{}, func(context.Context, string, uint) (bool, bool, error) {
+		return true, false, nil
 	}))
 
 	req := httptest.NewRequest("GET", "/uploads/public.jpg", nil)
@@ -86,8 +85,8 @@ func TestServeMediaAllowsClaimedMedia(t *testing.T) {
 func TestServeMediaReturnsServerErrorWhenClaimCheckFails(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.GET("/uploads/:filename", serveMedia(mediaTestStorage{}, func(context.Context, string) (bool, error) {
-		return false, errors.New("database unavailable")
+	r.GET("/uploads/:filename", serveMedia(mediaTestStorage{}, func(context.Context, string, uint) (bool, bool, error) {
+		return false, false, errors.New("database unavailable")
 	}))
 
 	req := httptest.NewRequest("GET", "/uploads/public.jpg", nil)
@@ -102,9 +101,9 @@ func TestServeMediaReturnsServerErrorWhenClaimCheckFails(t *testing.T) {
 func TestServeMediaRejectsPathTraversal(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.GET("/uploads/*filename", serveMedia(mediaTestStorage{}, func(context.Context, string) (bool, error) {
+	r.GET("/uploads/*filename", serveMedia(mediaTestStorage{}, func(context.Context, string, uint) (bool, bool, error) {
 		t.Fatal("claim check must not run for invalid filename")
-		return false, nil
+		return false, false, nil
 	}))
 
 	req := httptest.NewRequest("GET", "/uploads/../private.jpg", nil)
