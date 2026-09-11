@@ -98,35 +98,20 @@ func (s *localMediaStorage) Delete(_ context.Context, key string) error {
 func (s *localMediaStorage) Exists(_ context.Context, key string) (bool, error) {
 	path := filepath.Join(".", filepath.FromSlash(key))
 	_, err := os.Stat(path)
-	if err == nil {
-		return true, nil
-	}
-	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
-	}
+	if err == nil { return true, nil }
+	if errors.Is(err, os.ErrNotExist) { return false, nil }
 	return false, fmt.Errorf("stat local media: %w", err)
 }
 func (s *localMediaStorage) Open(_ context.Context, key, byteRange string) (io.ReadCloser, string, int64, string, error) {
 	path := filepath.Join(".", filepath.FromSlash(key))
 	file, err := os.Open(path)
-	if err != nil {
-		return nil, "", 0, "", err
-	}
+	if err != nil { return nil, "", 0, "", err }
 	info, err := file.Stat()
-	if err != nil {
-		file.Close()
-		return nil, "", 0, "", err
-	}
+	if err != nil { file.Close(); return nil, "", 0, "", err }
 	start, end, ok := parseByteRange(byteRange, info.Size())
-	if byteRange != "" && !ok {
-		file.Close()
-		return nil, "", 0, "", fmt.Errorf("invalid byte range")
-	}
+	if byteRange != "" && !ok { file.Close(); return nil, "", 0, "", fmt.Errorf("invalid byte range") }
 	if ok {
-		if _, err := file.Seek(start, io.SeekStart); err != nil {
-			file.Close()
-			return nil, "", 0, "", err
-		}
+		if _, err := file.Seek(start, io.SeekStart); err != nil { file.Close(); return nil, "", 0, "", err }
 		return &limitedReadCloser{Reader: io.LimitReader(file, end-start+1), Closer: file}, "", end - start + 1, fmt.Sprintf("bytes %d-%d/%d", start, end, info.Size()), nil
 	}
 	return file, "", info.Size(), "", nil
@@ -134,65 +119,35 @@ func (s *localMediaStorage) Open(_ context.Context, key, byteRange string) (io.R
 
 func (s *s3MediaStorage) Put(ctx context.Context, key, localPath, contentType string) error {
 	file, err := os.Open(localPath)
-	if err != nil {
-		observability.MediaStorageFailed("put_open", err)
-		return fmt.Errorf("open media for B2 upload: %w", err)
-	}
+	if err != nil { observability.MediaStorageFailed("put_open", err); return fmt.Errorf("open media for B2 upload: %w", err) }
 	defer file.Close()
-
 	info, err := file.Stat()
-	if err != nil {
-		observability.MediaStorageFailed("put_stat", err)
-		return fmt.Errorf("stat media for B2 upload: %w", err)
-	}
-
-	_, err = s.client.PutObject(ctx, &s3.PutObjectInput{
-		Bucket: aws.String(s.bucket),
-		Key: aws.String(key),
-		Body: file,
-		ContentType: aws.String(contentType),
-		ContentLength: aws.Int64(info.Size()),
-		CacheControl: aws.String("private, max-age=31536000, immutable"),
-	})
-	if err != nil {
-		observability.MediaStorageFailed("put", err)
-		return fmt.Errorf("upload media to Backblaze B2: %w", err)
-	}
+	if err != nil { observability.MediaStorageFailed("put_stat", err); return fmt.Errorf("stat media for B2 upload: %w", err) }
+	_, err = s.client.PutObject(ctx, &s3.PutObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(key), Body: file, ContentType: aws.String(contentType), ContentLength: aws.Int64(info.Size()), CacheControl: aws.String("private, max-age=31536000, immutable")})
+	if err != nil { observability.MediaStorageFailed("put", err); return fmt.Errorf("upload media to Backblaze B2: %w", err) }
 	return nil
 }
 
 func (s *s3MediaStorage) Delete(ctx context.Context, key string) error {
 	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(key)})
-	if err != nil {
-		observability.MediaStorageFailed("delete", err)
-		return fmt.Errorf("delete media from Backblaze B2: %w", err)
-	}
+	if err != nil { observability.MediaStorageFailed("delete", err); return fmt.Errorf("delete media from Backblaze B2: %w", err) }
 	return nil
 }
 
 func (s *s3MediaStorage) Exists(ctx context.Context, key string) (bool, error) {
 	_, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(key)})
-	if err == nil {
-		return true, nil
-	}
-	var notFound *s3.NotFound
-	if errors.As(err, &notFound) {
-		return false, nil
-	}
-	statusCode := s3StatusCode(err)
-	if statusCode == 404 {
-		return false, nil
-	}
+	if err == nil { return true, nil }
+	if s3StatusCode(err) == httpStatusNotFound { return false, nil }
 	observability.MediaStorageFailed("exists", err)
 	return false, fmt.Errorf("check media in Backblaze B2: %w", err)
 }
 
+const httpStatusNotFound = 404
+
 func s3StatusCode(err error) int {
 	type statusCoder interface{ HTTPStatusCode() int }
 	var sc statusCoder
-	if errors.As(err, &sc) {
-		return sc.HTTPStatusCode()
-	}
+	if errors.As(err, &sc) { return sc.HTTPStatusCode() }
 	return 0
 }
 
@@ -200,70 +155,41 @@ func (s *s3MediaStorage) Open(ctx context.Context, key, byteRange string) (io.Re
 	input := &s3.GetObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(key)}
 	if byteRange != "" {
 		start, end, ok := parseByteRange(byteRange, -1)
-		if !ok || start < 0 || end < start {
-			return nil, "", 0, "", fmt.Errorf("invalid byte range")
-		}
+		if !ok || start < 0 || end < start { return nil, "", 0, "", fmt.Errorf("invalid byte range") }
 		input.Range = aws.String(fmt.Sprintf("bytes=%d-%d", start, end))
 	}
 	output, err := s.client.GetObject(ctx, input)
-	if err != nil {
-		observability.MediaStorageFailed("open", err)
-		return nil, "", 0, "", fmt.Errorf("read media from Backblaze B2: %w", err)
-	}
+	if err != nil { observability.MediaStorageFailed("open", err); return nil, "", 0, "", fmt.Errorf("read media from Backblaze B2: %w", err) }
 	contentType := "application/octet-stream"
-	if output.ContentType != nil && strings.TrimSpace(*output.ContentType) != "" {
-		contentType = *output.ContentType
-	}
+	if output.ContentType != nil && strings.TrimSpace(*output.ContentType) != "" { contentType = *output.ContentType }
 	contentLength := int64(0)
-	if output.ContentLength != nil {
-		contentLength = *output.ContentLength
-	}
+	if output.ContentLength != nil { contentLength = *output.ContentLength }
 	contentRange := ""
-	if output.ContentRange != nil {
-		contentRange = *output.ContentRange
-	}
+	if output.ContentRange != nil { contentRange = *output.ContentRange }
 	return output.Body, contentType, contentLength, contentRange, nil
 }
 
 func (s *s3MediaStorage) GeneratePlaybackURL(ctx context.Context, objectPath string, expiry time.Duration) (string, error) {
-	if s == nil || s.signer == nil {
-		return "", errors.New("B2 playback signer is not initialized")
-	}
+	if s == nil || s.signer == nil { return "", errors.New("B2 playback signer is not initialized") }
 	return s.signer.GeneratePlaybackURL(ctx, objectPath, expiry)
 }
 
-func SetMediaStorage(storage MediaStorage) {
-	mediaStorageRegistry.Lock()
-	mediaStorageRegistry.storage = storage
-	mediaStorageRegistry.Unlock()
-}
+func SetMediaStorage(storage MediaStorage) { mediaStorageRegistry.Lock(); mediaStorageRegistry.storage = storage; mediaStorageRegistry.Unlock() }
 
 func DeleteMediaObject(ctx context.Context, key string) error {
-	mediaStorageRegistry.RLock()
-	storage := mediaStorageRegistry.storage
-	mediaStorageRegistry.RUnlock()
-	if storage == nil {
-		return errors.New("media storage is not registered")
-	}
+	mediaStorageRegistry.RLock(); storage := mediaStorageRegistry.storage; mediaStorageRegistry.RUnlock()
+	if storage == nil { return errors.New("media storage is not registered") }
 	return storage.Delete(ctx, key)
 }
 
-type limitedReadCloser struct {
-	io.Reader
-	Closer io.Closer
-}
-
+type limitedReadCloser struct { io.Reader; Closer io.Closer }
 func (r *limitedReadCloser) Close() error { return r.Closer.Close() }
 
 func parseByteRange(value string, size int64) (int64, int64, bool) {
 	value = strings.TrimSpace(value)
-	if value == "" || !strings.HasPrefix(value, "bytes=") {
-		return 0, 0, false
-	}
+	if value == "" || !strings.HasPrefix(value, "bytes=") { return 0, 0, false }
 	parts := strings.Split(strings.TrimPrefix(value, "bytes="), "-")
-	if len(parts) != 2 {
-		return 0, 0, false
-	}
+	if len(parts) != 2 { return 0, 0, false }
 	if parts[0] == "" {
 		if parts[1] == "" || size < 0 { return 0, 0, false }
 		suffix, err := strconv.ParseInt(parts[1], 10, 64)
@@ -290,34 +216,21 @@ func parseByteRange(value string, size int64) (int64, int64, bool) {
 
 func StartMediaReconciler(ctx context.Context, storage MediaStorage, db *gorm.DB) {
 	SetMediaStorage(storage)
-
 	reconcile := func() {
 		ReconcileMediaState(db)
-
 		s3Store, ok := storage.(*s3MediaStorage)
-		if !ok {
-			return
-		}
-		if err := s3Store.reconcile(ctx, db); err != nil {
-			observability.MediaStorageFailed("reconcile", err)
-			log.Printf("media reconciliation failed: %v", err)
-		}
-		if err := ReconcileDatabaseMedia(ctx, storage, db); err != nil {
-			observability.MediaStorageFailed("reconcile_db", err)
-			log.Printf("media database availability reconciliation failed: %v", err)
-		}
+		if !ok { return }
+		if err := s3Store.reconcile(ctx, db); err != nil { observability.MediaStorageFailed("reconcile", err); log.Printf("media reconciliation failed: %v", err) }
+		if err := ReconcileDatabaseMedia(ctx, storage, db); err != nil { observability.MediaStorageFailed("reconcile_db", err); log.Printf("media database availability reconciliation failed: %v", err) }
 	}
-
 	go func() {
 		reconcile()
 		ticker := time.NewTicker(30 * time.Minute)
 		defer ticker.Stop()
 		for {
 			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				reconcile()
+			case <-ctx.Done(): return
+			case <-ticker.C: reconcile()
 			}
 		}
 	}()
@@ -325,27 +238,14 @@ func StartMediaReconciler(ctx context.Context, storage MediaStorage, db *gorm.DB
 
 func ReconcileDatabaseMedia(ctx context.Context, storage MediaStorage, db *gorm.DB) error {
 	var uploads []models.Upload
-	if err := db.Select("id, filename, post_id").Where("filename <> ''").Find(&uploads).Error; err != nil {
-		return fmt.Errorf("list database media: %w", err)
-	}
+	if err := db.Select("id, filename, post_id").Where("filename <> ''").Find(&uploads).Error; err != nil { return fmt.Errorf("list database media: %w", err) }
 	for _, upload := range uploads {
 		exists, err := storage.Exists(ctx, MediaObjectKey(upload.Filename))
-		if err != nil {
-			return err
-		}
-		if exists {
-			continue
-		}
+		if err != nil { return err }
+		if exists { continue }
 		message := "physical media object is missing from durable storage"
-		if upload.PostID == nil {
-			message = "physical media object is missing from durable storage; upload must be replaced"
-		}
-		if err := db.Model(&models.MediaMetadata{}).Where("upload_id = ?", upload.ID).Updates(map[string]any{
-			"status":           "failed",
-			"processing_error": message,
-		}).Error; err != nil {
-			return fmt.Errorf("mark missing media upload=%d: %w", upload.ID, err)
-		}
+		if upload.PostID == nil { message = "physical media object is missing from durable storage; upload must be replaced" }
+		if err := db.Model(&models.MediaMetadata{}).Where("upload_id = ?", upload.ID).Updates(map[string]any{"status": "failed", "processing_error": message}).Error; err != nil { return fmt.Errorf("mark missing media upload=%d: %w", upload.ID, err) }
 	}
 	return nil
 }
