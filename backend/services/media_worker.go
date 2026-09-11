@@ -90,7 +90,36 @@ func recoverStaleMediaJobs(db *gorm.DB) {
 			"locked_at": nil,
 		}).Error; err != nil {
 			log.Printf("media worker stale-job requeue failed job=%d: %v", job.ID, err)
+			continue
 		}
+		// A stale job that is being retried is still processing from the media
+		// pipeline's perspective. Do not expose a transient retry as terminal
+		// failure in MediaMetadata.
+		if metadataErr == nil {
+			_ = db.Model(&models.MediaMetadata{}).Where("upload_id = ?", job.UploadID).Updates(map[string]any{
+				"status": "processing",
+			}).Error
+		}
+	}
+}
+
+// synchronizeRetryMetadata keeps the media state machine aligned with the job
+// state. A retryable job must remain processing; only an exhausted job is failed.
+func synchronizeRetryMetadata(db *gorm.DB, jobID, uploadID uint) {
+	var job models.MediaJob
+	if err := db.Select("status, error").First(&job, jobID).Error; err != nil {
+		log.Printf("media worker retry-state lookup failed job=%d: %v", jobID, err)
+		return
+	}
+	if job.Status != "pending" {
+		return
+	}
+	updates := map[string]any{"status": "processing"}
+	if strings.TrimSpace(job.Error) != "" {
+		updates["processing_error"] = job.Error
+	}
+	if err := db.Model(&models.MediaMetadata{}).Where("upload_id = ?", uploadID).Updates(updates).Error; err != nil {
+		log.Printf("media worker retry-state metadata update failed upload=%d: %v", uploadID, err)
 	}
 }
 
@@ -112,14 +141,22 @@ func processNextMediaJob(ctx context.Context, db *gorm.DB, processor *mediaservi
 	if err := db.WithContext(ctx).First(&upload, job.UploadID).Error; err != nil {
 		observability.MediaProcessingFailed(job.ID, err)
 		log.Printf("media worker upload lookup failed job=%d: %v", job.ID, err)
-		_ = FailMediaJob(db, job.ID, err)
+		if failErr := FailMediaJob(db, job.ID, err); failErr != nil {
+			log.Printf("media worker job failure update failed job=%d: %v", job.ID, failErr)
+		} else {
+			synchronizeRetryMetadata(db, job.ID, job.UploadID)
+		}
 		return
 	}
 
 	if err := processor.Process(ctx, &upload); err != nil {
 		observability.MediaProcessingFailed(job.ID, err)
 		log.Printf("media worker processing failed job=%d: %v", job.ID, err)
-		_ = FailMediaJob(db, job.ID, err)
+		if failErr := FailMediaJob(db, job.ID, err); failErr != nil {
+			log.Printf("media worker job failure update failed job=%d: %v", job.ID, failErr)
+		} else {
+			synchronizeRetryMetadata(db, job.ID, job.UploadID)
+		}
 		return
 	}
 
