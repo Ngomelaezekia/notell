@@ -25,6 +25,11 @@ import (
 )
 
 const maxJSONBodyBytes int64 = 2 << 20
+const privatePlaybackURLExpiry = 5 * time.Minute
+
+type playbackSigner interface {
+	GeneratePlaybackURL(context.Context, string, time.Duration) (string, error)
+}
 
 func envInt(key string, fallback int) int {
 	value := strings.TrimSpace(os.Getenv(key))
@@ -37,6 +42,7 @@ func envInt(key string, fallback int) int {
 	}
 	return n
 }
+
 func trustedProxies() []string {
 	value := strings.TrimSpace(os.Getenv("TRUSTED_PROXIES"))
 	if value == "" {
@@ -51,6 +57,7 @@ func trustedProxies() []string {
 	}
 	return proxies
 }
+
 func securityHeaders() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Header("X-Content-Type-Options", "nosniff")
@@ -59,6 +66,7 @@ func securityHeaders() gin.HandlerFunc {
 		c.Next()
 	}
 }
+
 func serveMedia(storage services.MediaStorage, access func(context.Context, string, uint) (bool, bool, error)) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		filename := filepath.Base(c.Param("filename"))
@@ -81,8 +89,23 @@ func serveMedia(storage services.MediaStorage, access func(context.Context, stri
 			c.JSON(http.StatusNotFound, gin.H{"message": "media not found"})
 			return
 		}
-		byteRange := c.GetHeader("Range")
+
 		key := services.MediaObjectKey(filename)
+		if private {
+			if signer, ok := storage.(playbackSigner); ok {
+				playbackURL, signErr := signer.GeneratePlaybackURL(c.Request.Context(), key, privatePlaybackURLExpiry)
+				if signErr != nil {
+					log.Printf("failed generating private media playback URL %q: %v", key, signErr)
+					c.JSON(http.StatusBadGateway, gin.H{"message": "failed generating media playback URL"})
+					return
+				}
+				c.Header("Cache-Control", "private, no-store")
+				c.Redirect(http.StatusFound, playbackURL)
+				return
+			}
+		}
+
+		byteRange := c.GetHeader("Range")
 		body, contentType, contentLength, contentRange, err := storage.Open(c.Request.Context(), key, byteRange)
 		if err != nil {
 			if byteRange != "" {
