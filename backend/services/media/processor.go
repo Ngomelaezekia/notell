@@ -34,14 +34,25 @@ func (p *Processor) CreateMetadata(ctx context.Context, upload *models.Upload) e
 	return p.DB.WithContext(ctx).Create(&metadata).Error
 }
 
-// Process performs the metadata-safe portion of media preparation. It validates the
-// existing upload contract and records file information before a future transcoder
-// handles dimensions, duration and thumbnails.
+// Process performs the metadata-safe portion of media preparation. The upload is
+// stored in external media storage before the worker runs, so processing must not
+// depend on upload.Path still existing on the local filesystem.
+//
+// Tool-specific work such as video probing, dimensions, duration and thumbnails
+// can be added later using the storage layer as the source of the media bytes.
 func (p *Processor) Process(ctx context.Context, upload *models.Upload) error {
 	if upload == nil {
 		return fmt.Errorf("upload is required")
 	}
-	if err := ValidateUploadMetadata(upload.MediaType, uploadFileSize(upload), upload.Filename); err != nil {
+
+	var metadata models.MediaMetadata
+	if err := p.DB.WithContext(ctx).
+		Where("upload_id = ?", upload.ID).
+		First(&metadata).Error; err != nil {
+		return fmt.Errorf("load media metadata: %w", err)
+	}
+
+	if err := ValidateUploadMetadata(upload.MediaType, metadata.FileSize, upload.Filename); err != nil {
 		return err
 	}
 
@@ -49,12 +60,9 @@ func (p *Processor) Process(ctx context.Context, upload *models.Upload) error {
 		return err
 	}
 
-	metadata, err := ExtractMetadata(upload.Path, upload.MediaType)
-	if err != nil {
-		_ = p.MarkFailed(ctx, upload.ID, err.Error())
-		return err
-	}
-
+	// The current processor only guarantees metadata already recorded at upload
+	// time. It deliberately does not stat upload.Path because B2 uploads remove
+	// the temporary local file before the asynchronous worker executes.
 	updates := map[string]any{
 		"file_size": metadata.FileSize,
 		"status":    "ready",
@@ -86,15 +94,15 @@ func (p *Processor) MarkReady(ctx context.Context, uploadID uint) error {
 func (p *Processor) MarkFailed(ctx context.Context, uploadID uint, message string) error {
 	return p.DB.WithContext(ctx).
 		Model(&models.MediaMetadata{}).
-		Where("upload_id = ?", uploadID).
 		Updates(map[string]any{
 			"status":           "failed",
 			"processing_error": message,
 		}).Error
 }
 
-// Upload does not currently carry a file-size field, so the processor obtains it
-// from the stored path when available. CreateMetadata remains backward compatible.
+// Upload does not currently carry a file-size field. Keep this helper for the
+// backward-compatible CreateMetadata path; the asynchronous Process path uses
+// the file size persisted in MediaMetadata during upload.
 func uploadFileSize(upload *models.Upload) int64 {
 	metadata, err := ExtractMetadata(upload.Path, upload.MediaType)
 	if err != nil {
