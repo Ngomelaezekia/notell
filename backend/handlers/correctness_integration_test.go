@@ -26,7 +26,15 @@ func newCorrectnessIntegrationDB(t *testing.T) *gorm.DB {
 		t.Skip("NOTELL_TEST_DATABASE_URL is not set")
 	}
 
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
+		// Post and Upload intentionally have a bidirectional relationship:
+		// Post.UploadID references uploads while Upload.PostID references posts.
+		// These correctness tests do not exercise database FK enforcement, so
+		// let PostgreSQL create the tables without GORM trying to create the
+		// cyclic constraints in migration order. Production migrations keep
+		// the real relationship constraints enabled.
+		DisableForeignKeyConstraintWhenMigrating: true,
+	})
 	if err != nil {
 		t.Fatalf("open PostgreSQL test database: %v", err)
 	}
@@ -54,8 +62,6 @@ func createCorrectnessUser(t *testing.T, db *gorm.DB, suffix string) models.User
 		t.Fatalf("create correctness user: %v", err)
 	}
 	t.Cleanup(func() {
-		// Keep fixture cleanup independent of FK actions configured by an
-		// existing database. Remove dependent rows explicitly before users.
 		var postIDs []uint
 		_ = db.Model(&models.Post{}).Where("user_id = ?", user.ID).Pluck("id", &postIDs).Error
 		if len(postIDs) > 0 {
@@ -75,8 +81,6 @@ func createCorrectnessUser(t *testing.T, db *gorm.DB, suffix string) models.User
 func createCorrectnessPost(t *testing.T, db *gorm.DB, userID uint) models.Post {
 	t.Helper()
 	var post models.Post
-	// Use Raw + Scan rather than Exec + Scan: PostgreSQL's RETURNING clause
-	// produces a result set, which GORM must consume through Raw/Scan.
 	if err := db.Raw(
 		"INSERT INTO posts (user_id, content_type, content_url, caption, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) RETURNING id",
 		userID, "image", "https://example.test/uploads/correctness.jpg", "correctness", time.Now(), time.Now(),
