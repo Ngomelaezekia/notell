@@ -54,11 +54,16 @@ func recoverStaleMediaJobs(db *gorm.DB) {
 	}
 
 	for _, job := range jobs {
+		if job.LockedAt == nil {
+			continue
+		}
+		lease := *job.LockedAt
+
 		var metadata models.MediaMetadata
 		metadataErr := db.Where("upload_id = ?", job.UploadID).First(&metadata).Error
 
 		if metadataErr == nil && metadata.Status == "ready" {
-			if err := CompleteMediaJob(db, job.ID); err != nil {
+			if err := CompleteMediaJob(db, job.ID, &lease); err != nil {
 				log.Printf("media worker stale-job completion failed job=%d: %v", job.ID, err)
 			}
 			continue
@@ -69,12 +74,18 @@ func recoverStaleMediaJobs(db *gorm.DB) {
 			if metadataErr != nil && !errors.Is(metadataErr, gorm.ErrRecordNotFound) {
 				message = metadataErr.Error()
 			}
-			if err := db.Model(&models.MediaJob{}).Where("id = ? AND status = ?", job.ID, "processing").Updates(map[string]any{
-				"status":    "failed",
-				"locked_at": nil,
-				"error":     message,
-			}).Error; err != nil {
-				log.Printf("media worker stale-job failure update failed job=%d: %v", job.ID, err)
+			result := db.Model(&models.MediaJob{}).
+				Where("id = ? AND status = ? AND locked_at = ?", job.ID, "processing", lease).
+				Updates(map[string]any{
+					"status":    "failed",
+					"locked_at": nil,
+					"error":     message,
+				})
+			if result.Error != nil {
+				log.Printf("media worker stale-job failure update failed job=%d: %v", job.ID, result.Error)
+				continue
+			}
+			if result.RowsAffected != 1 {
 				continue
 			}
 			if metadataErr == nil {
@@ -86,11 +97,17 @@ func recoverStaleMediaJobs(db *gorm.DB) {
 			continue
 		}
 
-		if err := db.Model(&models.MediaJob{}).Where("id = ? AND status = ?", job.ID, "processing").Updates(map[string]any{
-			"status":    "pending",
-			"locked_at": nil,
-		}).Error; err != nil {
-			log.Printf("media worker stale-job requeue failed job=%d: %v", job.ID, err)
+		result := db.Model(&models.MediaJob{}).
+			Where("id = ? AND status = ? AND locked_at = ?", job.ID, "processing", lease).
+			Updates(map[string]any{
+				"status":    "pending",
+				"locked_at": nil,
+			})
+		if result.Error != nil {
+			log.Printf("media worker stale-job requeue failed job=%d: %v", job.ID, result.Error)
+			continue
+		}
+		if result.RowsAffected != 1 {
 			continue
 		}
 		// A stale job that is being retried is still processing from the media
@@ -132,6 +149,11 @@ func processNextMediaJob(ctx context.Context, db *gorm.DB, processor *mediaservi
 		}
 		return
 	}
+	if job.LockedAt == nil {
+		log.Printf("media worker claimed job without lease job=%d", job.ID)
+		return
+	}
+	lease := *job.LockedAt
 
 	observability.MediaJobClaimed(job.ID)
 	observability.MediaProcessingStarted(job.ID, job.UploadID)
@@ -142,7 +164,7 @@ func processNextMediaJob(ctx context.Context, db *gorm.DB, processor *mediaservi
 	if err := db.WithContext(ctx).First(&upload, job.UploadID).Error; err != nil {
 		observability.MediaProcessingFailed(job.ID, err)
 		log.Printf("media worker upload lookup failed job=%d: %v", job.ID, err)
-		if failErr := FailMediaJob(db, job.ID, err); failErr != nil {
+		if failErr := FailMediaJob(db, job.ID, err, &lease); failErr != nil {
 			log.Printf("media worker job failure update failed job=%d: %v", job.ID, failErr)
 		} else {
 			synchronizeRetryMetadata(db, job.ID, job.UploadID)
@@ -153,7 +175,7 @@ func processNextMediaJob(ctx context.Context, db *gorm.DB, processor *mediaservi
 	if err := processor.Process(ctx, &upload); err != nil {
 		observability.MediaProcessingFailed(job.ID, err)
 		log.Printf("media worker processing failed job=%d: %v", job.ID, err)
-		if failErr := FailMediaJob(db, job.ID, err); failErr != nil {
+		if failErr := FailMediaJob(db, job.ID, err, &lease); failErr != nil {
 			log.Printf("media worker job failure update failed job=%d: %v", job.ID, failErr)
 		} else {
 			synchronizeRetryMetadata(db, job.ID, job.UploadID)
@@ -161,7 +183,7 @@ func processNextMediaJob(ctx context.Context, db *gorm.DB, processor *mediaservi
 		return
 	}
 
-	if err := CompleteMediaJob(db, job.ID); err != nil {
+	if err := CompleteMediaJob(db, job.ID, &lease); err != nil {
 		observability.MediaProcessingFailed(job.ID, err)
 		log.Printf("media worker completion failed job=%d: %v", job.ID, err)
 		return
