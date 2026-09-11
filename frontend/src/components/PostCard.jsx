@@ -7,7 +7,7 @@ import { postsAPI } from "../services/post/postsApi";
 import { getFileUrl } from "../utils/api";
 import CommentSection from "./CommentSection";
 
-const LONG_VIDEO_SECONDS = 45;
+const LONG_VIDEO_SECONDS = 72;
 const CAPTION_PREVIEW_LENGTH = 220;
 
 const formatRelativeTime = (value) => {
