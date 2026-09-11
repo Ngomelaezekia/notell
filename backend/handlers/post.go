@@ -372,9 +372,11 @@ func (h *PostHandler) DeletePost(c *gin.Context) {
 		key := services.MediaObjectKey(filename)
 		if err := services.DeleteMediaObject(context.Background(), key); err != nil {
 			log.Printf("failed to remove deleted post media %q: %v", key, err)
-			if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-				log.Printf("failed to remove deleted post local media %q: %v", path, err)
-			}
+		}
+		// Local cleanup is independent from remote cleanup. A transient B2 failure
+		// must not leave a stale local copy behind.
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			log.Printf("failed to remove deleted post local media %q: %v", path, err)
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "post deleted successfully"})
