@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -182,21 +183,42 @@ func parseByteRange(value string, size int64) (int64, int64, bool) {
 		return 0, 0, false
 	}
 	parts := strings.Split(strings.TrimPrefix(value, "bytes="), "-")
-	if len(parts) != 2 || parts[0] == "" {
+	if len(parts) != 2 {
 		return 0, 0, false
 	}
-	var start, end int64
-	if _, err := fmt.Sscan(parts[0], &start); err != nil || start < 0 {
+
+	if parts[0] == "" {
+		if parts[1] == "" || size < 0 {
+			return 0, 0, false
+		}
+		suffix, err := strconv.ParseInt(parts[1], 10, 64)
+		if err != nil || suffix <= 0 || size <= 0 {
+			return 0, 0, false
+		}
+		if suffix > size {
+			suffix = size
+		}
+		return size - suffix, size - 1, true
+	}
+
+	start, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil || start < 0 {
 		return 0, 0, false
 	}
+
+	var end int64
 	if parts[1] == "" {
 		if size < 0 {
 			return 0, 0, false
 		}
 		end = size - 1
-	} else if _, err := fmt.Sscan(parts[1], &end); err != nil || end < start {
-		return 0, 0, false
+	} else {
+		end, err = strconv.ParseInt(parts[1], 10, 64)
+		if err != nil || end < start {
+			return 0, 0, false
+		}
 	}
+
 	if size >= 0 {
 		if start >= size {
 			return 0, 0, false
