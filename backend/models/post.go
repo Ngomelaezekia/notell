@@ -16,6 +16,7 @@ type Post struct {
 	UploadID    *uint     `gorm:"uniqueIndex" json:"uploadId,omitempty"`
 	ContentType string    `gorm:"not null" json:"contentType"`
 	ContentURL  string    `gorm:"not null" json:"contentUrl"`
+	Visibility  string    `gorm:"not null;default:'public';index" json:"visibility"`
 	Caption     string    `gorm:"type:text" json:"caption"`
 	ViewCount   int64     `gorm:"not null;default:0;index:idx_posts_views" json:"viewCount"`
 	CreatedAt   time.Time `gorm:"index:idx_posts_user_created,priority:2" json:"createdAt"`
@@ -61,7 +62,6 @@ func (p *Post) BeforeCreate(tx *gorm.DB) error {
 	if candidate.RawQuery != "" || candidate.Fragment != "" || !strings.HasPrefix(candidate.Path, "/uploads/") {
 		return errors.New("invalid post media URL")
 	}
-
 	relative := strings.TrimPrefix(candidate.Path, "/uploads/")
 	decodedRelative, err := url.PathUnescape(relative)
 	if err != nil || decodedRelative == "" || decodedRelative != relative {
@@ -70,6 +70,13 @@ func (p *Post) BeforeCreate(tx *gorm.DB) error {
 	filename := filepath.Base(filepath.FromSlash(decodedRelative))
 	if filename != decodedRelative || filename == "." || filename == string(filepath.Separator) || filename == "" {
 		return errors.New("invalid post media filename")
+	}
+
+	if strings.TrimSpace(p.Visibility) == "" {
+		p.Visibility = "public"
+	}
+	if p.Visibility != "public" && p.Visibility != "private" {
+		return errors.New("unsupported post visibility")
 	}
 
 	var upload Upload
