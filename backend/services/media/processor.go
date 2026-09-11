@@ -52,8 +52,18 @@ func (p *Processor) Process(ctx context.Context, upload *models.Upload) error {
 		return fmt.Errorf("load media metadata: %w", err)
 	}
 
-	if err := ValidateUploadMetadata(upload.MediaType, metadata.FileSize, upload.Filename); err != nil {
+	fail := func(err error) error {
+		if err == nil {
+			return nil
+		}
+		if markErr := p.MarkFailed(ctx, upload.ID, err.Error()); markErr != nil {
+			return fmt.Errorf("%w (also failed to record processing error: %v)", err, markErr)
+		}
 		return err
+	}
+
+	if err := ValidateUploadMetadata(upload.MediaType, metadata.FileSize, upload.Filename); err != nil {
+		return fail(err)
 	}
 
 	if err := p.MarkProcessing(ctx, upload.ID); err != nil {
@@ -64,15 +74,15 @@ func (p *Processor) Process(ctx context.Context, upload *models.Upload) error {
 	// time. It deliberately does not stat upload.Path because B2 uploads remove
 	// the temporary local file before the asynchronous worker executes.
 	updates := map[string]any{
-		"file_size": metadata.FileSize,
-		"status":    "ready",
+		"file_size":        metadata.FileSize,
+		"status":           "ready",
+		"processing_error": "",
 	}
 	if err := p.DB.WithContext(ctx).
 		Model(&models.MediaMetadata{}).
 		Where("upload_id = ?", upload.ID).
 		Updates(updates).Error; err != nil {
-		_ = p.MarkFailed(ctx, upload.ID, err.Error())
-		return err
+		return fail(err)
 	}
 	return nil
 }
