@@ -155,7 +155,7 @@ func main() {
 	if cfg.AppEnv == "production" { r.Use(func(c *gin.Context) { c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains"); c.Next() }) }
 	r.GET("/uploads/:filename", middleware.OptionalAuth(cfg.JWTSecret), serveMedia(mediaStorage, func(ctx context.Context, filename string, userID uint) (bool, bool, error) {
 		var post models.Post
-		err := db.Select("user_id, visibility").Joins("JOIN uploads ON uploads.post_id = posts.id").Where("uploads.filename = ? AND uploads.post_id IS NOT NULL", filename).First(&post).Error
+		err := db.Select("posts.user_id, posts.visibility").Joins("JOIN uploads ON uploads.post_id = posts.id").Where("uploads.filename = ? AND uploads.post_id IS NOT NULL", filename).First(&post).Error
 		if err != nil { if err == gorm.ErrRecordNotFound { return false, false, nil }; return false, false, err }
 		private := post.Visibility == "private"
 		if private && (userID == 0 || userID != post.UserID) { return false, true, nil }
