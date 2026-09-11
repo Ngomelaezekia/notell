@@ -3,13 +3,18 @@ package media
 import (
 	"context"
 	"errors"
-
-	"notell/services"
 )
 
+// mediaDeleter is the narrow storage contract needed by transaction rollback.
+// Keeping this interface local avoids importing the parent services package and
+// creating an import cycle between services and services/media.
+type mediaDeleter interface {
+	Delete(ctx context.Context, key string) error
+}
+
 // RollbackUploadedObject removes a storage object after a failed database commit.
-// Upload handlers should call this from every failure path after a successful Put.
-func RollbackUploadedObject(ctx context.Context, storage services.MediaStorage, key string) error {
+// Upload handlers can pass any storage implementation that satisfies mediaDeleter.
+func RollbackUploadedObject(ctx context.Context, storage mediaDeleter, key string) error {
 	if storage == nil {
 		return errors.New("media storage is nil")
 	}
