@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,7 +24,7 @@ import (
 type MediaStorage interface {
 	Put(ctx context.Context, key, localPath, contentType string) error
 	Delete(ctx context.Context, key string) error
-	Open(ctx context.Context, key string) (io.ReadCloser, string, int64, error)
+	Open(ctx context.Context, key, byteRange string) (io.ReadCloser, string, int64, string, error)
 	PublicURL(key string) string
 }
 
@@ -71,18 +70,30 @@ func NewMediaStorage(cfg *config.Config) (MediaStorage, error) {
 
 func (s *localMediaStorage) Put(context.Context, string, string, string) error { return nil }
 func (s *localMediaStorage) Delete(context.Context, string) error                { return nil }
-func (s *localMediaStorage) Open(_ context.Context, key string) (io.ReadCloser, string, int64, error) {
+func (s *localMediaStorage) Open(_ context.Context, key, byteRange string) (io.ReadCloser, string, int64, string, error) {
 	path := filepath.Join(".", filepath.FromSlash(key))
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, "", 0, err
+		return nil, "", 0, "", err
 	}
 	info, err := file.Stat()
 	if err != nil {
 		file.Close()
-		return nil, "", 0, err
+		return nil, "", 0, "", err
 	}
-	return file, "", info.Size(), nil
+	start, end, ok := parseByteRange(byteRange, info.Size())
+	if byteRange != "" && !ok {
+		file.Close()
+		return nil, "", 0, "", fmt.Errorf("invalid byte range")
+	}
+	if ok {
+		if _, err := file.Seek(start, io.SeekStart); err != nil {
+			file.Close()
+			return nil, "", 0, "", err
+		}
+		return &limitedReadCloser{Reader: io.LimitReader(file, end-start+1), Closer: file}, "", end - start + 1, fmt.Sprintf("bytes %d-%d/%d", start, end, info.Size()), nil
+	}
+	return file, "", info.Size(), "", nil
 }
 func (s *localMediaStorage) PublicURL(key string) string { return MediaPublicURL("", key) }
 
@@ -124,14 +135,19 @@ func (s *s3MediaStorage) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
-func (s *s3MediaStorage) Open(ctx context.Context, key string) (io.ReadCloser, string, int64, error) {
-	output, err := s.client.GetObject(ctx, &s3.GetObjectInput{
-		Bucket: aws.String(s.bucket),
-		Key:    aws.String(key),
-	})
+func (s *s3MediaStorage) Open(ctx context.Context, key, byteRange string) (io.ReadCloser, string, int64, string, error) {
+	input := &s3.GetObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(key)}
+	if byteRange != "" {
+		start, end, ok := parseByteRange(byteRange, -1)
+		if !ok || start < 0 || end < start {
+			return nil, "", 0, "", fmt.Errorf("invalid byte range")
+		}
+		input.Range = aws.String(fmt.Sprintf("bytes=%d-%d", start, end))
+	}
+	output, err := s.client.GetObject(ctx, input)
 	if err != nil {
 		observability.MediaStorageFailed("open", err)
-		return nil, "", 0, fmt.Errorf("read media from Backblaze B2: %w", err)
+		return nil, "", 0, "", fmt.Errorf("read media from Backblaze B2: %w", err)
 	}
 	contentType := "application/octet-stream"
 	if output.ContentType != nil && strings.TrimSpace(*output.ContentType) != "" {
@@ -141,11 +157,54 @@ func (s *s3MediaStorage) Open(ctx context.Context, key string) (io.ReadCloser, s
 	if output.ContentLength != nil {
 		contentLength = *output.ContentLength
 	}
-	return output.Body, contentType, contentLength, nil
+	contentRange := ""
+	if output.ContentRange != nil {
+		contentRange = *output.ContentRange
+	}
+	return output.Body, contentType, contentLength, contentRange, nil
 }
 
 func (s *s3MediaStorage) PublicURL(key string) string {
 	return MediaPublicURL(s.publicURL, key)
+}
+
+type limitedReadCloser struct {
+	io.Reader
+	Closer io.Closer
+}
+
+func (r *limitedReadCloser) Close() error { return r.Closer.Close() }
+
+func parseByteRange(value string, size int64) (int64, int64, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" || !strings.HasPrefix(value, "bytes=") {
+		return 0, 0, false
+	}
+	parts := strings.Split(strings.TrimPrefix(value, "bytes="), "-")
+	if len(parts) != 2 || parts[0] == "" {
+		return 0, 0, false
+	}
+	var start, end int64
+	if _, err := fmt.Sscan(parts[0], &start); err != nil || start < 0 {
+		return 0, 0, false
+	}
+	if parts[1] == "" {
+		if size < 0 {
+			return 0, 0, false
+		}
+		end = size - 1
+	} else if _, err := fmt.Sscan(parts[1], &end); err != nil || end < start {
+		return 0, 0, false
+	}
+	if size >= 0 {
+		if start >= size {
+			return 0, 0, false
+		}
+		if end >= size {
+			end = size - 1
+		}
+	}
+	return start, end, true
 }
 
 func StartMediaReconciler(ctx context.Context, storage MediaStorage, db *gorm.DB) {
