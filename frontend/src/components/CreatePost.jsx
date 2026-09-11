@@ -121,9 +121,6 @@ export const CreatePost = () => {
               <p className="mt-2 max-w-sm text-sm leading-5 text-slate-500">Choose media from your device, or drag and drop it here.</p>
               <button type="button" onClick={() => fileInputRef.current?.click()} className="mt-6 rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800">Browse device</button>
               <div className="mt-5 flex flex-wrap justify-center gap-2 text-[11px] font-medium text-slate-400"><span>JPG</span><span>•</span><span>PNG</span><span>•</span><span>WEBP</span><span>•</span><span>MP4</span><span>•</span><span>MOV</span><span>•</span><span>Up to 50MB</span></div>
-              <input ref={fileInputRef} type="file" accept="image/*,video/*" onChange={handleFileSelect} className="hidden" />
-              <input ref={photoInputRef} type="file" accept="image/*" capture="environment" onChange={handleFileSelect} className="hidden" />
-              <input ref={videoInputRef} type="file" accept="video/*" capture="environment" onChange={handleFileSelect} className="hidden" />
             </div>
           ) : (
             <div className="overflow-hidden rounded-[28px] bg-slate-950 shadow-xl shadow-slate-200/70">
@@ -136,9 +133,12 @@ export const CreatePost = () => {
                 <button type="button" onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 rounded-full px-2 py-1 font-semibold text-white/90 transition hover:bg-white/10 hover:text-white"><RotateCcw size={15} /> Change media</button>
                 <span className="text-xs font-medium text-white/45">Ready to share</span>
               </div>
-              <input ref={fileInputRef} type="file" accept="image/*,video/*" onChange={handleFileSelect} className="hidden" />
             </div>
           )}
+
+          <input ref={fileInputRef} type="file" accept="image/*,video/*" onChange={handleFileSelect} className="hidden" />
+          <input ref={photoInputRef} type="file" accept="image/*" capture="environment" onChange={handleFileSelect} className="hidden" />
+          <input ref={videoInputRef} type="file" accept="video/*" capture="environment" onChange={handleFileSelect} className="hidden" />
 
           <div className="mt-3 grid grid-cols-2 gap-3">
             <button type="button" onClick={() => { setLocalError(""); photoInputRef.current?.click(); }} className="flex h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white text-sm font-bold text-slate-800 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"><ImageIcon size={18} className="text-blue-600" /> Photo</button>
