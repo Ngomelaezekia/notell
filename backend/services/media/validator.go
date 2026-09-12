@@ -15,6 +15,7 @@ var allowedMediaTypes = map[string]struct{}{
 	"image/webp":      {},
 	"video/mp4":       {},
 	"video/quicktime": {},
+	"audio/mpeg":      {},
 }
 
 // ValidateUploadMetadata validates the same media contract enforced by the upload endpoint.
@@ -30,6 +31,9 @@ func ValidateUploadMetadata(contentType string, size int64, filename string) err
 	}
 	if ext := strings.ToLower(filepath.Ext(filename)); ext == "" {
 		return fmt.Errorf("media filename has no extension")
+	}
+	if contentType == "audio/mpeg" && strings.ToLower(filepath.Ext(filename)) != ".mp3" {
+		return fmt.Errorf("audio media must use an .mp3 filename")
 	}
 	return nil
 }
