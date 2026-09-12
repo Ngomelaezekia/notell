@@ -92,7 +92,11 @@ export const PostCard = ({ post, onPostDeleted, priority = false }) => {
         if (entry.isIntersecting && entry.intersectionRatio >= 0.25) {
           videoRef.current.muted = true;
           setVideoMuted(true);
-          void videoRef.current.play().catch(() => {});
+          if (!isLongVideo && videoDuration > 0 && videoDuration <= LONG_VIDEO_SECONDS) {
+            void videoRef.current.play().catch(() => {});
+          } else {
+            videoRef.current.pause();
+          }
         } else if (!entry.isIntersecting) {
           videoRef.current.pause();
         }
@@ -100,7 +104,7 @@ export const PostCard = ({ post, onPostDeleted, priority = false }) => {
     }, { threshold: [0, 0.25, 0.5, 0.6], rootMargin: "180px 0px" });
     observer.observe(target);
     return () => observer.disconnect();
-  }, [isVideo, postId]);
+  }, [isVideo, isLongVideo, videoDuration, postId]);
 
   useEffect(() => {
     if (!showMenu) return undefined;
@@ -151,6 +155,10 @@ export const PostCard = ({ post, onPostDeleted, priority = false }) => {
   const toggleAudio = (event) => {
     event.stopPropagation();
     if (!videoRef.current) return;
+    if (isLongVideo) {
+      openVideoFeed();
+      return;
+    }
     const nextMuted = !videoRef.current.muted;
     videoRef.current.muted = nextMuted;
     setVideoMuted(nextMuted);
@@ -177,7 +185,7 @@ export const PostCard = ({ post, onPostDeleted, priority = false }) => {
           {isOwner && <div className="relative shrink-0" data-post-menu><button type="button" onClick={() => setShowMenu((previous) => !previous)} disabled={loading} aria-label="Post options" aria-expanded={showMenu} className={`flex h-9 w-9 items-center justify-center rounded-full transition active:scale-90 ${showMenu ? "bg-neutral-900 text-neutral-100" : "text-neutral-500 hover:bg-neutral-900 hover:text-neutral-200"}`}>{loading ? <Loader2 size={18} className="animate-spin" /> : <MoreHorizontal size={19} />}</button>{showMenu && <div className="absolute right-0 z-30 mt-1 w-40 origin-top-right overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950 p-1 shadow-2xl shadow-black/50"><button type="button" onClick={handleDelete} disabled={loading} className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-red-400 transition hover:bg-red-950/40 active:bg-red-950/60"><Trash2 size={15} /> Delete post</button></div>}</div>}
         </header>
 
-        {mediaUrl && <div ref={mediaContainerRef} className="group/media relative aspect-square w-full overflow-hidden border-y border-neutral-900 bg-black" onDoubleClick={handleMediaDoubleClick}>
+        {mediaUrl && <div ref={mediaContainerRef} className="group/media relative aspect-[4/3] w-full overflow-hidden border-y border-neutral-900 bg-black" onDoubleClick={handleMediaDoubleClick}>
           {isVideo ? (
             <div
               className={`relative h-full w-full ${isLongVideo ? "cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-neutral-300" : ""}`}
@@ -187,7 +195,7 @@ export const PostCard = ({ post, onPostDeleted, priority = false }) => {
               tabIndex={isLongVideo ? 0 : undefined}
               aria-label={isLongVideo ? "Open video feed viewer" : undefined}
             >
-              <video ref={videoRef} src={mediaUrl} muted defaultMuted autoPlay playsInline loop preload="auto" onLoadedMetadata={(event) => setVideoDuration(event.currentTarget.duration || 0)} className="block h-full w-full object-cover" aria-label={caption || "Post video"} />
+              <video ref={videoRef} src={mediaUrl} muted defaultMuted playsInline loop preload="metadata" onLoadedMetadata={(event) => setVideoDuration(event.currentTarget.duration || 0)} className="block h-full w-full object-cover" aria-label={caption || "Post video"} />
               {isLongVideo && <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-4 pb-4 pt-12 text-xs font-medium text-white/90">Tap to watch full video</span>}
               <button type="button" onClick={toggleAudio} className="absolute bottom-3 left-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white shadow-md backdrop-blur-sm transition hover:bg-black/80 active:scale-90 sm:h-9 sm:w-9" aria-label={videoMuted ? "Allow sound" : "Mute video"}>{videoMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}</button>
               {likeBurst && <span className="pointer-events-none absolute inset-0 flex items-center justify-center"><Heart size={82} fill="currentColor" strokeWidth={1.5} className="scale-125 text-white opacity-0 drop-shadow-[0_4px_18px_rgba(0,0,0,0.55)]" style={{ animation: "notellLikePop 420ms ease-out forwards" }} /></span>}
