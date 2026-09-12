@@ -6,7 +6,7 @@ import "time"
 type MediaJob struct {
 	ID uint `gorm:"primaryKey"`
 
-	UploadID uint
+	UploadID uint `gorm:"not null;index"`
 
 	Status string
 
@@ -18,4 +18,6 @@ type MediaJob struct {
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
+
+	Upload Upload `gorm:"foreignKey:UploadID;constraint:OnDelete:CASCADE" json:"-"`
 }
