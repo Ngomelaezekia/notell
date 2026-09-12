@@ -26,10 +26,22 @@ export const DEFAULT_EDITS = {
 
 export const getFilter = (id) => FILTERS.find((item) => item.id === id)?.css ?? "none";
 
-export const getMediaStyle = (edits) => ({
-  filter: `${getFilter(edits.filter)} brightness(${edits.brightness}%) contrast(${edits.contrast}%) saturate(${edits.saturation}%)`,
-  transform: `${edits.flipX ? "scaleX(-1) " : ""}rotate(${edits.rotation}deg)`,
-});
+const getCropRatio = (id) => CROP_RATIOS.find((item) => item.id === id)?.value ?? null;
+
+export const getMediaStyle = (edits) => {
+  const ratio = getCropRatio(edits.crop);
+  const rotated = Math.abs(edits.rotation % 180) === 90;
+  const displayRatio = ratio ? (rotated ? 1 / ratio : ratio) : undefined;
+
+  return {
+    filter: `${getFilter(edits.filter)} brightness(${edits.brightness}%) contrast(${edits.contrast}%) saturate(${edits.saturation}%)`,
+    transform: `${edits.flipX ? "scaleX(-1) " : ""}rotate(${edits.rotation}deg)`,
+    transformOrigin: "center center",
+    transition: "filter 180ms ease, transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1), aspect-ratio 220ms ease",
+    willChange: "filter, transform",
+    ...(displayRatio ? { aspectRatio: String(displayRatio), objectFit: "cover" } : {}),
+  };
+};
 
 export const exportEditedImage = async (file, edits) => {
   const sourceUrl = URL.createObjectURL(file);
@@ -43,7 +55,7 @@ export const exportEditedImage = async (file, edits) => {
     });
 
     const quarterTurn = Math.abs(edits.rotation % 180) === 90;
-    const ratio = CROP_RATIOS.find((item) => item.id === edits.crop)?.value ?? null;
+    const ratio = getCropRatio(edits.crop);
     const orientedWidth = quarterTurn ? image.naturalHeight : image.naturalWidth;
     const orientedHeight = quarterTurn ? image.naturalWidth : image.naturalHeight;
     let targetWidth = orientedWidth;
