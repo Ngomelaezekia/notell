@@ -22,6 +22,7 @@ import (
 	"notell/middleware"
 	"notell/models"
 	"notell/services"
+	mediaservice "notell/services/media"
 )
 
 const maxJSONBodyBytes int64 = 2 << 20
@@ -69,6 +70,7 @@ func serveMedia(storage services.MediaStorage, access func(context.Context, stri
 		if value, ok := c.Get(middleware.ContextUserIDKey); ok { if id, ok := value.(uint); ok { userID = id } }
 		allowed, private, err := access(c.Request.Context(), filename, userID)
 		if err != nil {
+			if err == mediaservice.ErrMediaAccessDenied { c.JSON(http.StatusNotFound, gin.H{"message": "media not found"}); return }
 			c.JSON(http.StatusInternalServerError, gin.H{"message": "failed checking media"})
 			return
 		}
@@ -142,13 +144,7 @@ func main() {
 	sqlDB.SetConnMaxIdleTime(time.Duration(envInt("DB_CONN_MAX_IDLE_MINUTES", 5)) * time.Minute)
 	defer sqlDB.Close()
 	if err := sqlDB.Ping(); err != nil { log.Fatalf("Failed to ping PostgreSQL database: %v", err) }
-
-	// Older deployments could retain view rows for posts that were already deleted.
-	// Remove those orphans before GORM adds the post_views -> posts foreign key so
-	// auto-migration remains safe and repeatable on existing production databases.
-	if result := db.Exec(`DELETE FROM post_views WHERE NOT EXISTS (SELECT 1 FROM posts WHERE posts.id = post_views.post_id)`); result.Error != nil {
-		log.Fatalf("Failed cleaning orphan post views: %v", result.Error)
-	}
+	if result := db.Exec(`DELETE FROM post_views WHERE NOT EXISTS (SELECT 1 FROM posts WHERE posts.id = post_views.post_id)`); result.Error != nil { log.Fatalf("Failed cleaning orphan post views: %v", result.Error) }
 	if err := db.AutoMigrate(&models.User{}, &models.Post{}, &models.Comment{}, &models.Like{}, &models.Relationship{}, &models.Channel{}, &models.Notification{}, &models.Upload{}, &models.MediaMetadata{}, &models.MediaJob{}, &models.PostView{}); err != nil { log.Fatalf("Database auto-migration failed: %v", err) }
 	mediaStorage, err := services.NewMediaStorage(cfg)
 	if err != nil { log.Fatalf("Media storage initialization failed: %v", err) }
@@ -161,12 +157,9 @@ func main() {
 	r.Use(securityHeaders(), middleware.MaxBodyBytes(maxJSONBodyBytes), cors.New(cors.Config{AllowOrigins: []string{cfg.FrontendURL}, AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}, AllowHeaders: []string{"Origin", "Content-Type", "Accept", "Authorization"}, ExposeHeaders: []string{"Content-Length", "Content-Range", "Accept-Ranges"}, AllowCredentials: true, MaxAge: 12 * time.Hour}))
 	if cfg.AppEnv == "production" { r.Use(func(c *gin.Context) { c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains"); c.Next() }) }
 	r.GET("/uploads/:filename", middleware.OptionalAuth(cfg.JWTSecret), serveMedia(mediaStorage, func(ctx context.Context, filename string, userID uint) (bool, bool, error) {
-		var post models.Post
-		err := db.Select("posts.user_id, posts.visibility").Joins("JOIN uploads ON uploads.post_id = posts.id").Where("uploads.filename = ? AND uploads.post_id IS NOT NULL", filename).First(&post).Error
-		if err != nil { if err == gorm.ErrRecordNotFound { return false, false, nil }; return false, false, err }
-		private := post.Visibility == "private"
-		if private && (userID == 0 || userID != post.UserID) { return false, true, nil }
-		return true, private, nil
+		policy, err := mediaservice.Authorize(db, filename, userID)
+		if err != nil { return false, policy.Private, err }
+		return policy.Public || policy.Private, policy.Private, nil
 	}))
 	auth := handlers.NewAuthHandler(db, cfg)
 	post := handlers.NewPostHandler(db, cfg.PublicURL, cfg.MediaPublicURL)
