@@ -6,53 +6,39 @@ import (
 	"gorm.io/gorm"
 )
 
-// Valid media processing states.
+// Media metadata states. Uploads enter uploaded, then move through processing
+// to ready. Failed is terminal until an explicit retry returns it to processing.
 const (
+	StatusUploaded   = "uploaded"
 	StatusPending    = "pending"
 	StatusProcessing = "processing"
+	StatusReady      = "ready"
 	StatusCompleted  = "completed"
 	StatusFailed     = "failed"
 )
 
-// Transition validates media state changes before persistence.
-// Keeping transitions centralized prevents workers and handlers from creating
-// impossible lifecycle states.
 func Transition(current, next string) error {
 	switch current {
+	case StatusUploaded:
+		if next == StatusProcessing || next == StatusFailed { return nil }
 	case StatusPending:
-		if next == StatusProcessing || next == StatusFailed {
-			return nil
-		}
+		if next == StatusProcessing || next == StatusFailed { return nil }
 	case StatusProcessing:
-		if next == StatusCompleted || next == StatusFailed || next == StatusPending {
-			return nil
-		}
+		if next == StatusReady || next == StatusCompleted || next == StatusFailed || next == StatusPending { return nil }
+	case StatusReady:
+		if next == StatusReady || next == StatusCompleted { return nil }
 	case StatusCompleted:
-		if next == StatusCompleted {
-			return nil
-		}
+		if next == StatusCompleted { return nil }
 	case StatusFailed:
-		if next == StatusPending || next == StatusFailed {
-			return nil
-		}
+		if next == StatusPending || next == StatusProcessing || next == StatusFailed { return nil }
 	}
 	return errors.New("invalid media lifecycle transition")
 }
 
-// UpdateLifecycle safely updates a lifecycle state with transition validation.
 func UpdateLifecycle(db *gorm.DB, table string, id uint, current, next string) error {
-	if err := Transition(current, next); err != nil {
-		return err
-	}
-
-	result := db.Table(table).
-		Where("id = ? AND status = ?", id, current).
-		Update("status", next)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected != 1 {
-		return gorm.ErrRecordNotFound
-	}
+	if err := Transition(current, next); err != nil { return err }
+	result := db.Table(table).Where("id = ? AND status = ?", id, current).Update("status", next)
+	if result.Error != nil { return result.Error }
+	if result.RowsAffected != 1 { return gorm.ErrRecordNotFound }
 	return nil
 }
