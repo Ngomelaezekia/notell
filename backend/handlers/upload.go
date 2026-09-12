@@ -29,7 +29,7 @@ const maxUploadSize int64 = 100 << 20
 const unclaimedUploadRetention = 24 * time.Hour
 
 var allowedUploadTypes = map[string]string{
-	"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "video/mp4": ".mp4", "video/quicktime": ".mov",
+	"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "video/mp4": ".mp4", "video/quicktime": ".mov", "audio/mpeg": ".mp3",
 }
 
 func NewUploadHandler(db *gorm.DB, publicURL string, storage ...services.MediaStorage) *UploadHandler {
@@ -102,5 +102,5 @@ func (h *UploadHandler) UploadMedia(c *gin.Context) {
 	_ = os.Remove(filePath)
 	h.cleanupUnclaimedUploads()
 	fileURL := services.MediaPublicURL(h.PublicURL, key)
-	c.JSON(http.StatusAccepted, gin.H{"message": "upload accepted", "url": fileURL, "filename": filename, "status": mediaservice.StatusUploaded})
+	c.JSON(http.StatusAccepted, gin.H{"message": "upload accepted", "url": fileURL, "filename": filename, "status": mediaservice.StatusUploaded, "mediaType": contentType})
 }
