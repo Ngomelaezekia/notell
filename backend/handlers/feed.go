@@ -36,6 +36,15 @@ func (h *PostHandler) GetCategorizedFeed(c *gin.Context) {
 	// Private posts are visible only to their owner until the future
 	// subscription/channel authorization service is introduced.
 	query = query.Where("(COALESCE(posts.visibility, 'public') = ? OR posts.user_id = ?)", "public", userID)
+	// A post is publishable only while its durable media record is ready. The
+	// reconciler marks metadata failed when the physical object disappears.
+	query = query.Where(`EXISTS (
+		SELECT 1
+		FROM uploads feed_uploads
+		JOIN media_metadata feed_media ON feed_media.upload_id = feed_uploads.id
+		WHERE feed_uploads.post_id = posts.id
+		  AND LOWER(COALESCE(feed_media.status, '')) = 'ready'
+	)`)
 
 	switch category {
 	case "following":
