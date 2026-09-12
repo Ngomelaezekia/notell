@@ -5,6 +5,7 @@ import {
   Check,
   ChevronLeft,
   Contrast,
+  Crop,
   Image as ImageIcon,
   Loader2,
   Pencil,
@@ -19,10 +20,10 @@ import {
 } from "lucide-react";
 import { usePostActions } from "../../hooks/usePosts";
 import { uploadAPI } from "../../services/post/UploadApi";
-import { DEFAULT_EDITS, FILTERS, exportEditedImage, getMediaStyle } from "./mediaEditor";
+import { CROP_RATIOS, DEFAULT_EDITS, FILTERS, exportEditedImage, getMediaStyle } from "./mediaEditor";
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
-const EDITOR_TABS = ["Adjust", "Filters", "Transform"];
+const EDITOR_TABS = ["Adjust", "Filters", "Crop", "Transform"];
 const ADJUSTMENTS = [
   { key: "brightness", label: "Brightness", icon: SunMedium, min: 70, max: 140 },
   { key: "contrast", label: "Contrast", icon: Contrast, min: 70, max: 140 },
@@ -36,7 +37,8 @@ const editsChanged = (edits) =>
   edits.contrast !== 100 ||
   edits.saturation !== 100 ||
   edits.rotation !== 0 ||
-  edits.flipX;
+  edits.flipX ||
+  edits.crop !== "original";
 
 export const PostComposer = () => {
   const navigate = useNavigate();
@@ -128,6 +130,8 @@ export const PostComposer = () => {
       saturation: 112,
     }));
 
+  const resetEdits = () => setEdits(editSnapshotRef.current);
+
   const applyEdits = async () => {
     if (!file || editing) return;
     setLocalError("");
@@ -178,6 +182,7 @@ export const PostComposer = () => {
 
   const displayError = localError || error;
   const mediaStyle = getMediaStyle(edits);
+  const hasVideoPreviewEdits = kind === "video" && editsChanged(edits);
 
   if (step === "edit") {
     return (
@@ -237,19 +242,31 @@ export const PostComposer = () => {
               </div>
             )}
 
+            {editorTab === "Crop" && (
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {CROP_RATIOS.map((ratio) => (
+                  <button key={ratio.id} type="button" onClick={() => updateEdit("crop", ratio.id)} disabled={editing || kind === "video"} className={`flex min-w-[78px] flex-col items-center gap-2 rounded-2xl border px-3 py-3 text-xs font-bold transition ${edits.crop === ratio.id ? "border-white bg-white text-black" : "border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/10"} ${kind === "video" ? "opacity-45" : ""}`}>
+                    <Crop size={17} />
+                    {ratio.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {editorTab === "Transform" && (
               <div className="flex flex-wrap gap-2">
                 {[
                   ["Rotate left", () => updateEdit("rotation", (edits.rotation + 270) % 360), RotateCcw],
                   ["Rotate right", () => updateEdit("rotation", (edits.rotation + 90) % 360), RotateCw],
                   ["Flip", () => updateEdit("flipX", !edits.flipX), RotateCw],
-                  ["Reset", () => setEdits(editSnapshotRef.current), RotateCcw],
+                  ["Reset", resetEdits, RotateCcw],
                 ].map(([label, action, Icon]) => <button key={label} type="button" onClick={action} disabled={editing} className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-xs font-bold text-white/80 hover:bg-white/10 hover:text-white disabled:opacity-50"><Icon size={15} /> {label}</button>)}
               </div>
             )}
           </div>
 
-          <p className="px-3 pt-2 text-center text-[10px] text-white/35 sm:text-[11px]">Edit mode is optional. Cancel keeps the current post media unchanged; Done applies only the edits supported by the selected media.</p>
+          {kind === "video" && <p className="px-3 pt-2 text-center text-[10px] text-amber-200/70 sm:text-[11px]">Video edits are preview-only for now. Your original video is uploaded unchanged.</p>}
+          {kind === "image" && <p className="px-3 pt-2 text-center text-[10px] text-white/35 sm:text-[11px]">Edits are rendered locally only when you press Done. Cancel keeps the current media unchanged.</p>}
         </section>
       </main>
     );
@@ -276,6 +293,7 @@ export const PostComposer = () => {
             </div>
             <div className="border-t border-white/10 bg-neutral-950 p-4"><label htmlFor="post-caption" className="text-xs font-bold text-white/55">Caption</label><textarea id="post-caption" value={caption} onChange={(event) => setCaption(event.target.value)} maxLength={2200} rows={3} placeholder="Tell your community what this moment is about..." className="mt-2 w-full resize-none bg-transparent text-sm leading-6 text-white outline-none placeholder:text-white/30" /><div className="mt-1 text-right text-[10px] text-white/30">{caption.length}/2200</div></div>
           </div>
+          {hasVideoPreviewEdits && <p className="mt-2 text-center text-[10px] text-slate-400">Video adjustments are preview-only and will not alter the uploaded source.</p>}
         </section>
       </main>
     );
