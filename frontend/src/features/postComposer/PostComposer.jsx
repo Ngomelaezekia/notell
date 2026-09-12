@@ -8,7 +8,6 @@ import {
   Download,
   Image as ImageIcon,
   Loader2,
-  Minus,
   Plus,
   RotateCcw,
   RotateCw,
@@ -31,6 +30,7 @@ const ADJUSTMENTS = [
 ];
 
 const fileKind = (file) => (file?.type?.startsWith("video/") ? "video" : "image");
+const editsChanged = (edits) => edits.filter !== "original" || edits.brightness !== 100 || edits.contrast !== 100 || edits.saturation !== 100 || edits.rotation !== 0 || edits.flipX;
 
 export const PostComposer = () => {
   const navigate = useNavigate();
@@ -41,6 +41,7 @@ export const PostComposer = () => {
   const [previewUrl, setPreviewUrl] = useState("");
   const [kind, setKind] = useState(null);
   const [caption, setCaption] = useState("");
+  const [accept, setAccept] = useState("image/jpeg,image/png,image/webp,video/mp4,video/quicktime");
   const [dragActive, setDragActive] = useState(false);
   const [localError, setLocalError] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -88,6 +89,7 @@ export const PostComposer = () => {
     setKind(null);
     setEdits(DEFAULT_EDITS);
     setCaption("");
+    setAccept("image/jpeg,image/png,image/webp,video/mp4,video/quicktime");
     setLocalError("");
     setStep("select");
   };
@@ -105,7 +107,7 @@ export const PostComposer = () => {
   const applyEdits = async () => {
     if (!file) return;
     setLocalError("");
-    if (kind === "image" && (edits.filter !== "original" || edits.brightness !== 100 || edits.contrast !== 100 || edits.saturation !== 100 || edits.rotation !== 0 || edits.flipX)) {
+    if (kind === "image" && editsChanged(edits)) {
       setEditing(true);
       try {
         const editedFile = await exportEditedImage(file, edits);
@@ -115,6 +117,7 @@ export const PostComposer = () => {
           return editedUrl;
         });
         setFile(editedFile);
+        setEdits(DEFAULT_EDITS);
       } catch (editorError) {
         setLocalError(editorError.message || "Could not apply image edits.");
         return;
@@ -196,16 +199,16 @@ export const PostComposer = () => {
       <main className="min-h-[calc(100vh-64px)] bg-slate-50/80 pb-10">
         <section className="mx-auto w-full max-w-[760px] px-3 sm:px-5">
           <header className="sticky top-0 z-20 -mx-3 flex h-16 items-center justify-between border-b border-slate-200/80 bg-white/90 px-4 backdrop-blur-xl sm:-mx-5 sm:px-6">
-            <button type="button" onClick={reset} disabled={uploading || loading} className="flex h-10 items-center gap-1 rounded-full px-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"><ArrowLeft size={19} /> Change</button>
+            <button type="button" onClick={() => { setStep("select"); setAccept("image/jpeg,image/png,image/webp,video/mp4,video/quicktime"); }} disabled={uploading || loading} className="flex h-10 items-center gap-1 rounded-full px-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"><ArrowLeft size={19} /> Change</button>
             <div className="text-center"><h1 className="text-[17px] font-bold text-slate-950">Preview</h1><p className="hidden text-[11px] text-slate-400 sm:block">Looks good? Share it.</p></div>
-            <button type="button" onClick={handleShare} disabled={uploading || loading} className="flex h-9 items-center gap-1.5 rounded-full bg-blue-600 px-4 text-[14px] font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-45">{uploading || loading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}{uploading ? "Uploading" : loading ? "Posting" : "Share"}</button>
+            <button type="button" onClick={handleShare} disabled={uploading || loading} className="flex h-9 items-center gap-1.5 rounded-full bg-blue-600 px-4 text-[14px] font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-45">{uploading || loading ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}{uploading ? "Uploading" : loading ? "Posting" : "Share"}</button>
           </header>
 
           {displayError && <div role="alert" className="mx-1 mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{displayError}</div>}
 
           <div className="mt-4 overflow-hidden rounded-[28px] bg-neutral-950 shadow-xl">
             <div className="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-black">
-              {kind === "video" ? <video src={previewUrl} controls playsInline preload="metadata" className="h-full w-full object-contain" /> : <img src={previewUrl} alt="Post preview" className="h-full w-full object-contain" />}
+              {kind === "video" ? <video src={previewUrl} controls playsInline preload="metadata" className="h-full w-full object-contain" style={mediaStyle} /> : <img src={previewUrl} alt="Post preview" className="h-full w-full object-contain" />}
               <button type="button" onClick={() => setStep("edit")} className="absolute bottom-4 left-4 flex items-center gap-2 rounded-full bg-black/65 px-4 py-2.5 text-sm font-bold text-white backdrop-blur hover:bg-black/85"><SlidersHorizontal size={16} /> Edit</button>
               <button type="button" onClick={reset} className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-black/65 text-white backdrop-blur hover:bg-black/85" aria-label="Remove media"><X size={18} /></button>
               <span className="absolute right-4 bottom-4 flex items-center gap-1.5 rounded-full bg-black/60 px-3 py-2 text-[11px] font-bold text-white backdrop-blur">{kind === "video" ? <Video size={13} /> : <ImageIcon size={13} />}{kind === "video" ? "Video" : "Photo"}</span>
@@ -228,20 +231,20 @@ export const PostComposer = () => {
         </header>
 
         {displayError && <div role="alert" className="mx-1 mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{displayError}</div>}
-        <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime" onChange={handleInput} className="hidden" />
+        <input ref={inputRef} type="file" accept={accept} onChange={handleInput} className="hidden" />
 
         <div onDragOver={(event) => { event.preventDefault(); setDragActive(true); }} onDragLeave={() => setDragActive(false)} onDrop={(event) => { event.preventDefault(); setDragActive(false); chooseFile(event.dataTransfer.files?.[0]); }} className={`relative mt-4 flex min-h-[500px] w-full flex-col items-center justify-center overflow-hidden rounded-[30px] border px-6 text-center transition ${dragActive ? "border-blue-500 bg-blue-50" : "border-slate-200 bg-white shadow-sm"}`}>
           <div className="absolute left-5 top-5 flex items-center gap-2 rounded-full border border-slate-200 bg-white/90 px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm"><Sparkles size={14} className="text-blue-600" /> Media studio</div>
           <div className="flex h-20 w-20 items-center justify-center rounded-[24px] bg-blue-50 text-blue-600 ring-8 ring-blue-50/60"><Plus size={38} strokeWidth={1.8} /></div>
           <h2 className="mt-7 text-[21px] font-bold tracking-tight text-slate-950">Pick a photo or video</h2>
           <p className="mt-2 max-w-sm text-sm leading-5 text-slate-500">Select media first. You will preview it, edit it, then share.</p>
-          <button type="button" onClick={() => inputRef.current?.click()} className="mt-6 rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white shadow-sm hover:bg-slate-800">Browse device</button>
+          <button type="button" onClick={() => { setAccept("image/jpeg,image/png,image/webp,video/mp4,video/quicktime"); inputRef.current?.click(); }} className="mt-6 rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white shadow-sm hover:bg-slate-800">Browse device</button>
           <div className="mt-5 flex flex-wrap justify-center gap-2 text-[11px] font-medium text-slate-400"><span>JPG</span><span>•</span><span>PNG</span><span>•</span><span>WEBP</span><span>•</span><span>MP4</span><span>•</span><span>MOV</span><span>•</span><span>Up to 50MB</span></div>
         </div>
 
         <div className="mt-3 grid grid-cols-2 gap-3">
-          <button type="button" onClick={() => { inputRef.current?.setAttribute("accept", "image/*"); inputRef.current?.click(); }} className="flex h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white text-sm font-bold text-slate-800 shadow-sm hover:bg-slate-50"><ImageIcon size={18} className="text-blue-600" /> Photo</button>
-          <button type="button" onClick={() => { inputRef.current?.setAttribute("accept", "video/*"); inputRef.current?.click(); }} className="flex h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white text-sm font-bold text-slate-800 shadow-sm hover:bg-slate-50"><Video size={18} className="text-blue-600" /> Video</button>
+          <button type="button" onClick={() => { setAccept("image/*"); inputRef.current?.click(); }} className="flex h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white text-sm font-bold text-slate-800 shadow-sm hover:bg-slate-50"><ImageIcon size={18} className="text-blue-600" /> Photo</button>
+          <button type="button" onClick={() => { setAccept("video/*"); inputRef.current?.click(); }} className="flex h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white text-sm font-bold text-slate-800 shadow-sm hover:bg-slate-50"><Video size={18} className="text-blue-600" /> Video</button>
         </div>
         <p className="pb-2 pt-4 text-center text-[11px] leading-5 text-slate-400">Nothing is uploaded until you press Share after the preview/edit steps.</p>
       </section>
