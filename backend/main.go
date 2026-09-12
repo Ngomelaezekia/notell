@@ -142,6 +142,13 @@ func main() {
 	sqlDB.SetConnMaxIdleTime(time.Duration(envInt("DB_CONN_MAX_IDLE_MINUTES", 5)) * time.Minute)
 	defer sqlDB.Close()
 	if err := sqlDB.Ping(); err != nil { log.Fatalf("Failed to ping PostgreSQL database: %v", err) }
+
+	// Older deployments could retain view rows for posts that were already deleted.
+	// Remove those orphans before GORM adds the post_views -> posts foreign key so
+	// auto-migration remains safe and repeatable on existing production databases.
+	if result := db.Exec(`DELETE FROM post_views WHERE NOT EXISTS (SELECT 1 FROM posts WHERE posts.id = post_views.post_id)`); result.Error != nil {
+		log.Fatalf("Failed cleaning orphan post views: %v", result.Error)
+	}
 	if err := db.AutoMigrate(&models.User{}, &models.Post{}, &models.Comment{}, &models.Like{}, &models.Relationship{}, &models.Channel{}, &models.Notification{}, &models.Upload{}, &models.MediaMetadata{}, &models.MediaJob{}, &models.PostView{}); err != nil { log.Fatalf("Database auto-migration failed: %v", err) }
 	mediaStorage, err := services.NewMediaStorage(cfg)
 	if err != nil { log.Fatalf("Media storage initialization failed: %v", err) }
