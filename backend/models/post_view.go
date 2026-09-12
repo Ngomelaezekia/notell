@@ -9,4 +9,6 @@ type PostView struct {
 	PostID    uint      `gorm:"not null;uniqueIndex:idx_post_views_user_post;index:idx_post_views_post" json:"postId"`
 	UserID    uint      `gorm:"not null;uniqueIndex:idx_post_views_user_post;index" json:"userId"`
 	CreatedAt time.Time `json:"createdAt"`
+
+	Post Post `gorm:"foreignKey:PostID;constraint:OnDelete:CASCADE" json:"-"`
 }
