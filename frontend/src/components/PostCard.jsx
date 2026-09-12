@@ -100,7 +100,7 @@ export const PostCard = ({ post, onPostDeleted, priority = false }) => {
     }, { threshold: [0, 0.25, 0.5, 0.6], rootMargin: "180px 0px" });
     observer.observe(target);
     return () => observer.disconnect();
-  }, [isVideo, isLongVideo, postId]);
+  }, [isVideo, postId]);
 
   useEffect(() => {
     if (!showMenu) return undefined;
@@ -119,7 +119,7 @@ export const PostCard = ({ post, onPostDeleted, priority = false }) => {
   }, [lightboxOpen]);
 
   const openAuthorProfile = () => { if (authorId) navigate(`/users/${authorId}`); };
-  const openVideoFeed = () => { if (postId) { videoRef.current?.pause(); navigate(`/video-feed/${postId}`); } };
+  const openVideoFeed = () => { if (postId && isLongVideo) { videoRef.current?.pause(); navigate(`/video-feed/${postId}`); } };
 
   const handleDelete = async () => {
     if (!postId || !window.confirm("Delete this post?")) return;
@@ -156,6 +156,13 @@ export const PostCard = ({ post, onPostDeleted, priority = false }) => {
     setVideoMuted(nextMuted);
     if (!nextMuted) void videoRef.current.play().catch(() => {});
   };
+  const handleVideoKeyDown = (event) => {
+    if (!isLongVideo) return;
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openVideoFeed();
+    }
+  };
 
   return (
     <>
@@ -172,12 +179,19 @@ export const PostCard = ({ post, onPostDeleted, priority = false }) => {
 
         {mediaUrl && <div ref={mediaContainerRef} className="group/media relative aspect-square w-full overflow-hidden border-y border-neutral-900 bg-black" onDoubleClick={handleMediaDoubleClick}>
           {isVideo ? (
-            <button type="button" onClick={openVideoFeed} className="relative block h-full w-full cursor-pointer text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-neutral-300" aria-label="Open video feed viewer">
-              <video ref={videoRef} src={mediaUrl} muted defaultMuted autoPlay playsInline loop preload="auto" onLoadedMetadata={(event) => { setVideoDuration(event.currentTarget.duration || 0); void event.currentTarget.play().catch(() => {}); }} onCanPlay={(event) => { event.currentTarget.muted = true; void event.currentTarget.play().catch(() => {}); }} className="block h-full w-full object-cover" aria-label={caption || "Post video"} />
+            <div
+              className={`relative h-full w-full ${isLongVideo ? "cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-neutral-300" : ""}`}
+              onClick={isLongVideo ? openVideoFeed : undefined}
+              onKeyDown={handleVideoKeyDown}
+              role={isLongVideo ? "button" : undefined}
+              tabIndex={isLongVideo ? 0 : undefined}
+              aria-label={isLongVideo ? "Open video feed viewer" : undefined}
+            >
+              <video ref={videoRef} src={mediaUrl} muted defaultMuted autoPlay playsInline loop preload="auto" onLoadedMetadata={(event) => setVideoDuration(event.currentTarget.duration || 0)} className="block h-full w-full object-cover" aria-label={caption || "Post video"} />
               {isLongVideo && <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-4 pb-4 pt-12 text-xs font-medium text-white/90">Tap to watch full video</span>}
-              <span onClick={toggleAudio} className="absolute bottom-3 left-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white shadow-md backdrop-blur-sm transition hover:bg-black/80 active:scale-90 sm:h-9 sm:w-9" role="button" aria-label={videoMuted ? "Allow sound" : "Mute video"}>{videoMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}</span>
+              <button type="button" onClick={toggleAudio} className="absolute bottom-3 left-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white shadow-md backdrop-blur-sm transition hover:bg-black/80 active:scale-90 sm:h-9 sm:w-9" aria-label={videoMuted ? "Allow sound" : "Mute video"}>{videoMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}</button>
               {likeBurst && <span className="pointer-events-none absolute inset-0 flex items-center justify-center"><Heart size={82} fill="currentColor" strokeWidth={1.5} className="scale-125 text-white opacity-0 drop-shadow-[0_4px_18px_rgba(0,0,0,0.55)]" style={{ animation: "notellLikePop 420ms ease-out forwards" }} /></span>}
-            </button>
+            </div>
           ) : (
             <button type="button" onClick={() => setLightboxOpen(true)} className="relative block h-full w-full cursor-zoom-in text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-neutral-300" aria-label="Open image viewer">
               <img src={mediaUrl} alt={caption || "Post"} className="block h-full w-full object-cover transition duration-300 group-hover/media:scale-[1.008]" loading={priority ? "eager" : "lazy"} fetchPriority={priority ? "high" : "auto"} decoding="async" draggable="false" />
