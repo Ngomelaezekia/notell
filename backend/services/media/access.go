@@ -14,34 +14,48 @@ var ErrMediaAccessDenied = errors.New("media access denied")
 // The current MVP policy permits public media to everyone and private media
 // only to its owner. Future follower/subscriber/channel rules belong here.
 type AccessPolicy struct {
-	Public bool
+	Public  bool
 	Private bool
 }
 
-// Authorize resolves the post that owns an upload and applies the media policy.
-// Keeping this query here prevents HTTP handlers from growing their own rules.
+type mediaOwnerPolicy struct {
+	UserID     uint
+	Visibility string
+}
+
+// Authorize resolves both primary post media and optional post music uploads,
+// then applies the post visibility policy in one place.
 func Authorize(db *gorm.DB, filename string, userID uint) (AccessPolicy, error) {
 	if db == nil || filename == "" {
 		return AccessPolicy{}, ErrMediaAccessDenied
 	}
-	var post models.Post
-	err := db.Select("posts.user_id, posts.visibility").
-		Joins("JOIN uploads ON uploads.post_id = posts.id").
-		Where("uploads.filename = ? AND uploads.post_id IS NOT NULL", filename).
-		First(&post).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return AccessPolicy{}, ErrMediaAccessDenied
-	}
+
+	var owner mediaOwnerPolicy
+	err := db.Table("uploads").
+		Select("COALESCE(primary_posts.user_id, music_posts.user_id) AS user_id, COALESCE(primary_posts.visibility, music_posts.visibility) AS visibility").
+		Joins("LEFT JOIN posts AS primary_posts ON primary_posts.id = uploads.post_id").
+		Joins("LEFT JOIN post_music ON post_music.upload_id = uploads.id").
+		Joins("LEFT JOIN posts AS music_posts ON music_posts.id = post_music.post_id").
+		Where("uploads.filename = ? AND (uploads.post_id IS NOT NULL OR post_music.post_id IS NOT NULL)", filename).
+		Limit(1).
+		Scan(&owner).Error
 	if err != nil {
 		return AccessPolicy{}, err
 	}
-	if post.Visibility == "private" {
-		if userID == 0 || userID != post.UserID {
+	if owner.UserID == 0 || owner.Visibility == "" {
+		return AccessPolicy{}, ErrMediaAccessDenied
+	}
+
+	if owner.Visibility == "private" {
+		if userID == 0 || userID != owner.UserID {
 			return AccessPolicy{Private: true}, ErrMediaAccessDenied
 		}
 		return AccessPolicy{Private: true}, nil
 	}
-	return AccessPolicy{Public: true}, nil
+	if owner.Visibility == "public" {
+		return AccessPolicy{Public: true}, nil
+	}
+	return AccessPolicy{}, ErrMediaAccessDenied
 }
 
 // CanAccessMedia remains a lightweight owner check for service callers that
