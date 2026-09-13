@@ -131,10 +131,41 @@ const getRecorderMimeType = () => {
   ].find((type) => MediaRecorder.isTypeSupported(type)) ?? "";
 };
 
+const waitForVideoFrameOrTime = async (video, targetTime) => {
+  if (typeof video.requestVideoFrameCallback === "function") {
+    await new Promise((resolve) => {
+      const check = (_now, metadata) => {
+        if (metadata.mediaTime >= targetTime - 0.02) {
+          resolve();
+          return;
+        }
+        video.requestVideoFrameCallback(check);
+      };
+      video.requestVideoFrameCallback(check);
+    });
+    return;
+  }
+
+  await new Promise((resolve) => {
+    const check = () => {
+      if (video.currentTime >= targetTime - 0.03) {
+        video.removeEventListener("timeupdate", check);
+        resolve();
+      }
+    };
+    video.addEventListener("timeupdate", check);
+  });
+};
+
 export const trimVideo = async (file, startSec, endSec) => {
-  const start = Math.max(0, Number(startSec) || 0);
-  const end = Math.max(start, Number(endSec) || 0);
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) throw new Error("Choose a valid video trim range.");
+  const requestedStart = Number(startSec);
+  const requestedEnd = Number(endSec);
+  if (!Number.isFinite(requestedStart) || !Number.isFinite(requestedEnd)) {
+    throw new Error("Choose a valid video trim range.");
+  }
+  if (requestedStart < 0 || requestedEnd <= requestedStart) {
+    throw new Error("Choose a valid video trim range.");
+  }
   if (!HTMLMediaElement.prototype.play) throw new Error("Video trimming is not supported in this browser.");
   if (typeof MediaRecorder === "undefined") throw new Error("Video trimming is not supported in this browser.");
 
@@ -153,8 +184,9 @@ export const trimVideo = async (file, startSec, endSec) => {
     await waitForVideoEvent(video, "loadedmetadata");
     const duration = Number(video.duration);
     if (!Number.isFinite(duration) || duration <= 0) throw new Error("Could not read the video duration.");
-    const safeStart = Math.min(start, Math.max(0, duration - 0.1));
-    const safeEnd = Math.min(Math.max(safeStart + 0.1, end), duration);
+
+    const safeStart = Math.min(requestedStart, Math.max(0, duration - 0.1));
+    const safeEnd = Math.min(Math.max(safeStart + 0.1, requestedEnd), duration);
     if (safeEnd - safeStart < 0.1) throw new Error("Video clip must be at least 0.1 seconds long.");
 
     if (typeof video.captureStream !== "function" || typeof MediaRecorder.isTypeSupported !== "function") {
@@ -187,6 +219,7 @@ export const trimVideo = async (file, startSec, endSec) => {
     let stopTimer;
 
     const blob = await new Promise((resolve, reject) => {
+      let videoStarted = false;
       const cleanup = () => {
         video.pause();
         if (stopTimer) clearTimeout(stopTimer);
@@ -213,8 +246,18 @@ export const trimVideo = async (file, startSec, endSec) => {
       }, { once: true });
       video.addEventListener("timeupdate", onTimeUpdate);
       stopTimer = window.setTimeout(finish, Math.max(500, (safeEnd - safeStart + 0.5) * 1000));
+
       recorder.start(250);
-      video.play().catch(() => fail(new Error("The browser blocked video trimming playback. Try again.")));
+      video.play().then(async () => {
+        if (videoStarted) return;
+        videoStarted = true;
+        try {
+          await waitForVideoFrameOrTime(video, safeEnd);
+          finish();
+        } catch (error) {
+          fail(error);
+        }
+      }).catch(() => fail(new Error("The browser blocked video trimming playback. Try again.")));
     });
 
     if (blob.size > MAX_VIDEO_OUTPUT_SIZE) {
