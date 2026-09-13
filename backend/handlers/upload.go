@@ -29,7 +29,7 @@ const maxUploadSize int64 = 100 << 20
 const unclaimedUploadRetention = 24 * time.Hour
 
 var allowedUploadTypes = map[string]string{
-	"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "video/mp4": ".mp4", "video/quicktime": ".mov", "audio/mpeg": ".mp3",
+	"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "video/mp4": ".mp4", "video/quicktime": ".mov", "video/webm": ".webm", "audio/mpeg": ".mp3",
 }
 
 func NewUploadHandler(db *gorm.DB, publicURL string, storage ...services.MediaStorage) *UploadHandler {
