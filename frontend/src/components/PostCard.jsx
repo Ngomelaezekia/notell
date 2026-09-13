@@ -7,7 +7,7 @@ import { postsAPI } from "../services/post/postsApi";
 import { getFileUrl } from "../utils/api";
 import CommentSection from "./CommentSection";
 
-const LONG_VIDEO_SECONDS = 72;
+const LONG_VIDEO_SECONDS = 27;
 const CAPTION_PREVIEW_LENGTH = 220;
 
 const formatRelativeTime = (value) => {
@@ -78,7 +78,10 @@ export const PostCard = ({ post, onPostDeleted, priority = false }) => {
     setVideoDuration(0);
     setVideoMuted(true);
     viewRecordedRef.current = false;
-    if (musicRef.current) musicRef.current.currentTime = Math.max(0, musicStart);
+    if (musicRef.current) {
+      musicRef.current.pause();
+      musicRef.current.currentTime = Math.max(0, musicStart);
+    }
   }, [post?.postId, post?.liked, post?.likeCount, post?.commentCount, musicStart]);
 
   useEffect(() => {
@@ -103,6 +106,9 @@ export const PostCard = ({ post, onPostDeleted, priority = false }) => {
         } else if (!entry.isIntersecting) {
           videoRef.current.pause();
         }
+      }
+      if (musicRef.current && !entry.isIntersecting) {
+        musicRef.current.pause();
       }
     }, { threshold: [0, 0.25, 0.5, 0.6], rootMargin: "180px 0px" });
     observer.observe(target);
