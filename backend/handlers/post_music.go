@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -23,6 +24,12 @@ type postMusicInput struct {
 const maxPostMusicDuration = 600.0
 
 func validatePostMusicWindow(input postMusicInput, duration float64) error {
+	if math.IsNaN(input.StartSec) || math.IsInf(input.StartSec, 0) ||
+		math.IsNaN(input.EndSec) || math.IsInf(input.EndSec, 0) ||
+		math.IsNaN(input.Volume) || math.IsInf(input.Volume, 0) ||
+		math.IsNaN(duration) || math.IsInf(duration, 0) {
+		return errors.New("music timing and volume values must be finite")
+	}
 	if input.StartSec < 0 || input.EndSec < 0 {
 		return errors.New("music start and end times cannot be negative")
 	}
@@ -99,7 +106,7 @@ func (h *PostHandler) SetPostMusic(c *gin.Context) {
 		}
 		for _, item := range previous {
 			if err := tx.Model(&models.Upload{}).Where("id = ? AND post_id = ?", item.UploadID, post.ID).Update("post_id", nil).Error; err != nil {
-			return err
+				return err
 			}
 		}
 		if err := tx.Where("post_id = ?", post.ID).Delete(&models.PostMusic{}).Error; err != nil {
