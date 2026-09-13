@@ -135,7 +135,7 @@ export const PostComposer = () => {
       saturation: 112,
     }));
 
-  const resetEdits = () => setEdits(editSnapshotRef.current);
+  const resetEdits = () => setEdits(DEFAULT_EDITS);
 
   const applyEdits = async () => {
     if (!file || editing) return;
@@ -287,8 +287,8 @@ export const PostComposer = () => {
             )}
           </div>
 
-          {kind === "video" && <p className="px-3 pt-2 text-center text-[10px] text-amber-200/70 sm:text-[11px]">Video adjustments and filters are preview-only for now. The original video is uploaded unchanged.</p>}
-          {kind === "image" && <p className="px-3 pt-2 text-center text-[10px] text-white/35 sm:text-[11px]">Edits are rendered locally when you press Done. Cancel keeps the current media unchanged.</p>}
+          {kind === "video" && <p className="px-3 pt-2 text-center text-[10px] text-amber-200/70 sm:text-[11px]">Video edits are preview-only for now. Your original video is uploaded unchanged.</p>}
+          {kind === "image" && <p className="px-3 pt-2 text-center text-[10px] text-white/35 sm:text-[11px]">Edits are rendered locally only when you press Done. Cancel keeps the current media unchanged.</p>}
         </section>
       </main>
     );
@@ -299,7 +299,7 @@ export const PostComposer = () => {
       <main className="min-h-[calc(100vh-64px)] bg-slate-50/80 pb-10">
         <section className="mx-auto w-full max-w-[760px] px-3 sm:px-5">
           <header className="sticky top-0 z-20 -mx-3 flex h-16 items-center justify-between border-b border-slate-200/80 bg-white/90 px-4 backdrop-blur-xl sm:-mx-5 sm:px-6">
-            <button type="button" onClick={() => { setStep("select"); setAccept(ACCEPTED_MEDIA); }} disabled={uploading || loading} className={`flex h-10 items-center gap-1 rounded-full px-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 ${pressable}` }><ArrowLeft size={19} /> Change</button>
+            <button type="button" onClick={() => { setStep("select"); setAccept(ACCEPTED_MEDIA); }} disabled={uploading || loading} className={`flex h-10 items-center gap-1 rounded-full px-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 ${pressable}`}><ArrowLeft size={19} /> Change</button>
             <div className="text-center"><h1 className="text-[17px] font-bold text-slate-950">Preview</h1><p className="hidden text-[11px] text-slate-400 sm:block">Looks good? Share it.</p></div>
             <button type="button" onClick={handleShare} disabled={uploading || loading} className={`flex h-9 items-center gap-1.5 rounded-full bg-blue-600 px-4 text-[14px] font-bold text-white shadow-sm hover:bg-blue-700 ${pressable} disabled:opacity-45`}>{uploading || loading ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}{uploading ? "Uploading" : loading ? "Posting" : "Share"}</button>
           </header>
