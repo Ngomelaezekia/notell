@@ -1,0 +1,186 @@
+/* Final Media Studio polish: compact, tactile editor surface inspired by the supplied reference. */
+main.min-h-\\[calc\\(100vh-64px\\)\\].bg-black.text-white > section > div:last-child {
+  padding-inline: 0.65rem;
+  padding-bottom: max(0.65rem, env(safe-area-inset-bottom));
+}
+
+main.min-h-\\[calc\\(100vh-64px\\)\\].bg-black.text-white > section > div:last-child > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  overflow-x: auto;
+  padding: 0.25rem 0.15rem 0.6rem;
+}
+
+main.min-h-\\[calc\\(100vh-64px\\)\\].bg-black.text-white > section > div:last-child > div:first-child::before {
+  flex: 0 0 auto;
+  width: 1.9rem;
+  height: 0.18rem;
+  margin: 0 0.25rem 0 0;
+}
+
+main.min-h-\\[calc\\(100vh-64px\\)\\].bg-black.text-white > section > div:last-child > div:first-child > button {
+  min-width: max-content;
+  height: 2.05rem;
+  min-height: 2.05rem;
+  padding: 0.35rem 0.8rem;
+  border: 1px solid transparent;
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+main.min-h-\\[calc\\(100vh-64px\\)\\].bg-black.text-white > section > div:first-child {
+  position: relative;
+}
+
+main.min-h-\\[calc\\(100vh-64px\\)\\].bg-black.text-white > section > div:first-child::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 5rem;
+  pointer-events: none;
+  background: linear-gradient(to top, rgba(0,0,0,0.28), transparent);
+}
+
+main.min-h-\\[calc\\(100vh-64px\\)\\].bg-black.text-white > section > div:first-child video,
+main.min-h-\\[calc\\(100vh-64px\\)\\].bg-black.text-white > section > div:first-child img {
+  max-height: min(70dvh, 38rem);
+  border-radius: 20px;
+  object-fit: contain;
+}
+
+/* Auto-fix is a floating utility, not a large primary control. */
+main.min-h-\\[calc\\(100vh-64px\\)\\].bg-black.text-white > section > div:first-child > button {
+  width: 2.45rem;
+  height: 2.45rem;
+  min-width: 2.45rem;
+  padding: 0;
+  gap: 0;
+}
+
+main.min-h-\\[calc\\(100vh-64px\\)\\].bg-black.text-white > section > div:first-child > button svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Adjustment controls: slider-first, with a restrained label row. */
+main.min-h-\\[calc\\(100vh-64px\\)\\].bg-black.text-white > section > div:last-child label {
+  min-height: 4.05rem;
+  padding: 0.65rem 0.75rem;
+  background: rgba(255,255,255,0.045);
+}
+
+main.min-h-\\[calc\\(100vh-64px\\)\\].bg-black.text-white > section > div:last-child label input[type="range"] {
+  margin-top: 0.35rem;
+  height: 1rem;
+}
+
+/* Circular filter presets, matching the reference's visual browsing pattern. */
+main.min-h-\\[calc\\(100vh-64px\\)\\].bg-black.text-white > section > div:last-child button.group {
+  width: 3.55rem;
+  min-width: 3.55rem;
+  padding: 0.05rem;
+}
+
+main.min-h-\\[calc\\(100vh-64px\\)\\].bg-black.text-white > section > div:last-child button.group > div {
+  width: 3.35rem;
+  height: 3.35rem;
+  border-radius: 999px;
+}
+
+main.min-h-\\[calc\\(100vh-64px\\)\\].bg-black.text-white > section > div:last-child button.group > span {
+  display: block;
+  max-width: 3.4rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.5rem;
+  letter-spacing: 0.01em;
+}
+
+/* Trim panel: one timeline surface rather than two visible controls. */
+main.min-h-\\[calc\\(100vh-64px\\)\\].bg-black.text-white > section > div:last-child .rounded-2xl.bg-white\\/\\[0.04\\] {
+  background: rgba(255,255,255,0.035);
+}
+
+main.min-h-\\[calc\\(100vh-64px\\)\\].bg-black.text-white input[aria-label="Video trim start"],
+main.min-h-\\[calc\\(100vh-64px\\)\\].bg-black.text-white input[aria-label="Video trim end"] {
+  height: 2rem;
+}
+
+/* Remove the old Start/End prose labels from the trim sliders while keeping accessible aria labels. */
+main.min-h-\\[calc\\(100vh-64px\\)\\].bg-black.text-white input[aria-label="Video trim start"],
+main.min-h-\\[calc\\(100vh-64px\\)\\].bg-black.text-white input[aria-label="Video trim end"] {
+  margin-top: 0.1rem;
+}
+
+@media (max-width: 640px) {
+  main.min-h-\\[calc\\(100vh-64px\\)\\].bg-black.text-white > header {
+    padding-inline: 0.7rem;
+  }
+
+  main.min-h-\\[calc\\(100vh-64px\\)\\].bg-black.text-white > header button:first-child {
+    width: 2.35rem;
+    min-width: 2.35rem;
+    padding: 0;
+    justify-content: center;
+    font-size: 0;
+  }
+
+  main.min-h-\\[calc\\(100vh-64px\\)\\].bg-black.text-white > header button:first-child svg {
+    margin: 0;
+  }
+
+  main.min-h-\\[calc\\(100vh-64px\\)\\].bg-black.text-white > header button:last-child {
+    min-width: 4.25rem;
+    height: 2.25rem;
+    padding-inline: 0.85rem;
+    font-size: 0.68rem;
+  }
+
+  main.min-h-\\[calc\\(100vh-64px\\)\\].bg-black.text-white > header h1 {
+    font-size: 0.78rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  main.min-h-\\[calc\\(100vh-64px\\)\\].bg-black.text-white > section > div:first-child video,
+  main.min-h-\\[calc\\(100vh-64px\\)\\].bg-black.text-white > section > div:first-child img {
+    max-width: 94vw;
+    max-height: 67dvh;
+    border-radius: 16px;
+  }
+
+  main.min-h-\\[calc\\(100vh-64px\\)\\].bg-black.text-white > section > div:last-child {
+    padding-inline: 0.6rem;
+    padding-top: 0.35rem;
+    border-radius: 24px 24px 0 0;
+  }
+
+  main.min-h-\\[calc\\(100vh-64px\\)\\].bg-black.text-white > section > div:last-child > div:first-child {
+    justify-content: flex-start;
+    gap: 0.2rem;
+    margin-bottom: 0.3rem;
+    padding-bottom: 0.45rem;
+  }
+
+  main.min-h-\\[calc\\(100vh-64px\\)\\].bg-black.text-white > section > div:last-child > div:first-child > button {
+    height: 1.9rem;
+    min-height: 1.9rem;
+    padding-inline: 0.7rem;
+    font-size: 0.55rem;
+  }
+
+  main.min-h-\\[calc\\(100vh-64px\\)\\].bg-black.text-white > section > div:last-child > div:not(:first-child) {
+    max-height: 35dvh;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+
+  main.min-h-\\[calc\\(100vh-64px\\)\\].bg-black.text-white > section > div:last-child > div:not(:first-child)::-webkit-scrollbar {
+    display: none;
+  }
+}
