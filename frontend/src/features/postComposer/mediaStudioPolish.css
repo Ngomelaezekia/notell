@@ -2,6 +2,7 @@
 main.bg-black.text-white > section > div:last-child {
   padding-inline: 0.65rem;
   padding-bottom: max(0.65rem, env(safe-area-inset-bottom));
+  border-top: 1px solid rgba(255,255,255,0.08);
 }
 
 main.bg-black.text-white > section > div:last-child > div:first-child {
@@ -10,13 +11,21 @@ main.bg-black.text-white > section > div:last-child > div:first-child {
   gap: 0.35rem;
   overflow-x: auto;
   padding: 0.25rem 0.15rem 0.6rem;
+  scrollbar-width: none;
+}
+
+main.bg-black.text-white > section > div:last-child > div:first-child::-webkit-scrollbar {
+  display: none;
 }
 
 main.bg-black.text-white > section > div:last-child > div:first-child::before {
+  content: "";
   flex: 0 0 auto;
   width: 1.9rem;
   height: 0.18rem;
   margin: 0 0.25rem 0 0;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.25);
 }
 
 main.bg-black.text-white > section > div:last-child > div:first-child > button {
@@ -25,10 +34,16 @@ main.bg-black.text-white > section > div:last-child > div:first-child > button {
   min-height: 2.05rem;
   padding: 0.35rem 0.8rem;
   border: 1px solid transparent;
+  border-radius: 999px;
   font-size: 0.58rem;
   font-weight: 800;
   letter-spacing: 0.045em;
   text-transform: uppercase;
+  white-space: nowrap;
+}
+
+main.bg-black.text-white > section > div:last-child > div:first-child > button[aria-pressed="true"] {
+  box-shadow: 0 4px 18px rgba(0,0,0,0.22);
 }
 
 main.bg-black.text-white > section > div:first-child {
@@ -69,6 +84,7 @@ main.bg-black.text-white > section > div:first-child > button svg {
 main.bg-black.text-white > section > div:last-child label {
   min-height: 4.05rem;
   padding: 0.65rem 0.75rem;
+  border-radius: 1rem;
   background: rgba(255,255,255,0.045);
 }
 
@@ -82,6 +98,7 @@ main.bg-black.text-white > section > div:last-child button.group {
   width: 3.55rem;
   min-width: 3.55rem;
   padding: 0.05rem;
+  border-radius: 999px;
 }
 
 main.bg-black.text-white > section > div:last-child button.group > div {
@@ -100,11 +117,37 @@ main.bg-black.text-white > section > div:last-child button.group > span {
   letter-spacing: 0.01em;
 }
 
-/* Trim panel: one timeline surface rather than two visible controls. */
+/* Trim panel: one timeline surface with two inward-moving handles. */
 main.bg-black.text-white > section > div:last-child input[aria-label="Video trim start"],
 main.bg-black.text-white > section > div:last-child input[aria-label="Video trim end"] {
   height: 2rem;
   margin-top: 0.1rem;
+}
+
+main.bg-black.text-white > section > div:last-child input[aria-label="Video trim start"]::-webkit-slider-thumb,
+main.bg-black.text-white > section > div:last-child input[aria-label="Video trim end"]::-webkit-slider-thumb {
+  width: 1.15rem;
+  height: 1.15rem;
+  border: 3px solid #000;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 1px 8px rgba(0,0,0,0.45);
+  cursor: grab;
+}
+
+main.bg-black.text-white > section > div:last-child input[aria-label="Video trim start"]::-moz-range-thumb,
+main.bg-black.text-white > section > div:last-child input[aria-label="Video trim end"]::-moz-range-thumb {
+  width: 1rem;
+  height: 1rem;
+  border: 3px solid #000;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 1px 8px rgba(0,0,0,0.45);
+  cursor: grab;
+}
+
+main.bg-black.text-white > section > div:last-child > div:last-child {
+  border-radius: 1rem;
 }
 
 @media (max-width: 640px) {
