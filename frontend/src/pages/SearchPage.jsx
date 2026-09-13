@@ -1,130 +1,79 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft, ChevronDown, FileText, Loader2, MapPin, Search, UserRound, UserPlus, Check, X } from "lucide-react";
+import { ArrowLeft, Check, Loader2, MapPin, Search, UserPlus, UserRound, X } from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
 import { userAPI } from "../services/user/userApi";
-import { postsAPI } from "../services/post/postsApi";
 import { getApiErrorMessage, getFileUrl } from "../utils/api";
-import { PostCard } from "../components/PostCard";
 
 const PAGE_SIZE = 20;
 const SUGGESTION_LIMIT = 5;
 const MIN_QUERY_LENGTH = 2;
-const TABS = [
-  { id: "all", label: "All" },
-  { id: "people", label: "People" },
-  { id: "posts", label: "Posts" },
-];
-
-const formatRelativeTime = (value) => {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
-  if (seconds < 60) return "now";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d`;
-  const weeks = Math.floor(days / 7);
-  if (weeks < 5) return `${weeks}w`;
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-};
 
 const Avatar = ({ user, size = "h-12 w-12" }) => (
   <div className={`${size} shrink-0 overflow-hidden rounded-full bg-neutral-800 ring-1 ring-neutral-700`}>
-    {user?.profilePicture ? (
-      <img src={getFileUrl(user.profilePicture)} alt="" className="h-full w-full object-cover" />
-    ) : (
-      <div className="flex h-full w-full items-center justify-center text-neutral-500"><UserRound size={size.includes("9") ? 16 : 21} /></div>
-    )}
+    {user?.profilePicture ? <img src={getFileUrl(user.profilePicture)} alt="" className="h-full w-full object-cover" loading="lazy" /> : <div className="flex h-full w-full items-center justify-center text-neutral-500"><UserRound size={20} /></div>}
   </div>
 );
 
-const PeopleSkeleton = () => (
-  <div className="flex animate-pulse items-center gap-3 rounded-2xl border border-neutral-800 bg-neutral-900/60 p-3">
-    <div className="h-12 w-12 shrink-0 rounded-full bg-neutral-800" />
-    <div className="min-w-0 flex-1 space-y-2"><div className="h-3 w-32 rounded bg-neutral-800" /><div className="h-2.5 w-48 max-w-full rounded bg-neutral-800" /></div>
-    <div className="h-9 w-16 rounded-xl bg-neutral-800" />
-  </div>
-);
-
-const PostSkeleton = () => (
-  <div className="animate-pulse overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-900/60">
-    <div className="flex items-center gap-3 p-3"><div className="h-10 w-10 rounded-full bg-neutral-800" /><div className="flex-1 space-y-2"><div className="h-3 w-28 rounded bg-neutral-800" /><div className="h-2.5 w-16 rounded bg-neutral-800" /></div></div>
-    <div className="aspect-[4/3] bg-neutral-800/80" /><div className="space-y-2 p-3"><div className="h-3 w-3/4 rounded bg-neutral-800" /><div className="h-2.5 w-1/3 rounded bg-neutral-800" /></div>
-  </div>
-);
+const PersonRow = ({ user, following, loading, onFollow }) => {
+  const location = [user?.city, user?.country].filter(Boolean).join(", ");
+  return (
+    <div className="group flex items-center gap-3 rounded-2xl border border-neutral-800/80 bg-neutral-900/70 p-3 transition hover:border-neutral-700 hover:bg-neutral-900">
+      <Link to={`/users/${user.id}`} className="shrink-0"><Avatar user={user} /></Link>
+      <Link to={`/users/${user.id}`} className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-neutral-100 group-hover:text-white">{user.username}</p>
+        <div className="mt-1 flex min-w-0 items-center gap-1.5 text-[11px] text-neutral-500">
+          {location && <><MapPin size={12} className="shrink-0" /><span className="truncate">{location}</span></>}
+          {user?.bio && <span className="truncate">{location ? "· " : ""}{user.bio}</span>}
+        </div>
+      </Link>
+      <button type="button" onClick={() => onFollow(user)} disabled={loading} className={`inline-flex h-9 min-w-[84px] shrink-0 items-center justify-center gap-1.5 rounded-xl px-3 text-xs font-bold transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 ${following ? "border border-neutral-700 bg-neutral-800 text-neutral-200" : "bg-neutral-100 text-neutral-950 hover:bg-white"}`}>
+        {loading ? <Loader2 size={14} className="animate-spin" /> : following ? <Check size={14} /> : <UserPlus size={14} />}{following ? "Following" : "Follow"}
+      </button>
+    </div>
+  );
+};
 
 export default function SearchPage() {
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState(searchParams.get("q") || "");
-  const [activeTab, setActiveTab] = useState(searchParams.get("type") || "all");
   const [users, setUsers] = useState([]);
-  const [posts, setPosts] = useState([]);
-  const [userPage, setUserPage] = useState(1);
-  const [postPage, setPostPage] = useState(1);
-  const [userHasMore, setUserHasMore] = useState(false);
-  const [postHasMore, setPostHasMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [loadingMoreUsers, setLoadingMoreUsers] = useState(false);
-  const [loadingMorePosts, setLoadingMorePosts] = useState(false);
-  const [userError, setUserError] = useState(null);
-  const [postError, setPostError] = useState(null);
-  const [searched, setSearched] = useState(Boolean(searchParams.get("q")));
-  const [suggestions, setSuggestions] = useState({ users: [], posts: [] });
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState(null);
+  const [suggestions, setSuggestions] = useState([]);
   const [suggestionLoading, setSuggestionLoading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [followState, setFollowState] = useState({});
   const [followLoading, setFollowLoading] = useState({});
-  const searchTimerRef = useRef(null);
-  const requestIdRef = useRef(0);
+  const timerRef = useRef(null);
+  const requestRef = useRef(0);
 
   const onSearching = (value) => {
-    const nextQuery = value.trim();
     setQuery(value);
-    setShowSuggestions(Boolean(nextQuery));
-    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    if (nextQuery.length < MIN_QUERY_LENGTH) {
-      setSuggestions({ users: [], posts: [] });
-      setSuggestionLoading(false);
-      return;
-    }
+    const trimmed = value.trim();
+    setShowSuggestions(Boolean(trimmed));
+    if (timerRef.current) clearTimeout(timerRef.current);
+    if (trimmed.length < MIN_QUERY_LENGTH) { setSuggestions([]); setSuggestionLoading(false); return; }
+    const requestId = ++requestRef.current;
     setSuggestionLoading(true);
-    const requestId = ++requestIdRef.current;
-    searchTimerRef.current = setTimeout(async () => {
-      try {
-        const [userResult, postResult] = await Promise.allSettled([
-          userAPI.searchUsers(nextQuery, 1, SUGGESTION_LIMIT),
-          postsAPI.searchPosts(nextQuery, 1, SUGGESTION_LIMIT),
-        ]);
-        if (requestId !== requestIdRef.current) return;
-        setSuggestions({
-          users: userResult.status === "fulfilled" ? userResult.value?.data?.users || [] : [],
-          posts: postResult.status === "fulfilled" ? postResult.value?.data?.posts || [] : [],
-        });
-      } finally {
-        if (requestId === requestIdRef.current) setSuggestionLoading(false);
-      }
-    }, 300);
+    timerRef.current = setTimeout(async () => {
+      try { const result = await userAPI.searchUsers(trimmed, 1, SUGGESTION_LIMIT); if (requestId === requestRef.current) setSuggestions(result?.data?.users || []); }
+      catch { if (requestId === requestRef.current) setSuggestions([]); }
+      finally { if (requestId === requestRef.current) setSuggestionLoading(false); }
+    }, 250);
   };
 
-  useEffect(() => () => searchTimerRef.current && clearTimeout(searchTimerRef.current), []);
+  useEffect(() => () => timerRef.current && clearTimeout(timerRef.current), []);
 
   useEffect(() => {
     const handleRelationshipChange = (event) => {
-      const change = event.detail;
-      const userId = String(change?.userId ?? "");
-      if (!userId) return;
-      const following = Boolean(change.following);
-      setFollowState((current) => ({ ...current, [userId]: following }));
-      setUsers((current) => current.map((user) => String(user.id) === userId ? { ...user, following } : user));
-      setSuggestions((current) => ({
-        ...current,
-        users: current.users.map((user) => String(user.id) === userId ? { ...user, following } : user),
-      }));
+      const id = String(event.detail?.userId ?? ""); if (!id) return;
+      const following = Boolean(event.detail?.following);
+      setFollowState((current) => ({ ...current, [id]: following }));
+      setUsers((current) => current.map((u) => String(u.id) === id ? { ...u, following } : u));
+      setSuggestions((current) => current.map((u) => String(u.id) === id ? { ...u, following } : u));
     };
     window.addEventListener("notell:relationship-changed", handleRelationshipChange);
     return () => window.removeEventListener("notell:relationship-changed", handleRelationshipChange);
@@ -132,186 +81,64 @@ export default function SearchPage() {
 
   useEffect(() => {
     const value = searchParams.get("q")?.trim() || "";
-    const requestedType = searchParams.get("type") || "all";
-    const type = TABS.some((tab) => tab.id === requestedType) ? requestedType : "all";
-    setQuery(value);
-    setActiveTab(type);
-    setShowSuggestions(false);
-    setFollowState({});
-    setFollowLoading({});
-    if (value.length < MIN_QUERY_LENGTH) {
-      setUsers([]); setPosts([]); setUserPage(1); setPostPage(1);
-      setUserHasMore(false); setPostHasMore(false); setSearched(false);
-      setUserError(null); setPostError(null);
-      return;
-    }
+    setQuery(value); setShowSuggestions(false);
+    if (value.length < MIN_QUERY_LENGTH) { setUsers([]); setPage(1); setHasMore(false); setLoading(false); setError(null); return; }
     let cancelled = false;
-    setLoading(true); setUsers([]); setPosts([]); setUserPage(1); setPostPage(1);
-    setUserHasMore(false); setPostHasMore(false); setUserError(null); setPostError(null);
-    Promise.allSettled([
-      userAPI.searchUsers(value, 1, PAGE_SIZE),
-      postsAPI.searchPosts(value, 1, PAGE_SIZE),
-    ]).then(([userResult, postResult]) => {
+    setLoading(true); setError(null); setUsers([]); setPage(1); setHasMore(false);
+    userAPI.searchUsers(value, 1, PAGE_SIZE).then((result) => {
       if (cancelled) return;
-      if (userResult.status === "fulfilled") {
-        const data = userResult.value?.data || {};
-        const resultUsers = data.users || [];
-        setUsers(resultUsers);
-        setFollowState(Object.fromEntries(resultUsers.filter((user) => user?.id).map((user) => [String(user.id), Boolean(user.following)])));
-        setUserHasMore(Boolean(data.pagination?.hasMore));
-      } else {
-        setUsers([]); setUserHasMore(false); setUserError(getApiErrorMessage(userResult.reason, "People search failed."));
-      }
-      if (postResult.status === "fulfilled") {
-        const data = postResult.value?.data || {};
-        setPosts(data.posts || []); setPostHasMore(Boolean(data.pagination?.hasMore));
-      } else {
-        setPosts([]); setPostHasMore(false); setPostError(getApiErrorMessage(postResult.reason, "Post search failed."));
-      }
-      setSearched(true);
-    }).finally(() => { if (!cancelled) setLoading(false); });
+      const data = result?.data || {}; const resultUsers = data.users || [];
+      setUsers(resultUsers);
+      setFollowState(Object.fromEntries(resultUsers.filter((u) => u?.id).map((u) => [String(u.id), Boolean(u.following)])));
+      setHasMore(Boolean(data.pagination?.hasMore));
+    }).catch((err) => { if (!cancelled) setError(getApiErrorMessage(err, "People search failed.")); }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [searchParams]);
 
   const handleFollow = async (user) => {
-    if (!user?.id || followLoading[user.id]) return;
-    const userId = String(user.id);
-    const isFollowing = Boolean(followState[userId] ?? user.following);
-    setFollowLoading((current) => ({ ...current, [userId]: true }));
-    setUserError(null);
+    const id = String(user?.id ?? ""); if (!id || followLoading[id]) return;
+    const following = Boolean(followState[id] ?? user.following);
+    setFollowLoading((current) => ({ ...current, [id]: true }));
     try {
-      const response = isFollowing ? await userAPI.unfollowUser(user.id) : await userAPI.followUser(user.id);
-      const data = response?.data?.data ?? response?.data ?? {};
-      const following = data.following ?? !isFollowing;
-      setFollowState((current) => ({ ...current, [userId]: Boolean(following) }));
-      setUsers((current) => current.map((item) => String(item.id) === userId ? { ...item, following: Boolean(following) } : item));
-      setSuggestions((current) => ({
-        ...current,
-        users: current.users.map((item) => String(item.id) === userId ? { ...item, following: Boolean(following) } : item),
-      }));
-    } catch (error) {
-      if (error?.response?.status === 409) {
-        setFollowState((current) => ({ ...current, [userId]: isFollowing }));
-      } else {
-        setUserError(getApiErrorMessage(error, `Could not ${isFollowing ? "unfollow" : "follow"} @${user.username}.`));
-      }
-    } finally {
-      setFollowLoading((current) => ({ ...current, [userId]: false }));
-    }
+      const response = following ? await userAPI.unfollowUser(user.id) : await userAPI.followUser(user.id);
+      const next = Boolean(response?.data?.data?.following ?? response?.data?.following ?? !following);
+      setFollowState((current) => ({ ...current, [id]: next }));
+      setUsers((current) => current.map((u) => String(u.id) === id ? { ...u, following: next } : u));
+    } catch (err) { setError(getApiErrorMessage(err, `Could not ${following ? "unfollow" : "follow"} @${user.username}.`)); }
+    finally { setFollowLoading((current) => ({ ...current, [id]: false })); }
   };
 
-  const submitSearch = (event) => {
-    event.preventDefault();
-    const value = query.trim();
-    setShowSuggestions(false);
-    if (value.length < MIN_QUERY_LENGTH) return setSearchParams({});
-    const nextParams = { q: value };
-    if (activeTab !== "all") nextParams.type = activeTab;
-    setSearchParams(nextParams);
-  };
-
-  const changeTab = (tab) => {
-    setActiveTab(tab); setShowSuggestions(false);
-    const value = query.trim();
-    const nextParams = value.length >= MIN_QUERY_LENGTH ? { q: value } : {};
-    if (tab !== "all" && value.length >= MIN_QUERY_LENGTH) nextParams.type = tab;
-    setSearchParams(nextParams);
-  };
-
-  const clearSearch = () => {
-    setQuery(""); setSuggestions({ users: [], posts: [] }); setShowSuggestions(false); setSearchParams({});
-  };
-
-  const loadMoreUsers = async () => {
-    if (loadingMoreUsers || !userHasMore) return;
-    const nextPage = userPage + 1; setLoadingMoreUsers(true); setUserError(null);
+  const submitSearch = (event) => { event.preventDefault(); const value = query.trim(); setShowSuggestions(false); if (value.length < MIN_QUERY_LENGTH) return setSearchParams({}); setSearchParams({ q: value }); };
+  const clearSearch = () => { setQuery(""); setSuggestions([]); setShowSuggestions(false); setSearchParams({}); };
+  const loadMore = async () => {
+    if (loadingMore || !hasMore) return;
+    const nextPage = page + 1; setLoadingMore(true); setError(null);
     try {
       const data = (await userAPI.searchUsers(query.trim(), nextPage, PAGE_SIZE))?.data || {};
       const incoming = data.users || [];
       setUsers((current) => { const ids = new Set(current.map((u) => u.id)); return [...current, ...incoming.filter((u) => !ids.has(u.id))]; });
-      setFollowState((current) => ({ ...current, ...Object.fromEntries(incoming.filter((user) => user?.id).map((user) => [String(user.id), Boolean(user.following)])) }));
-      setUserPage(data.pagination?.page ?? nextPage); setUserHasMore(Boolean(data.pagination?.hasMore));
-    } catch (error) { setUserError(getApiErrorMessage(error, "Failed to load more people.")); }
-    finally { setLoadingMoreUsers(false); }
+      setFollowState((current) => ({ ...current, ...Object.fromEntries(incoming.map((u) => [String(u.id), Boolean(u.following)])) }));
+      setPage(data.pagination?.page ?? nextPage); setHasMore(Boolean(data.pagination?.hasMore));
+    } catch (err) { setError(getApiErrorMessage(err, "Failed to load more people.")); } finally { setLoadingMore(false); }
   };
-
-  const loadMorePosts = async () => {
-    if (loadingMorePosts || !postHasMore) return;
-    const nextPage = postPage + 1; setLoadingMorePosts(true); setPostError(null);
-    try {
-      const data = (await postsAPI.searchPosts(query.trim(), nextPage, PAGE_SIZE))?.data || {};
-      setPosts((current) => { const ids = new Set(current.map((p) => p.postId)); return [...current, ...(data.posts || []).filter((p) => !ids.has(p.postId))]; });
-      setPostPage(data.pagination?.page ?? nextPage); setPostHasMore(Boolean(data.pagination?.hasMore));
-    } catch (error) { setPostError(getApiErrorMessage(error, "Failed to load more posts.")); }
-    finally { setLoadingMorePosts(false); }
-  };
-
-  const showPeople = activeTab === "all" || activeTab === "people";
-  const showPosts = activeTab === "all" || activeTab === "posts";
-  const hasResults = (showPeople && users.length) || (showPosts && posts.length);
-  const hasErrors = Boolean((showPeople && userError) || (showPosts && postError));
-  const hasSuggestions = suggestions.users.length > 0 || suggestions.posts.length > 0;
 
   return (
-    <section className="min-h-[calc(100dvh-6rem)] w-full bg-neutral-950 px-3 py-3 text-neutral-100 sm:px-5 sm:py-5">
-      <div className="mx-auto w-full max-w-4xl">
-        <header className="mb-4 flex items-center gap-2 sm:mb-5">
-          <Link to="/" className="rounded-full p-2 text-neutral-400 transition hover:bg-neutral-900 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/20" aria-label="Back to feed"><ArrowLeft size={19} /></Link>
-          <div><h1 className="text-lg font-bold tracking-tight sm:text-xl">Discover</h1><p className="text-xs text-neutral-500 sm:text-sm">Find people and posts on Notell.</p></div>
-        </header>
-
+    <section className="min-h-[calc(100dvh-4rem)] w-full bg-neutral-950 px-3 pb-28 pt-4 text-neutral-100 sm:px-5 sm:pb-12 sm:pt-6">
+      <div className="mx-auto w-full max-w-3xl">
+        <header className="mb-5 flex items-center gap-3"><Link to="/" aria-label="Back to feed" className="rounded-full p-2 text-neutral-400 transition hover:bg-neutral-900 hover:text-white"><ArrowLeft size={19} /></Link><div><h1 className="text-xl font-bold tracking-tight">Find people</h1><p className="mt-0.5 text-xs text-neutral-500 sm:text-sm">Search Notell accounts by username and profile details.</p></div></header>
         <form onSubmit={submitSearch} className="relative">
           <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-neutral-500" size={19} />
-          <input value={query} onChange={(e) => onSearching(e.target.value)} onFocus={() => query.trim() && setShowSuggestions(true)} onBlur={() => setTimeout(() => setShowSuggestions(false), 150)} placeholder="Search people or posts" maxLength={100} autoFocus enterKeyHint="search" autoComplete="off" aria-label="Search people or posts" className="w-full rounded-2xl border border-neutral-800 bg-neutral-900 py-3.5 pl-11 pr-24 text-sm text-white shadow-sm outline-none transition placeholder:text-neutral-600 focus:border-neutral-600 focus:ring-2 focus:ring-white/5" />
-          {query && <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={clearSearch} className="absolute right-20 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-neutral-500 hover:bg-neutral-800 hover:text-white" aria-label="Clear search"><X size={16} /></button>}
-          <button type="submit" className="absolute right-2 top-1/2 -translate-y-1/2 rounded-xl bg-white px-3.5 py-2 text-xs font-bold text-neutral-950 transition hover:bg-neutral-200 active:scale-95 sm:text-sm">Search</button>
-
-          {showSuggestions && query.trim().length >= MIN_QUERY_LENGTH && <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-40 overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl shadow-black/50">
-            {suggestionLoading ? <div className="flex items-center gap-2 px-4 py-4 text-sm text-neutral-500"><Loader2 size={16} className="animate-spin" />Searching…</div> : hasSuggestions ? <div className="max-h-[min(60vh,420px)] overflow-y-auto py-2">
-              {suggestions.users.length > 0 && <div><p className="px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-neutral-600">People</p>{suggestions.users.map((user) => <Link key={user.id} to={`/users/${user.id}`} onMouseDown={(e) => e.preventDefault()} onClick={() => setShowSuggestions(false)} className="flex items-center gap-3 px-4 py-2.5 transition hover:bg-neutral-900"><Avatar user={user} size="h-9 w-9" /><div className="min-w-0"><p className="truncate text-sm font-semibold">@{user.username}</p><p className="truncate text-xs text-neutral-500">{user.bio || [user.city, user.country].filter(Boolean).join(", ") || "View profile"}</p></div></Link>)}</div>}
-              {suggestions.posts.length > 0 && <div className="border-t border-neutral-800/80 pt-1"><p className="px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-neutral-600">Posts</p>{suggestions.posts.map((post) => <button key={post.postId} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { setShowSuggestions(false); navigate(`/posts/${post.postId}`); }} className="flex w-full items-start gap-3 px-4 py-2.5 text-left transition hover:bg-neutral-900"><FileText size={16} className="mt-0.5 shrink-0 text-neutral-500" /><span className="min-w-0 truncate text-sm text-neutral-300">{post.caption || "Post matching your search"}</span></button>)}</div>}
-            </div> : <div className="px-4 py-4 text-sm text-neutral-500">No matching suggestions yet.</div>}
-          </div>}
+          <input value={query} onChange={(e) => onSearching(e.target.value)} onFocus={() => query.trim() && setShowSuggestions(true)} onBlur={() => setTimeout(() => setShowSuggestions(false), 150)} placeholder="Search people" maxLength={100} autoComplete="off" enterKeyHint="search" aria-label="Search people" className="w-full rounded-2xl border border-neutral-800 bg-neutral-900 py-3.5 pl-11 pr-24 text-sm text-white outline-none transition placeholder:text-neutral-600 focus:border-neutral-600 focus:ring-2 focus:ring-white/5" />
+          {query && <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={clearSearch} aria-label="Clear search" className="absolute right-20 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-neutral-500 hover:bg-neutral-800 hover:text-white"><X size={16} /></button>}
+          <button type="submit" className="absolute right-2 top-1/2 -translate-y-1/2 rounded-xl bg-neutral-100 px-3.5 py-2 text-xs font-bold text-neutral-950 hover:bg-white">Search</button>
+          {showSuggestions && query.trim().length >= MIN_QUERY_LENGTH && <div className="absolute inset-x-0 top-[calc(100%+8px)] z-40 overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950/98 p-1.5 shadow-2xl shadow-black/40 backdrop-blur-xl">{suggestionLoading ? <div className="flex justify-center p-5 text-neutral-500"><Loader2 size={18} className="animate-spin" /></div> : suggestions.length ? suggestions.map((user) => <Link key={user.id} to={`/users/${user.id}`} className="flex items-center gap-3 rounded-xl p-2.5 hover:bg-neutral-900"><Avatar user={user} size="h-9 w-9" /><div className="min-w-0"><p className="truncate text-sm font-semibold">{user.username}</p><p className="text-[11px] text-neutral-500">View profile</p></div></Link>) : <p className="p-4 text-center text-xs text-neutral-500">No people found</p>}</div>}
         </form>
-
-        <div className="mt-4 flex gap-1 overflow-x-auto rounded-xl border border-neutral-800 bg-neutral-900/60 p-1" role="tablist" aria-label="Search result type">
-          {TABS.map((tab) => <button key={tab.id} type="button" role="tab" aria-selected={activeTab === tab.id} onClick={() => changeTab(tab.id)} className={`min-w-20 flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition sm:text-sm ${activeTab === tab.id ? "bg-white text-neutral-950 shadow" : "text-neutral-400 hover:bg-neutral-800 hover:text-white"}`}>{tab.label}</button>)}
+        {error && <div className="mt-4 rounded-2xl border border-red-900/50 bg-red-950/30 px-4 py-3 text-xs text-red-300">{error}</div>}
+        <div className="mt-6 flex items-center justify-between"><div><h2 className="text-sm font-bold text-neutral-200">People</h2><p className="text-[11px] text-neutral-500">{query.trim() ? `Results for “${query.trim()}”` : "Start with a name or username"}</p></div>{users.length > 0 && <span className="rounded-full border border-neutral-800 bg-neutral-900 px-2.5 py-1 text-[10px] font-semibold text-neutral-500">{users.length}{hasMore ? "+" : ""}</span>}</div>
+        <div className="mt-3 space-y-2.5">
+          {loading ? Array.from({ length: 5 }).map((_, i) => <div key={i} className="flex animate-pulse items-center gap-3 rounded-2xl border border-neutral-800 bg-neutral-900/60 p-3"><div className="h-12 w-12 rounded-full bg-neutral-800" /><div className="flex-1 space-y-2"><div className="h-3 w-32 rounded bg-neutral-800" /><div className="h-2.5 w-48 rounded bg-neutral-800" /></div><div className="h-9 w-20 rounded-xl bg-neutral-800" /></div>) : users.length ? users.map((user) => <PersonRow key={user.id} user={user} following={Boolean(followState[String(user.id)] ?? user.following)} loading={Boolean(followLoading[String(user.id)])} onFollow={handleFollow} />) : <div className="rounded-3xl border border-dashed border-neutral-800 bg-neutral-900/40 px-6 py-16 text-center"><div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-neutral-800 bg-neutral-900 text-neutral-600"><UserRound size={24} /></div><p className="mt-4 text-sm font-semibold text-neutral-300">{query.trim() ? "No people found" : "Search for a person"}</p><p className="mx-auto mt-1 max-w-sm text-xs leading-5 text-neutral-500">Search only looks through Notell accounts now. Post content is no longer part of search.</p></div>}
         </div>
-
-        {!searched && !query.trim() && <div className="mx-auto mt-10 max-w-xl rounded-3xl border border-neutral-800 bg-neutral-900/40 px-5 py-12 text-center sm:mt-14"><div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-neutral-800 text-neutral-500"><Search size={25} /></div><h2 className="mt-4 text-base font-semibold">Search Notell</h2><p className="mx-auto mt-1 max-w-sm text-sm leading-6 text-neutral-500">Find people by username, bio or location, or discover posts by their content.</p></div>}
-
-        <main className="mt-5 space-y-7 sm:mt-6">
-          {loading && <div className="space-y-6"><div className="space-y-2"><PeopleSkeleton /><PeopleSkeleton /></div><div className="space-y-3"><PostSkeleton /><PostSkeleton /></div></div>}
-          {!loading && searched && showPeople && userError && <div className="rounded-2xl border border-red-900/60 bg-red-950/30 p-4 text-sm text-red-300">{userError}</div>}
-          {!loading && searched && showPosts && postError && <div className="rounded-2xl border border-red-900/60 bg-red-950/30 p-4 text-sm text-red-300">{postError}</div>}
-
-          {!loading && searched && showPeople && users.length > 0 && <section>
-            <div className="mb-3 flex items-end justify-between"><div><h2 className="text-sm font-bold sm:text-base">People</h2><p className="mt-0.5 text-xs text-neutral-600">{users.length}{userHasMore ? "+" : ""} result{users.length === 1 ? "" : "s"}</p></div>{activeTab === "all" && <button type="button" onClick={() => changeTab("people")} className="text-xs font-semibold text-neutral-400 hover:text-white sm:text-sm">See all</button>}</div>
-            <div className="space-y-2">{users.map((user) => { const userId = String(user.id); const isFollowing = Boolean(followState[userId] ?? user.following); return <div key={user.id} className="flex items-center gap-3 rounded-2xl border border-neutral-800 bg-neutral-900/70 p-3 transition hover:border-neutral-700 hover:bg-neutral-900 sm:p-3.5">
-              <Link to={`/users/${user.id}`} className="shrink-0 rounded-full focus:outline-none focus:ring-2 focus:ring-white/20" aria-label={`View @${user.username}'s public profile`}><Avatar user={user} /></Link>
-              <Link to={`/users/${user.id}`} className="min-w-0 flex-1 rounded-xl focus:outline-none focus:ring-2 focus:ring-white/10" aria-label={`View @${user.username}'s public profile`}>
-                <p className="truncate text-sm font-bold text-white">@{user.username}</p>
-                {user.bio ? <p className="mt-0.5 truncate text-xs text-neutral-500">{user.bio}</p> : (user.city || user.country) ? <p className="mt-1 flex items-center gap-1 truncate text-xs text-neutral-500"><MapPin size={12} />{[user.city, user.country].filter(Boolean).join(", ")}</p> : <p className="mt-1 text-xs text-neutral-600">View public profile</p>}
-              </Link>
-              <div className="flex shrink-0 items-center gap-1.5">
-                <Link to={`/users/${user.id}`} className="hidden rounded-xl border border-neutral-700 px-3 py-2 text-xs font-semibold text-neutral-300 transition hover:border-neutral-500 hover:text-white sm:inline-flex" aria-label={`View @${user.username}'s public profile`}>View</Link>
-                <button type="button" onClick={() => handleFollow(user)} disabled={followLoading[userId] || Boolean(user.isSelf)} className={`inline-flex min-w-[92px] items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition active:scale-95 disabled:cursor-default disabled:opacity-60 ${isFollowing ? "border border-emerald-500/20 bg-emerald-500/10 text-emerald-300 hover:bg-red-500/10 hover:text-red-300" : "bg-white text-neutral-950 hover:bg-neutral-200"}`} aria-label={isFollowing ? `Unfollow @${user.username}` : `Follow @${user.username}`}>
-                  {followLoading[userId] ? <Loader2 size={14} className="animate-spin" /> : isFollowing ? <Check size={14} /> : <UserPlus size={14} />}
-                  {followLoading[userId] ? "Updating…" : isFollowing ? "Following" : "Follow"}
-                </button>
-              </div>
-            </div>; })}</div>
-            {userHasMore && <button type="button" onClick={loadMoreUsers} disabled={loadingMoreUsers} className="mx-auto mt-4 flex items-center gap-2 rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-2.5 text-xs font-semibold text-neutral-300 transition hover:bg-neutral-800 disabled:opacity-50">{loadingMoreUsers ? <Loader2 size={15} className="animate-spin" /> : <ChevronDown size={15} />}{loadingMoreUsers ? "Loading…" : "Load more people"}</button>}
-          </section>}
-
-          {!loading && searched && showPosts && posts.length > 0 && <section>
-            <div className="mb-3 flex items-end justify-between"><div><h2 className="text-sm font-bold sm:text-base">Posts</h2><p className="mt-0.5 text-xs text-neutral-600">{posts.length}{postHasMore ? "+" : ""} result{posts.length === 1 ? "" : "s"}</p></div>{activeTab === "all" && <button type="button" onClick={() => changeTab("posts")} className="text-xs font-semibold text-neutral-400 hover:text-white sm:text-sm">See all</button>}</div>
-            <div className="space-y-4">{posts.map((post) => <div key={post.postId} className="group"><PostCard post={post} onPostDeleted={(id) => setPosts((current) => current.filter((item) => item.postId !== id))} /><Link to={`/posts/${post.postId}`} className="-mt-1 flex items-center justify-between rounded-b-2xl border-x border-b border-transparent px-3 py-2 text-xs font-semibold text-neutral-500 transition hover:border-neutral-800 hover:bg-neutral-900/50 hover:text-white" aria-label={`Open post by ${post.user?.username || "user"}`}><span>View post</span><span className="text-neutral-600">{formatRelativeTime(post.createdAt)}</span></Link></div>)}</div>
-            {postHasMore && <button type="button" onClick={loadMorePosts} disabled={loadingMorePosts} className="mx-auto mt-4 flex items-center gap-2 rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-2.5 text-xs font-semibold text-neutral-300 transition hover:bg-neutral-800 disabled:opacity-50">{loadingMorePosts ? <Loader2 size={15} className="animate-spin" /> : <ChevronDown size={15} />}{loadingMorePosts ? "Loading…" : "Load more posts"}</button>}
-          </section>}
-
-          {!loading && searched && !hasResults && !hasErrors && <div className="rounded-3xl border border-neutral-800 bg-neutral-900/50 px-5 py-14 text-center"><div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-neutral-800 text-neutral-500">{activeTab === "people" ? <UserRound size={25} /> : activeTab === "posts" ? <FileText size={25} /> : <Search size={25} />}</div><p className="mt-4 font-semibold text-neutral-200">No {activeTab === "people" ? "people" : activeTab === "posts" ? "posts" : "results"} found</p><p className="mt-1 text-sm text-neutral-500">Try another keyword or check the spelling.</p></div>}
-        </main>
+        {hasMore && <div className="flex justify-center py-5"><button type="button" onClick={() => void loadMore()} disabled={loadingMore} className="inline-flex h-10 items-center gap-2 rounded-xl border border-neutral-800 bg-neutral-900 px-4 text-xs font-bold text-neutral-300 hover:bg-neutral-800 disabled:opacity-50">{loadingMore && <Loader2 size={15} className="animate-spin" />}{loadingMore ? "Loading…" : "Load more people"}</button></div>}
       </div>
     </section>
   );
