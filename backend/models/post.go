@@ -26,28 +26,35 @@ type Post struct {
 	CommentCount int  `gorm:"-" json:"commentCount"`
 	Liked        bool `gorm:"-" json:"liked"`
 
-	User     User      `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"user,omitempty"`
-	Upload   *Upload   `gorm:"foreignKey:UploadID;constraint:OnDelete:SET NULL" json:"upload,omitempty"`
-	Likes    []Like    `gorm:"foreignKey:PostID;constraint:OnDelete:CASCADE" json:"likes,omitempty"`
-	Comments []Comment `gorm:"foreignKey:PostID;constraint:OnDelete:CASCADE" json:"comments,omitempty"`
+	User     User       `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"user,omitempty"`
+	Upload   *Upload    `gorm:"foreignKey:UploadID;constraint:OnDelete:SET NULL" json:"upload,omitempty"`
+	Music    *PostMusic `gorm:"foreignKey:PostID;constraint:OnDelete:CASCADE" json:"music,omitempty"`
+	Likes    []Like     `gorm:"foreignKey:PostID;constraint:OnDelete:CASCADE" json:"likes,omitempty"`
+	Comments []Comment  `gorm:"foreignKey:PostID;constraint:OnDelete:CASCADE" json:"comments,omitempty"`
 }
 
 // AfterFind completes the managed-media relation for post responses when the
 // caller did not explicitly preload it. This keeps existing handlers compatible
 // while ensuring Upload -> MediaMetadata is available everywhere a Post is read.
 func (p *Post) AfterFind(tx *gorm.DB) error {
-	if p.UploadID == nil || p.Upload != nil {
-		return nil
-	}
-
-	var upload Upload
-	if err := tx.Preload("MediaMetadata").First(&upload, *p.UploadID).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil
+	if p.UploadID != nil && p.Upload == nil {
+		var upload Upload
+		if err := tx.Preload("MediaMetadata").First(&upload, *p.UploadID).Error; err != nil {
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+		} else {
+			p.Upload = &upload
 		}
-		return err
 	}
-	p.Upload = &upload
+	if p.Music == nil {
+		var music PostMusic
+		if err := tx.Preload("Upload").Preload("Upload.MediaMetadata").Where("post_id = ?", p.ID).First(&music).Error; err == nil {
+			p.Music = &music
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+	}
 	return nil
 }
 
