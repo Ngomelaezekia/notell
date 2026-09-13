@@ -12,6 +12,7 @@ import (
 	"notell/models"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func invokeSetPostMusic(t *testing.T, h *PostHandler, userID, postID, uploadID uint, startSec, endSec, volume float64) *httptest.ResponseRecorder {
