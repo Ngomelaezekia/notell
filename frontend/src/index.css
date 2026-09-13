@@ -140,6 +140,92 @@ body { overflow-x: hidden; }
   }
 }
 
+/* Video trim: one full-width progressive rail with two inward-moving handles. */
+main.min-h-\[calc\(100vh-64px\)\].bg-black.text-white input[aria-label="Video trim start"],
+main.min-h-\[calc\(100vh-64px\)\].bg-black.text-white input[aria-label="Video trim end"] {
+  appearance: none;
+  -webkit-appearance: none;
+  display: block;
+  width: 100%;
+  height: 1.75rem;
+  margin-top: 0.35rem;
+  padding: 0;
+  background: transparent;
+  accent-color: white;
+}
+
+main.min-h-\[calc\(100vh-64px\)\].bg-black.text-white input[aria-label="Video trim start"] {
+  position: relative;
+  z-index: 2;
+}
+
+main.min-h-\[calc\(100vh-64px\)\].bg-black.text-white input[aria-label="Video trim end"] {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  z-index: 3;
+  margin-top: 0;
+}
+
+main.min-h-\[calc\(100vh-64px\)\].bg-black.text-white input[aria-label="Video trim start"]::-webkit-slider-runnable-track,
+main.min-h-\[calc\(100vh-64px\)\].bg-black.text-white input[aria-label="Video trim end"]::-webkit-slider-runnable-track {
+  height: 0.3rem;
+  border-radius: 999px;
+  background: transparent;
+}
+
+main.min-h-\[calc\(100vh-64px\)\].bg-black.text-white input[aria-label="Video trim start"]::-moz-range-track,
+main.min-h-\[calc\(100vh-64px\)\].bg-black.text-white input[aria-label="Video trim end"]::-moz-range-track {
+  height: 0.3rem;
+  border-radius: 999px;
+  background: transparent;
+}
+
+main.min-h-\[calc\(100vh-64px\)\].bg-black.text-white input[aria-label="Video trim start"]::-webkit-slider-thumb,
+main.min-h-\[calc\(100vh-64px\)\].bg-black.text-white input[aria-label="Video trim end"]::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 1rem;
+  height: 1.75rem;
+  margin-top: -0.725rem;
+  border: 2px solid #000;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.35);
+  cursor: ew-resize;
+}
+
+main.min-h-\[calc\(100vh-64px\)\].bg-black.text-white input[aria-label="Video trim start"]::-moz-range-thumb,
+main.min-h-\[calc\(100vh-64px\)\].bg-black.text-white input[aria-label="Video trim end"]::-moz-range-thumb {
+  width: 1rem;
+  height: 1.75rem;
+  border: 2px solid #000;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.35);
+  cursor: ew-resize;
+}
+
+/* The start rail supplies the single visible baseline; the end rail only supplies its handle. */
+main.min-h-\[calc\(100vh-64px\)\].bg-black.text-white input[aria-label="Video trim start"]::-webkit-slider-runnable-track {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+main.min-h-\[calc\(100vh-64px\)\].bg-black.text-white input[aria-label="Video trim start"]::-moz-range-track {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+main.min-h-\[calc\(100vh-64px\)\].bg-black.text-white input[aria-label="Video trim end"]::-webkit-slider-thumb,
+main.min-h-\[calc\(100vh-64px\)\].bg-black.text-white input[aria-label="Video trim start"]::-webkit-slider-thumb {
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+main.min-h-\[calc\(100vh-64px\)\].bg-black.text-white input[aria-label="Video trim end"]:active::-webkit-slider-thumb,
+main.min-h-\[calc\(100vh-64px\)\].bg-black.text-white input[aria-label="Video trim start"]:active::-webkit-slider-thumb {
+  transform: scale(1.08);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.55), 0 0 0 3px rgba(255, 255, 255, 0.14);
+}
+
 /* Media playback: promote video/audio layers without forcing large rendering work. */
 article video,
 article audio {
