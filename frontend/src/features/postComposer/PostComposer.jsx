@@ -22,7 +22,8 @@ import { usePostActions } from "../../hooks/usePosts";
 import { uploadAPI } from "../../services/post/UploadApi";
 import { CROP_RATIOS, DEFAULT_EDITS, FILTERS, exportEditedImage, getMediaStyle } from "./mediaEditor";
 
-const MAX_FILE_SIZE = 50 * 1024 * 1024;
+const MAX_FILE_SIZE = 100 * 1024 * 1024;
+const MAX_CAPTION_LENGTH = 2000;
 const EDITOR_TABS = ["Adjust", "Filters", "Crop", "Transform"];
 const ADJUSTMENTS = [
   { key: "brightness", label: "Brightness", icon: SunMedium, min: 70, max: 140 },
@@ -30,6 +31,7 @@ const ADJUSTMENTS = [
   { key: "saturation", label: "Saturation", icon: SlidersHorizontal, min: 0, max: 160 },
 ];
 
+const ACCEPTED_MEDIA = "image/jpeg,image/png,image/webp,video/mp4,video/quicktime";
 const fileKind = (file) => (file?.type?.startsWith("video/") ? "video" : "image");
 const editsChanged = (edits) =>
   edits.filter !== "original" ||
@@ -53,7 +55,7 @@ export const PostComposer = () => {
   const [previewUrl, setPreviewUrl] = useState("");
   const [kind, setKind] = useState(null);
   const [caption, setCaption] = useState("");
-  const [accept, setAccept] = useState("image/jpeg,image/png,image/webp,video/mp4,video/quicktime");
+  const [accept, setAccept] = useState(ACCEPTED_MEDIA);
   const [dragActive, setDragActive] = useState(false);
   const [localError, setLocalError] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -71,7 +73,7 @@ export const PostComposer = () => {
       return;
     }
     if (nextFile.size > MAX_FILE_SIZE) {
-      setLocalError("File size must be below 50MB.");
+      setLocalError("File size must be below 100MB.");
       return;
     }
     const nextUrl = URL.createObjectURL(nextFile);
@@ -103,7 +105,7 @@ export const PostComposer = () => {
     setEdits(DEFAULT_EDITS);
     editSnapshotRef.current = DEFAULT_EDITS;
     setCaption("");
-    setAccept("image/jpeg,image/png,image/webp,video/mp4,video/quicktime");
+    setAccept(ACCEPTED_MEDIA);
     setLocalError("");
     setStep("select");
   };
@@ -215,11 +217,14 @@ export const PostComposer = () => {
 
           <div className="border-t border-white/10 bg-black px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-2 sm:mt-3 sm:rounded-[24px] sm:border sm:bg-neutral-900 sm:p-3">
             <div className="mb-2 flex gap-1 overflow-x-auto border-b border-white/10 pb-2 sm:mb-3 sm:border-0 sm:pb-0" role="tablist" aria-label="Editor tools">
-              {EDITOR_TABS.map((tab) => (
-                <button key={tab} type="button" onClick={() => setEditorTab(tab)} aria-pressed={editorTab === tab} className={`shrink-0 rounded-full px-4 py-2 text-xs font-bold ${pressable} ${editorTab === tab ? "bg-white text-black shadow-sm" : "text-white/55 hover:bg-white/10 hover:text-white"}`}>
-                  {tab}
-                </button>
-              ))}
+              {EDITOR_TABS.map((tab) => {
+                const videoDisabled = kind === "video" && (tab === "Crop" || tab === "Transform");
+                return (
+                  <button key={tab} type="button" onClick={() => !videoDisabled && setEditorTab(tab)} disabled={videoDisabled} aria-pressed={editorTab === tab} className={`shrink-0 rounded-full px-4 py-2 text-xs font-bold ${pressable} ${editorTab === tab ? "bg-white text-black" : "text-white/55 hover:bg-white/10 hover:text-white"} ${videoDisabled ? "cursor-not-allowed opacity-30" : ""}`}>
+                    {tab}
+                  </button>
+                );
+              })}
             </div>
 
             {editorTab === "Adjust" && (
@@ -277,13 +282,13 @@ export const PostComposer = () => {
                   ["Rotate right", () => updateEdit("rotation", (edits.rotation + 90) % 360), RotateCw],
                   ["Flip", () => updateEdit("flipX", !edits.flipX), RotateCw],
                   ["Reset", resetEdits, RotateCcw],
-                ].map(([label, action, Icon]) => <button key={label} type="button" onClick={action} disabled={editing} className={`flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-xs font-bold text-white/80 hover:bg-white/10 hover:text-white ${editorButton}`}><Icon size={15} /> {label}</button>)}
+                ].map(([label, action, Icon]) => <button key={label} type="button" onClick={action} disabled={editing || kind === "video"} className={`flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-xs font-bold text-white/80 hover:bg-white/10 hover:text-white ${editorButton}`}><Icon size={15} /> {label}</button>)}
               </div>
             )}
           </div>
 
-          {kind === "video" && <p className="px-3 pt-2 text-center text-[10px] text-amber-200/70 sm:text-[11px]">Video edits are preview-only for now. Your original video is uploaded unchanged.</p>}
-          {kind === "image" && <p className="px-3 pt-2 text-center text-[10px] text-white/35 sm:text-[11px]">Edits are rendered locally only when you press Done. Cancel keeps the current media unchanged.</p>}
+          {kind === "video" && <p className="px-3 pt-2 text-center text-[10px] text-amber-200/70 sm:text-[11px]">Video adjustments and filters are preview-only for now. The original video is uploaded unchanged.</p>}
+          {kind === "image" && <p className="px-3 pt-2 text-center text-[10px] text-white/35 sm:text-[11px]">Edits are rendered locally when you press Done. Cancel keeps the current media unchanged.</p>}
         </section>
       </main>
     );
@@ -294,7 +299,7 @@ export const PostComposer = () => {
       <main className="min-h-[calc(100vh-64px)] bg-slate-50/80 pb-10">
         <section className="mx-auto w-full max-w-[760px] px-3 sm:px-5">
           <header className="sticky top-0 z-20 -mx-3 flex h-16 items-center justify-between border-b border-slate-200/80 bg-white/90 px-4 backdrop-blur-xl sm:-mx-5 sm:px-6">
-            <button type="button" onClick={() => { setStep("select"); setAccept("image/jpeg,image/png,image/webp,video/mp4,video/quicktime"); }} disabled={uploading || loading} className={`flex h-10 items-center gap-1 rounded-full px-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 ${pressable}` }><ArrowLeft size={19} /> Change</button>
+            <button type="button" onClick={() => { setStep("select"); setAccept(ACCEPTED_MEDIA); }} disabled={uploading || loading} className={`flex h-10 items-center gap-1 rounded-full px-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 ${pressable}` }><ArrowLeft size={19} /> Change</button>
             <div className="text-center"><h1 className="text-[17px] font-bold text-slate-950">Preview</h1><p className="hidden text-[11px] text-slate-400 sm:block">Looks good? Share it.</p></div>
             <button type="button" onClick={handleShare} disabled={uploading || loading} className={`flex h-9 items-center gap-1.5 rounded-full bg-blue-600 px-4 text-[14px] font-bold text-white shadow-sm hover:bg-blue-700 ${pressable} disabled:opacity-45`}>{uploading || loading ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}{uploading ? "Uploading" : loading ? "Posting" : "Share"}</button>
           </header>
@@ -308,7 +313,7 @@ export const PostComposer = () => {
               <button type="button" onClick={reset} disabled={uploading || loading} className={`absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-black/65 text-white backdrop-blur hover:bg-black/85 ${pressable} disabled:opacity-50`} aria-label="Remove media"><X size={18} /></button>
               <span className="absolute right-4 bottom-4 flex items-center gap-1.5 rounded-full bg-black/60 px-3 py-2 text-[11px] font-bold text-white backdrop-blur">{kind === "video" ? <Video size={13} /> : <ImageIcon size={13} />}{kind === "video" ? "Video" : "Photo"}</span>
             </div>
-            <div className="border-t border-white/10 bg-neutral-950 p-4"><label htmlFor="post-caption" className="text-xs font-bold text-white/55">Caption</label><textarea id="post-caption" value={caption} onChange={(event) => setCaption(event.target.value)} maxLength={2200} rows={3} placeholder="Tell your community what this moment is about..." className="mt-2 w-full resize-none bg-transparent text-sm leading-6 text-white outline-none placeholder:text-white/30" /><div className="mt-1 text-right text-[10px] text-white/30">{caption.length}/2200</div></div>
+            <div className="border-t border-white/10 bg-neutral-950 p-4"><label htmlFor="post-caption" className="text-xs font-bold text-white/55">Caption</label><textarea id="post-caption" value={caption} onChange={(event) => setCaption(event.target.value)} maxLength={MAX_CAPTION_LENGTH} rows={3} placeholder="Tell your community what this moment is about..." className="mt-2 w-full resize-none bg-transparent text-sm leading-6 text-white outline-none placeholder:text-white/30" /><div className="mt-1 text-right text-[10px] text-white/30">{caption.length}/{MAX_CAPTION_LENGTH}</div></div>
           </div>
           {(hasVideoPreviewEdits || imageHasEdits) && <p className="mt-2 text-center text-[10px] text-slate-400">{hasVideoPreviewEdits ? "Video adjustments are preview-only and will not alter the uploaded source." : "Edited photo ready to share."}</p>}
         </section>
@@ -333,8 +338,8 @@ export const PostComposer = () => {
           <div className="flex h-20 w-20 items-center justify-center rounded-[24px] bg-blue-50 text-blue-600 ring-8 ring-blue-50/60"><Plus size={38} strokeWidth={1.8} /></div>
           <h2 className="mt-7 text-[21px] font-bold tracking-tight text-slate-950">Pick a photo or video</h2>
           <p className="mt-2 max-w-sm text-sm leading-5 text-slate-500">Select media first. You will preview it, then optionally edit it, then share.</p>
-          <button type="button" onClick={() => { setAccept("image/jpeg,image/png,image/webp,video/mp4,video/quicktime"); inputRef.current?.click(); }} className={`mt-6 rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white shadow-sm hover:bg-slate-800 ${pressable}`}>Browse device</button>
-          <div className="mt-5 flex flex-wrap justify-center gap-2 text-[11px] font-medium text-slate-400"><span>JPG</span><span>•</span><span>PNG</span><span>•</span><span>WEBP</span><span>•</span><span>MP4</span><span>•</span><span>MOV</span><span>•</span><span>Up to 50MB</span></div>
+          <button type="button" onClick={() => { setAccept(ACCEPTED_MEDIA); inputRef.current?.click(); }} className={`mt-6 rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white shadow-sm hover:bg-slate-800 ${pressable}`}>Browse device</button>
+          <div className="mt-5 flex flex-wrap justify-center gap-2 text-[11px] font-medium text-slate-400"><span>JPG</span><span>•</span><span>PNG</span><span>•</span><span>WEBP</span><span>•</span><span>MP4</span><span>•</span><span>MOV</span><span>•</span><span>Up to 100MB</span></div>
         </div>
 
         <div className="mt-3 grid grid-cols-2 gap-3">
