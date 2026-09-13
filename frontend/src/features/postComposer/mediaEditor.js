@@ -161,7 +161,9 @@ export const trimVideo = async (file, startSec, endSec) => {
       throw new Error("Video trimming is not supported in this browser.");
     }
 
-    audioContext = new AudioContext();
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) throw new Error("Audio processing is not supported in this browser.");
+    audioContext = new AudioContextClass();
     await audioContext.resume();
     sourceNode = audioContext.createMediaElementSource(video);
     audioDestination = audioContext.createMediaStreamDestination();
