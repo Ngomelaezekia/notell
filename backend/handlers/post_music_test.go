@@ -1,6 +1,9 @@
 package handlers
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
 func TestValidatePostMusicWindowAcceptsDefaultWindow(t *testing.T) {
 	if err := validatePostMusicWindow(postMusicInput{StartSec: 0, EndSec: 0, Volume: 1}, 0); err != nil {
@@ -55,6 +58,26 @@ func TestValidatePostMusicWindowRejectsInvalidVolume(t *testing.T) {
 		if err := validatePostMusicWindow(postMusicInput{StartSec: 0, EndSec: 0, Volume: volume}, 120); err == nil {
 			t.Fatalf("expected invalid music volume %v to be rejected", volume)
 		}
+	}
+}
+
+func TestValidatePostMusicWindowRejectsNonFiniteValues(t *testing.T) {
+	cases := []postMusicInput{
+		{StartSec: math.NaN(), Volume: 1},
+		{EndSec: math.Inf(1), Volume: 1},
+		{Volume: math.Inf(-1)},
+	}
+	for _, input := range cases {
+		if err := validatePostMusicWindow(input, 120); err == nil {
+			t.Fatalf("expected non-finite music value to be rejected: %+v", input)
+		}
+	}
+
+	if err := validatePostMusicWindow(postMusicInput{Volume: 1}, math.NaN()); err == nil {
+		t.Fatal("expected non-finite duration to be rejected")
+	}
+	if err := validatePostMusicWindow(postMusicInput{Volume: 1}, math.Inf(1)); err == nil {
+		t.Fatal("expected infinite duration to be rejected")
 	}
 }
 
