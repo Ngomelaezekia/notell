@@ -93,11 +93,24 @@ func (h *PostHandler) SetPostMusic(c *gin.Context) {
 			return err
 		}
 
-		music = models.PostMusic{PostID: post.ID, UploadID: upload.ID, StartSec: input.StartSec, EndSec: input.EndSec, Volume: input.Volume}
+		var previous []models.PostMusic
+		if err := tx.Where("post_id = ?", post.ID).Find(&previous).Error; err != nil {
+			return err
+		}
+		for _, item := range previous {
+			if err := tx.Model(&models.Upload{}).Where("id = ? AND post_id = ?", item.UploadID, post.ID).Update("post_id", nil).Error; err != nil {
+			return err
+			}
+		}
 		if err := tx.Where("post_id = ?", post.ID).Delete(&models.PostMusic{}).Error; err != nil {
 			return err
 		}
+
+		music = models.PostMusic{PostID: post.ID, UploadID: upload.ID, StartSec: input.StartSec, EndSec: input.EndSec, Volume: input.Volume}
 		if err := tx.Create(&music).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&models.Upload{}).Where("id = ? AND user_id = ? AND post_id IS NULL", upload.ID, userID).Update("post_id", post.ID).Error; err != nil {
 			return err
 		}
 		return nil
@@ -121,13 +134,30 @@ func (h *PostHandler) RemovePostMusic(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid post ID"})
 		return
 	}
-	result := h.DB.Where("post_id = ? AND EXISTS (SELECT 1 FROM posts WHERE posts.id = post_music.post_id AND posts.user_id = ?)", uint(postID), userID).Delete(&models.PostMusic{})
-	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to remove post music"})
+
+	var music models.PostMusic
+	err = h.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("post_id = ?", uint(postID)).First(&music).Error; err != nil {
+			return err
+		}
+		var post models.Post
+		if err := tx.Select("id,user_id").First(&post, music.PostID).Error; err != nil {
+			return err
+		}
+		if post.UserID != userID {
+			return gorm.ErrRecordNotFound
+		}
+		if err := tx.Model(&models.Upload{}).Where("id = ? AND post_id = ?", music.UploadID, post.ID).Update("post_id", nil).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&music).Error
+	})
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"message": "post music not found"})
 		return
 	}
-	if result.RowsAffected == 0 {
-		c.JSON(http.StatusNotFound, gin.H{"message": "post music not found"})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to remove post music"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "post music removed successfully"})
