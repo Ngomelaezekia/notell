@@ -187,7 +187,8 @@ export const trimVideo = async (file, startSec, endSec) => {
 
     const safeStart = Math.min(requestedStart, Math.max(0, duration - 0.1));
     const safeEnd = Math.min(Math.max(safeStart + 0.1, requestedEnd), duration);
-    if (safeEnd - safeStart < 0.1) throw new Error("Video clip must be at least 0.1 seconds long.");
+    const clipDuration = safeEnd - safeStart;
+    if (clipDuration < 0.1) throw new Error("Video clip must be at least 0.1 seconds long.");
 
     if (typeof video.captureStream !== "function" || typeof MediaRecorder.isTypeSupported !== "function") {
       throw new Error("Video trimming is not supported in this browser.");
@@ -204,7 +205,7 @@ export const trimVideo = async (file, startSec, endSec) => {
     video.currentTime = safeStart;
     await waitForVideoEvent(video, "seeked");
 
-    const captured = video.captureStream();
+    const captured = video.captureStream(30);
     const outputStream = new MediaStream();
     captured.getVideoTracks().forEach((track) => outputStream.addTrack(track));
     const outputAudio = audioDestination.stream.getAudioTracks()[0];
@@ -213,8 +214,10 @@ export const trimVideo = async (file, startSec, endSec) => {
     const mimeType = getRecorderMimeType();
     if (!mimeType) throw new Error("Video trimming is not supported in this browser.");
 
+    const videoBitrate = clipDuration <= 30 ? 4_500_000 : clipDuration <= 60 ? 4_000_000 : 3_200_000;
+    const audioBitrate = clipDuration <= 60 ? 96_000 : 80_000;
     const chunks = [];
-    const recorder = new MediaRecorder(outputStream, { mimeType, videoBitsPerSecond: 6_000_000, audioBitsPerSecond: 128_000 });
+    const recorder = new MediaRecorder(outputStream, { mimeType, videoBitsPerSecond: videoBitrate, audioBitsPerSecond: audioBitrate });
     let finished = false;
     let stopTimer;
 
@@ -245,7 +248,7 @@ export const trimVideo = async (file, startSec, endSec) => {
         resolve(new Blob(chunks, { type: mimeType }));
       }, { once: true });
       video.addEventListener("timeupdate", onTimeUpdate);
-      stopTimer = window.setTimeout(finish, Math.max(500, (safeEnd - safeStart + 0.5) * 1000));
+      stopTimer = window.setTimeout(finish, Math.max(500, (clipDuration + 0.5) * 1000));
 
       recorder.start(250);
       video.play().then(async () => {
