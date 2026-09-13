@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"log"
@@ -12,160 +11,28 @@ import (
 	"time"
 )
 
-type Track struct {
-	ID              string   `json:"id"`
-	Provider        string   `json:"provider"`
-	ProviderTrackID string   `json:"providerTrackId,omitempty"`
-	Title           string   `json:"title"`
-	Artist          string   `json:"artist"`
-	Album           string   `json:"album,omitempty"`
-	ArtworkURL      string   `json:"artworkUrl,omitempty"`
-	PreviewURL      string   `json:"previewUrl,omitempty"`
-	DurationSec     float64  `json:"durationSec"`
-	CanUseInPost    bool     `json:"canUseInPost"`
-	Rights          Rights   `json:"rights"`
-}
+type Track struct { ID string `json:"id"`; Provider string `json:"provider"`; ProviderTrackID string `json:"providerTrackId,omitempty"`; Title string `json:"title"`; Artist string `json:"artist"`; Album string `json:"album,omitempty"`; ArtworkURL string `json:"artworkUrl,omitempty"`; PreviewURL string `json:"previewUrl,omitempty"`; DurationSec float64 `json:"durationSec"`; CanUseInPost bool `json:"canUseInPost"`; Rights Rights `json:"rights"` }
+type Rights struct { Licensed bool `json:"licensed"`; UGCUse bool `json:"ugcUse"`; Streaming bool `json:"streaming"`; Territories []string `json:"territories,omitempty"`; Attribution bool `json:"attributionRequired"`; ProviderStatus string `json:"providerStatus,omitempty"` }
+type SearchResponse struct { Query string `json:"query"`; Tracks []Track `json:"tracks"`; HasMore bool `json:"hasMore"`; Limit int `json:"limit"`; Offset int `json:"offset"` }
+type HealthResponse struct { Service string `json:"service"`; Status string `json:"status"`; Provider string `json:"provider"`; Time string `json:"time"` }
+type EventRequest struct { TrackID string `json:"trackId"`; Type string `json:"type"`; Country string `json:"country,omitempty"`; City string `json:"city,omitempty"`; UserID string `json:"userId,omitempty"` }
 
-type Rights struct {
-	Licensed       bool     `json:"licensed"`
-	UGCUse         bool     `json:"ugcUse"`
-	Streaming      bool     `json:"streaming"`
-	Territories    []string `json:"territories,omitempty"`
-	Attribution    bool     `json:"attributionRequired"`
-	ProviderStatus string   `json:"providerStatus,omitempty"`
-}
-
-type SearchResponse struct {
-	Query   string  `json:"query"`
-	Tracks  []Track `json:"tracks"`
-	HasMore bool    `json:"hasMore"`
-	Limit   int     `json:"limit"`
-	Offset  int     `json:"offset"`
-}
-
-type HealthResponse struct {
-	Service  string `json:"service"`
-	Status   string `json:"status"`
-	Provider string `json:"provider"`
-	Time     string `json:"time"`
-}
-
-type EventRequest struct {
-	TrackID  string `json:"trackId"`
-	Type     string `json:"type"`
-	Country  string `json:"country,omitempty"`
-	City     string `json:"city,omitempty"`
-	UserID   string `json:"userId,omitempty"`
-}
-
-var catalog = []Track{{
-	ID: "internal-demo-001", Provider: "internal", ProviderTrackID: "internal-demo-001",
-	Title: "Notell Demo Sound", Artist: "Notell Library", Album: "Demo", DurationSec: 30,
-	CanUseInPost: true,
-	Rights: Rights{Licensed: true, UGCUse: true, Streaming: true, Territories: []string{"*"}, ProviderStatus: "demo"},
-}}
-
-var providers = newProviderRegistry()
-
-func configuredProvider() string {
-	provider := strings.ToLower(strings.TrimSpace(os.Getenv("MUSIC_PROVIDER")))
-	if provider == "" { return "internal" }
-	return provider
-}
-
-func main() {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/health", health)
-	mux.HandleFunc("/api/music/health", health)
-	mux.HandleFunc("/api/music/search", search)
-	mux.HandleFunc("/api/music/trending", trending)
-	mux.HandleFunc("/api/music/events", ingestEvent)
-	mux.HandleFunc("/api/music/tracks/segment", segment)
-	mux.HandleFunc("/api/music/tracks/", track)
-
-	port := os.Getenv("PORT")
-	if port == "" { port = "10000" }
-	server := &http.Server{
-		Addr: ":" + port, Handler: withCORS(withSecurityHeaders(mux)),
-		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second,
-		WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second,
-	}
-	log.Printf("music service listening on %s provider=%s", server.Addr, configuredProvider())
-	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) { log.Fatal(err) }
-}
-
-func health(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet { http.Error(w, "method not allowed", http.StatusMethodNotAllowed); return }
-	provider := providers.current()
-	status := "ok"
-	if !provider.ready() { status = "degraded" }
-	writeJSON(w, http.StatusOK, HealthResponse{Service: "music", Status: status, Provider: provider.Name(), Time: time.Now().UTC().Format(time.RFC3339)})
-}
-
-func search(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet { http.Error(w, "method not allowed", http.StatusMethodNotAllowed); return }
-	q := strings.TrimSpace(r.URL.Query().Get("q"))
-	limit := queryInt(r, "limit", 20); if limit < 1 { limit = 1 }; if limit > 50 { limit = 50 }
-	offset := queryInt(r, "offset", 0); if offset < 0 { offset = 0 }
-	country := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("country"))); if country == "" { country = envOr("MUSIC_COUNTRY", "TZ") }
-	result, err := providers.current().Search(r.Context(), q, country, limit, offset)
-	if err != nil { writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()}); return }
-	writeJSON(w, http.StatusOK, SearchResponse{Query:q, Tracks:result.Tracks, HasMore:result.HasMore, Limit:limit, Offset:offset})
-}
-
-func trending(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet { http.Error(w, "method not allowed", http.StatusMethodNotAllowed); return }
-	window := 24 * time.Hour
-	if days := queryInt(r, "days", 0); days > 0 { if days > 30 { days = 30 }; window = time.Duration(days)*24*time.Hour }
-	country := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("country")))
-	city := strings.TrimSpace(r.URL.Query().Get("city"))
-	writeJSON(w, http.StatusOK, map[string]any{"windowHours": window.Hours(), "country": country, "city": city, "tracks": trends.Rank(country, city, window)})
-}
-
-func ingestEvent(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost { http.Error(w, "method not allowed", http.StatusMethodNotAllowed); return }
-	if key := strings.TrimSpace(os.Getenv("MUSIC_EVENT_INGEST_KEY")); key != "" && r.Header.Get("X-Music-Event-Key") != key { http.Error(w, "unauthorized", http.StatusUnauthorized); return }
-	var input EventRequest
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 32<<10))
-	if err := decoder.Decode(&input); err != nil { writeJSON(w, http.StatusBadRequest, map[string]string{"error":"invalid event"}); return }
-	input.TrackID = strings.TrimSpace(input.TrackID); input.Type = strings.ToLower(strings.TrimSpace(input.Type))
-	if input.TrackID == "" { writeJSON(w, http.StatusBadRequest, map[string]string{"error":"trackId is required"}); return }
-	if _, ok := eventWeights[input.Type]; !ok { writeJSON(w, http.StatusBadRequest, map[string]string{"error":"unsupported event type"}); return }
-	trends.Add(MusicEvent{TrackID:input.TrackID, Type:input.Type, Country:strings.ToUpper(strings.TrimSpace(input.Country)), City:strings.TrimSpace(input.City), UserID:strings.TrimSpace(input.UserID), At:time.Now().UTC()})
-	writeJSON(w, http.StatusAccepted, map[string]string{"status":"accepted"})
-}
-
-func track(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet { http.Error(w, "method not allowed", http.StatusMethodNotAllowed); return }
-	id := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/api/music/tracks/"))
-	if id == "" || id == "segment" { http.Error(w, "track id required", http.StatusBadRequest); return }
-	country := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("country"))); if country == "" { country = envOr("MUSIC_COUNTRY", "TZ") }
-	item, err := providers.current().GetTrack(r.Context(), id, country)
-	if err != nil { writeJSON(w, http.StatusNotFound, map[string]string{"error":"track not found"}); return }
-	writeJSON(w, http.StatusOK, item)
-}
-
-func segment(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet { http.Error(w, "method not allowed", http.StatusMethodNotAllowed); return }
-	trackID := strings.TrimSpace(r.URL.Query().Get("trackId")); if trackID == "" { writeJSON(w, http.StatusBadRequest, map[string]string{"error":"trackId is required"}); return }
-	country := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("country"))); if country == "" { country = envOr("MUSIC_COUNTRY", "TZ") }
-	selected, err := providers.current().GetTrack(r.Context(), trackID, country)
-	if err != nil { writeJSON(w, http.StatusNotFound, map[string]string{"error":"track not found"}); return }
-	if !selected.CanUseInPost || !selected.Rights.UGCUse || !selected.Rights.Streaming { writeJSON(w, http.StatusForbidden, map[string]string{"error":"track is not cleared for post use and streaming"}); return }
-	start, err := queryFloat(r, "startSec", 0); if err != nil { writeJSON(w, http.StatusBadRequest, map[string]string{"error":"invalid startSec"}); return }
-	end, err := queryFloat(r, "endSec", selected.DurationSec); if err != nil { writeJSON(w, http.StatusBadRequest, map[string]string{"error":"invalid endSec"}); return }
-	maxSegment := queryFloatEnv("MUSIC_MAX_SEGMENT_SECONDS", 60)
-	if err := validateSegment(start, end, selected.DurationSec, maxSegment); err != nil { writeJSON(w, http.StatusBadRequest, map[string]string{"error":err.Error()}); return }
-	writeJSON(w, http.StatusOK, map[string]any{"trackId":trackID,"startSec":start,"endSec":end,"durationSec":selected.DurationSec,"provider":selected.Provider,"canUseInPost":selected.CanUseInPost})
-}
-
-func queryInt(r *http.Request, name string, fallback int) int { v:=strings.TrimSpace(r.URL.Query().Get(name)); if v=="" {return fallback}; n,err:=strconv.Atoi(v); if err!=nil{return fallback}; return n }
-func queryFloat(r *http.Request, name string, fallback float64) (float64,error) { v:=strings.TrimSpace(r.URL.Query().Get(name)); if v=="" {return fallback,nil}; return strconv.ParseFloat(v,64) }
-func queryFloatEnv(name string, fallback float64) float64 { v:=strings.TrimSpace(os.Getenv(name)); if v=="" {return fallback}; n,err:=strconv.ParseFloat(v,64); if err!=nil||n<=0{return fallback}; return n }
-func validateSegment(start,end,duration,maxLength float64) error { if start<0||end<=start{return errInvalidSegment}; if duration<=0||end>duration{return errSegmentOutsideTrack}; if end-start>maxLength{return errSegmentTooLong}; return nil }
+var catalog=[]Track{{ID:"internal-demo-001",Provider:"internal",ProviderTrackID:"internal-demo-001",Title:"Notell Demo Sound",Artist:"Notell Library",Album:"Demo",DurationSec:30,CanUseInPost:true,Rights:Rights{Licensed:true,UGCUse:true,Streaming:true,Territories:[]string{"*"},ProviderStatus:"demo"}}}
+var providers=newProviderRegistry()
+func configuredProvider()string{provider:=strings.ToLower(strings.TrimSpace(os.Getenv("MUSIC_PROVIDER")));if provider==""{return "internal"};return provider}
+func main(){mux:=http.NewServeMux();mux.HandleFunc("/health",health);mux.HandleFunc("/api/music/health",health);mux.HandleFunc("/api/music/search",search);mux.HandleFunc("/api/music/trending",trending);mux.HandleFunc("/api/music/events",ingestEvent);mux.HandleFunc("/api/music/tracks/segment",segment);mux.HandleFunc("/api/music/tracks/",track);port:=os.Getenv("PORT");if port==""{port="10000"};server:=&http.Server{Addr:":"+port,Handler:withCORS(withSecurityHeaders(mux)),ReadHeaderTimeout:5*time.Second,ReadTimeout:15*time.Second,WriteTimeout:15*time.Second,IdleTimeout:60*time.Second};log.Printf("music service listening on %s provider=%s",server.Addr,configuredProvider());if err:=server.ListenAndServe();err!=nil&&!errors.Is(err,http.ErrServerClosed){log.Fatal(err)}}
+func health(w http.ResponseWriter,r *http.Request){if r.Method!=http.MethodGet{http.Error(w,"method not allowed",http.StatusMethodNotAllowed);return};provider:=providers.current();status:="ok";if !provider.Ready(){status="degraded"};writeJSON(w,http.StatusOK,HealthResponse{Service:"music",Status:status,Provider:provider.Name(),Time:time.Now().UTC().Format(time.RFC3339)})}
+func search(w http.ResponseWriter,r *http.Request){if r.Method!=http.MethodGet{http.Error(w,"method not allowed",http.StatusMethodNotAllowed);return};q:=strings.TrimSpace(r.URL.Query().Get("q"));limit:=queryInt(r,"limit",20);if limit<1{limit=1};if limit>50{limit=50};offset:=queryInt(r,"offset",0);if offset<0{offset=0};country:=strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("country")));if country==""{country=envOr("MUSIC_COUNTRY","TZ")};result,err:=providers.current().Search(r.Context(),q,country,limit,offset);if err!=nil{writeJSON(w,http.StatusBadGateway,map[string]string{"error":err.Error()});return};writeJSON(w,http.StatusOK,SearchResponse{Query:q,Tracks:result.Tracks,HasMore:result.HasMore,Limit:limit,Offset:offset})}
+func trending(w http.ResponseWriter,r *http.Request){if r.Method!=http.MethodGet{http.Error(w,"method not allowed",http.StatusMethodNotAllowed);return};window:=24*time.Hour;if days:=queryInt(r,"days",0);days>0{if days>30{days=30};window=time.Duration(days)*24*time.Hour};country:=strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("country")));city:=strings.TrimSpace(r.URL.Query().Get("city"));writeJSON(w,http.StatusOK,map[string]any{"windowHours":window.Hours(),"country":country,"city":city,"tracks":trends.Rank(country,city,window)})}
+func ingestEvent(w http.ResponseWriter,r *http.Request){if r.Method!=http.MethodPost{http.Error(w,"method not allowed",http.StatusMethodNotAllowed);return};if key:=strings.TrimSpace(os.Getenv("MUSIC_EVENT_INGEST_KEY"));key!=""&&r.Header.Get("X-Music-Event-Key")!=key{http.Error(w,"unauthorized",http.StatusUnauthorized);return};var input EventRequest;if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,32<<10)).Decode(&input);err!=nil{writeJSON(w,http.StatusBadRequest,map[string]string{"error":"invalid event"});return};input.TrackID=strings.TrimSpace(input.TrackID);input.Type=strings.ToLower(strings.TrimSpace(input.Type));if input.TrackID==""{writeJSON(w,http.StatusBadRequest,map[string]string{"error":"trackId is required"});return};if _,ok:=eventWeights[input.Type];!ok{writeJSON(w,http.StatusBadRequest,map[string]string{"error":"unsupported event type"});return};trends.Add(MusicEvent{TrackID:input.TrackID,Type:input.Type,Country:strings.ToUpper(strings.TrimSpace(input.Country)),City:strings.TrimSpace(input.City),UserID:strings.TrimSpace(input.UserID),At:time.Now().UTC()});writeJSON(w,http.StatusAccepted,map[string]string{"status":"accepted"})}
+func track(w http.ResponseWriter,r *http.Request){if r.Method!=http.MethodGet{http.Error(w,"method not allowed",http.StatusMethodNotAllowed);return};id:=strings.TrimSpace(strings.TrimPrefix(r.URL.Path,"/api/music/tracks/"));if id==""||id=="segment"{http.Error(w,"track id required",http.StatusBadRequest);return};country:=strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("country")));if country==""{country=envOr("MUSIC_COUNTRY","TZ")};item,err:=providers.current().GetTrack(r.Context(),id,country);if err!=nil{writeJSON(w,http.StatusNotFound,map[string]string{"error":"track not found"});return};writeJSON(w,http.StatusOK,item)}
+func segment(w http.ResponseWriter,r *http.Request){if r.Method!=http.MethodGet{http.Error(w,"method not allowed",http.StatusMethodNotAllowed);return};trackID:=strings.TrimSpace(r.URL.Query().Get("trackId"));if trackID==""{writeJSON(w,http.StatusBadRequest,map[string]string{"error":"trackId is required"});return};country:=strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("country")));if country==""{country=envOr("MUSIC_COUNTRY","TZ")};selected,err:=providers.current().GetTrack(r.Context(),trackID,country);if err!=nil{writeJSON(w,http.StatusNotFound,map[string]string{"error":"track not found"});return};if !selected.CanUseInPost||!selected.Rights.UGCUse||!selected.Rights.Streaming{writeJSON(w,http.StatusForbidden,map[string]string{"error":"track is not cleared for post use and streaming"});return};start,err:=queryFloat(r,"startSec",0);if err!=nil{writeJSON(w,http.StatusBadRequest,map[string]string{"error":"invalid startSec"});return};end,err:=queryFloat(r,"endSec",selected.DurationSec);if err!=nil{writeJSON(w,http.StatusBadRequest,map[string]string{"error":"invalid endSec"});return};if err:=validateSegment(start,end,selected.DurationSec,queryFloatEnv("MUSIC_MAX_SEGMENT_SECONDS",60));err!=nil{writeJSON(w,http.StatusBadRequest,map[string]string{"error":err.Error()});return};writeJSON(w,http.StatusOK,map[string]any{"trackId":trackID,"startSec":start,"endSec":end,"durationSec":selected.DurationSec,"provider":selected.Provider,"canUseInPost":selected.CanUseInPost})}
+func queryInt(r *http.Request,name string,fallback int)int{v:=strings.TrimSpace(r.URL.Query().Get(name));if v==""{return fallback};n,err:=strconv.Atoi(v);if err!=nil{return fallback};return n}
+func queryFloat(r *http.Request,name string,fallback float64)(float64,error){v:=strings.TrimSpace(r.URL.Query().Get(name));if v==""{return fallback,nil};return strconv.ParseFloat(v,64)}
+func queryFloatEnv(name string,fallback float64)float64{v:=strings.TrimSpace(os.Getenv(name));if v==""{return fallback};n,err:=strconv.ParseFloat(v,64);if err!=nil||n<=0{return fallback};return n}
+func validateSegment(start,end,duration,maxLength float64)error{if start<0||end<=start{return errInvalidSegment};if duration<=0||end>duration{return errSegmentOutsideTrack};if end-start>maxLength{return errSegmentTooLong};return nil}
 var(errInvalidSegment=errors.New("music segment must satisfy 0 <= startSec < endSec");errSegmentOutsideTrack=errors.New("music segment exceeds track duration");errSegmentTooLong=errors.New("music segment exceeds the configured maximum length"))
 func writeJSON(w http.ResponseWriter,status int,value any){w.Header().Set("Content-Type","application/json; charset=utf-8");w.WriteHeader(status);if err:=json.NewEncoder(w).Encode(value);err!=nil{log.Printf("json response error: %v",err)}}
 func withCORS(next http.Handler)http.Handler{return http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){origin:=os.Getenv("FRONTEND_URL");if origin==""{origin="*"};w.Header().Set("Access-Control-Allow-Origin",origin);w.Header().Set("Access-Control-Allow-Methods","GET, POST, OPTIONS");w.Header().Set("Access-Control-Allow-Headers","Authorization, Content-Type, X-Music-Event-Key");w.Header().Set("Vary","Origin");if r.Method==http.MethodOptions{w.WriteHeader(http.StatusNoContent);return};next.ServeHTTP(w,r)})}
 func withSecurityHeaders(next http.Handler)http.Handler{return http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){w.Header().Set("X-Content-Type-Options","nosniff");w.Header().Set("X-Frame-Options","DENY");w.Header().Set("Referrer-Policy","strict-origin-when-cross-origin");next.ServeHTTP(w,r)})}
 func envOr(k,d string)string{if v:=strings.TrimSpace(os.Getenv(k));v!=""{return v};return d}
-var _ = context.Background
