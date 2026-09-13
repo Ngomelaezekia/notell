@@ -58,8 +58,6 @@ export const exportEditedImage = async (file, edits) => {
     const quarterTurn = rotation === 90 || rotation === 270;
     const ratio = getCropRatio(edits.crop);
 
-    // Crop in the source orientation first. For a quarter-turn the desired
-    // display ratio is inverted relative to the source image.
     const sourceRatio = ratio ? (quarterTurn ? 1 / ratio : ratio) : image.naturalWidth / image.naturalHeight;
     let cropWidth = image.naturalWidth;
     let cropHeight = image.naturalHeight;
@@ -94,17 +92,7 @@ export const exportEditedImage = async (file, edits) => {
     context.rotate((rotation * Math.PI) / 180);
     context.scale(edits.flipX ? -1 : 1, 1);
     context.filter = `${getFilter(edits.filter)} brightness(${edits.brightness}%) contrast(${edits.contrast}%) saturate(${edits.saturation}%)`;
-    context.drawImage(
-      image,
-      sourceX,
-      sourceY,
-      cropWidth,
-      cropHeight,
-      -drawWidth / 2,
-      -drawHeight / 2,
-      drawWidth,
-      drawHeight,
-    );
+    context.drawImage(image, sourceX, sourceY, cropWidth, cropHeight, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
     context.restore();
 
     const output = file.type === "image/png"
@@ -115,11 +103,122 @@ export const exportEditedImage = async (file, edits) => {
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, output.type, output.quality));
     if (!blob) throw new Error("Could not export the edited image.");
 
-    return new File([blob], file.name.replace(/\.[^.]+$/, "") + `-edited.${output.extension}`, {
-      type: output.type,
-      lastModified: Date.now(),
-    });
+    return new File([blob], file.name.replace(/\.[^.]+$/, "") + `-edited.${output.extension}`, { type: output.type, lastModified: Date.now() });
   } finally {
     URL.revokeObjectURL(sourceUrl);
+  }
+};
+
+const waitForVideoEvent = (video, eventName) => new Promise((resolve, reject) => {
+  const onEvent = () => { cleanup(); resolve(); };
+  const onError = () => { cleanup(); reject(new Error("Could not prepare the video for trimming.")); };
+  const cleanup = () => {
+    video.removeEventListener(eventName, onEvent);
+    video.removeEventListener("error", onError);
+  };
+  video.addEventListener(eventName, onEvent, { once: true });
+  video.addEventListener("error", onError, { once: true });
+});
+
+const getRecorderMimeType = () => {
+  if (typeof MediaRecorder === "undefined") return "";
+  return [
+    "video/webm;codecs=vp9,opus",
+    "video/webm;codecs=vp8,opus",
+    "video/webm",
+  ].find((type) => MediaRecorder.isTypeSupported(type)) ?? "";
+};
+
+export const trimVideo = async (file, startSec, endSec) => {
+  const start = Math.max(0, Number(startSec) || 0);
+  const end = Math.max(start, Number(endSec) || 0);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) throw new Error("Choose a valid video trim range.");
+  if (!HTMLMediaElement.prototype.play) throw new Error("Video trimming is not supported in this browser.");
+  if (typeof MediaRecorder === "undefined") throw new Error("Video trimming is not supported in this browser.");
+
+  const sourceUrl = URL.createObjectURL(file);
+  const video = document.createElement("video");
+  video.preload = "auto";
+  video.playsInline = true;
+  video.muted = true;
+  video.src = sourceUrl;
+  video.load();
+
+  let audioContext;
+  let sourceNode;
+  let audioDestination;
+  try {
+    await waitForVideoEvent(video, "loadedmetadata");
+    const duration = Number(video.duration);
+    if (!Number.isFinite(duration) || duration <= 0) throw new Error("Could not read the video duration.");
+    const safeStart = Math.min(start, Math.max(0, duration - 0.1));
+    const safeEnd = Math.min(Math.max(safeStart + 0.1, end), duration);
+    if (safeEnd - safeStart < 0.1) throw new Error("Video clip must be at least 0.1 seconds long.");
+
+    if (typeof video.captureStream !== "function" || typeof MediaRecorder.isTypeSupported !== "function") {
+      throw new Error("Video trimming is not supported in this browser.");
+    }
+
+    audioContext = new AudioContext();
+    await audioContext.resume();
+    sourceNode = audioContext.createMediaElementSource(video);
+    audioDestination = audioContext.createMediaStreamDestination();
+    sourceNode.connect(audioDestination);
+
+    video.currentTime = safeStart;
+    await waitForVideoEvent(video, "seeked");
+
+    const captured = video.captureStream();
+    const outputStream = new MediaStream();
+    captured.getVideoTracks().forEach((track) => outputStream.addTrack(track));
+    const outputAudio = audioDestination.stream.getAudioTracks()[0];
+    if (outputAudio) outputStream.addTrack(outputAudio);
+
+    const mimeType = getRecorderMimeType();
+    if (!mimeType) throw new Error("Video trimming is not supported in this browser.");
+
+    const chunks = [];
+    const recorder = new MediaRecorder(outputStream, { mimeType, videoBitsPerSecond: 6_000_000, audioBitsPerSecond: 128_000 });
+    let finished = false;
+    let stopTimer;
+
+    const blob = await new Promise((resolve, reject) => {
+      const cleanup = () => {
+        video.pause();
+        if (stopTimer) clearTimeout(stopTimer);
+        video.removeEventListener("timeupdate", onTimeUpdate);
+        outputStream.getTracks().forEach((track) => track.stop());
+        captured.getTracks().forEach((track) => track.stop());
+      };
+      const fail = (error) => { cleanup(); reject(error); };
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        recorder.stop();
+      };
+      const onTimeUpdate = () => {
+        if (video.currentTime >= safeEnd - 0.03) finish();
+      };
+
+      recorder.addEventListener("dataavailable", (event) => { if (event.data?.size) chunks.push(event.data); });
+      recorder.addEventListener("error", () => fail(new Error("Could not render the trimmed video.")), { once: true });
+      recorder.addEventListener("stop", () => {
+        cleanup();
+        if (!chunks.length) { reject(new Error("Could not render the trimmed video.")); return; }
+        resolve(new Blob(chunks, { type: mimeType }));
+      }, { once: true });
+      video.addEventListener("timeupdate", onTimeUpdate);
+      stopTimer = window.setTimeout(finish, Math.max(500, (safeEnd - safeStart + 0.5) * 1000));
+      recorder.start(250);
+      video.play().catch(() => fail(new Error("The browser blocked video trimming playback. Try again.")));
+    });
+
+    return new File([blob], file.name.replace(/\.[^.]+$/, "") + `-trimmed-${Math.round(safeStart)}-${Math.round(safeEnd)}.webm`, { type: "video/webm", lastModified: Date.now() });
+  } finally {
+    try { sourceNode?.disconnect(); } catch {}
+    try { audioContext?.close(); } catch {}
+    URL.revokeObjectURL(sourceUrl);
+    video.removeAttribute("src");
+    video.load();
   }
 };
