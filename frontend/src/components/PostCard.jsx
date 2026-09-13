@@ -49,7 +49,6 @@ export const PostCard = ({ post, onPostDeleted, priority = false }) => {
   const [likeLoading, setLikeLoading] = useState(false);
   const [likeBurst, setLikeBurst] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
-  const [mediaActive, setMediaActive] = useState(priority);
   const [videoDuration, setVideoDuration] = useState(0);
   const [videoMuted, setVideoMuted] = useState(true);
 
@@ -71,11 +70,10 @@ export const PostCard = ({ post, onPostDeleted, priority = false }) => {
     setLikeCount(Number(post?.likeCount ?? 0));
     setCommentCount(Number(post?.commentCount ?? 0));
     setShowFullCaption(false);
-    setMediaActive(priority);
     setVideoDuration(0);
     setVideoMuted(true);
     viewRecordedRef.current = false;
-  }, [post?.postId, post?.liked, post?.likeCount, post?.commentCount, priority]);
+  }, [post?.postId, post?.liked, post?.likeCount, post?.commentCount]);
 
   useEffect(() => {
     const target = mediaContainerRef.current;
@@ -83,7 +81,6 @@ export const PostCard = ({ post, onPostDeleted, priority = false }) => {
     const observer = new IntersectionObserver((entries) => {
       const entry = entries[0];
       if (!entry) return;
-      if (entry.isIntersecting && entry.intersectionRatio >= 0.25) setMediaActive(true);
       if (entry.isIntersecting && entry.intersectionRatio >= 0.6 && !viewRecordedRef.current) {
         viewRecordedRef.current = true;
         void postsAPI.recordView(postId).catch(() => {});
