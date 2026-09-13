@@ -1,4 +1,4 @@
-import { MoreHorizontal, Trash2, Loader2, Heart, MessageSquare, Volume2, VolumeX, Maximize2, X } from "lucide-react";
+import { MoreHorizontal, Trash2, Loader2, Heart, MessageSquare, Volume2, VolumeX, Maximize2, X, Music2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { usePostActions } from "../hooks/usePosts";
@@ -39,6 +39,7 @@ export const PostCard = ({ post, onPostDeleted, priority = false }) => {
   const { deletePost, toggleLike, loading } = usePostActions();
   const mediaContainerRef = useRef(null);
   const videoRef = useRef(null);
+  const musicRef = useRef(null);
   const viewRecordedRef = useRef(false);
   const [showMenu, setShowMenu] = useState(false);
   const [showComments, setShowComments] = useState(false);
@@ -57,6 +58,10 @@ export const PostCard = ({ post, onPostDeleted, priority = false }) => {
   const avatar = getFileUrl(author?.profilePicture);
   const mediaUrl = getFileUrl(post?.contentUrl);
   const isVideo = post?.contentType === "video";
+  const musicFilename = post?.music?.upload?.filename;
+  const musicUrl = musicFilename ? getFileUrl(`/uploads/${musicFilename}`) : "";
+  const musicStart = Number(post?.music?.startSec ?? 0);
+  const musicEnd = Number(post?.music?.endSec ?? 0);
   const username = author?.username || "Anonymous";
   const authorId = author?.id ?? post?.userId;
   const isOwner = Boolean(currentUser?.id && currentUser.id === post?.userId);
@@ -73,7 +78,8 @@ export const PostCard = ({ post, onPostDeleted, priority = false }) => {
     setVideoDuration(0);
     setVideoMuted(true);
     viewRecordedRef.current = false;
-  }, [post?.postId, post?.liked, post?.likeCount, post?.commentCount]);
+    if (musicRef.current) musicRef.current.currentTime = Math.max(0, musicStart);
+  }, [post?.postId, post?.liked, post?.likeCount, post?.commentCount, musicStart]);
 
   useEffect(() => {
     const target = mediaContainerRef.current;
@@ -168,6 +174,17 @@ export const PostCard = ({ post, onPostDeleted, priority = false }) => {
       openVideoFeed();
     }
   };
+  const handleMusicLoaded = () => {
+    if (!musicRef.current) return;
+    musicRef.current.currentTime = Math.max(0, musicStart);
+  };
+  const handleMusicTimeUpdate = () => {
+    if (!musicRef.current || musicEnd <= 0) return;
+    if (musicRef.current.currentTime >= musicEnd) {
+      musicRef.current.pause();
+      musicRef.current.currentTime = Math.max(0, musicStart);
+    }
+  };
 
   return (
     <>
@@ -209,6 +226,7 @@ export const PostCard = ({ post, onPostDeleted, priority = false }) => {
         <section className="px-3 pb-3 sm:px-4 sm:pb-4">
           <div className="flex items-center justify-between pt-2.5 sm:pt-3"><div className="flex items-center gap-1"><button type="button" onClick={handleLike} disabled={likeLoading} aria-pressed={liked} aria-label={liked ? "Unlike post" : "Like post"} className={`group flex min-h-9 items-center gap-2 rounded-full px-2.5 text-sm font-medium transition-all duration-200 active:scale-90 disabled:cursor-wait disabled:opacity-70 sm:px-3 ${liked ? "bg-red-500/10 text-red-500 hover:bg-red-500/15" : "text-neutral-400 hover:bg-neutral-900 hover:text-neutral-100"}`}><Heart size={19} strokeWidth={liked ? 2.5 : 2} fill={liked ? "currentColor" : "none"} className={`transition-transform duration-200 group-hover:scale-110 ${likeBurst ? "scale-125" : ""}`} /><span className="tabular-nums">{likeCount}</span></button><button type="button" onClick={() => setShowComments((previous) => !previous)} className={`group flex min-h-9 items-center gap-2 rounded-full px-2.5 text-sm font-medium transition-all duration-200 active:scale-90 sm:px-3 ${showComments ? "bg-neutral-900 text-neutral-100" : "text-neutral-400 hover:bg-neutral-900 hover:text-neutral-100"}`} aria-expanded={showComments} aria-label={showComments ? "Hide comments" : "Show comments"}><MessageSquare size={19} strokeWidth={2} className="transition-transform duration-200 group-hover:scale-105" /><span>Comment</span><span className="tabular-nums">{commentCount}</span></button></div>{likeCount > 0 && <span className="pr-1 text-[11px] text-neutral-600 sm:text-xs">{likeCount === 1 ? "1 like" : `${likeCount} likes`}</span>}</div>
           {caption && <div className="mt-2.5 text-sm leading-6 text-neutral-200 sm:mt-3"><p className="whitespace-pre-wrap break-words"><button type="button" onClick={openAuthorProfile} disabled={!authorId} className="mr-2 font-semibold text-neutral-100 hover:underline disabled:cursor-default">{username}</button>{visibleCaption}</p>{hasLongCaption && <button type="button" onClick={() => setShowFullCaption((previous) => !previous)} className="mt-1 text-sm font-medium text-neutral-500 hover:text-neutral-300">{showFullCaption ? "Show less" : "more"}</button>}</div>}
+          {musicUrl && <div className="mt-3 rounded-2xl border border-neutral-800 bg-neutral-900/60 p-3"><div className="mb-2 flex items-center gap-2 text-xs font-semibold text-neutral-300"><Music2 size={15} /> Post music</div><audio ref={musicRef} src={musicUrl} controls preload="metadata" onLoadedMetadata={handleMusicLoaded} onTimeUpdate={handleMusicTimeUpdate} className="h-9 w-full" aria-label="Post music" /></div>}
           {showComments && <div className="mt-3 border-t border-neutral-900 pt-3"><CommentSection postId={postId} onCommentCountChange={setCommentCount} /></div>}
         </section>
       </article>
