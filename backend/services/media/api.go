@@ -10,10 +10,10 @@ import (
 
 var ErrMediaNotFound = errors.New("media not found")
 
-// Metadata returns the processing record only when the caller owns the upload.
+// GetMetadata returns the processing record only when the caller owns the upload.
 // Public playback remains governed by Authorize; metadata is intentionally
 // private so internal processing details are not exposed to other users.
-func Metadata(db *gorm.DB, filename string, userID uint) (models.MediaMetadata, error) {
+func GetMetadata(db *gorm.DB, filename string, userID uint) (models.MediaMetadata, error) {
 	if db == nil || filename == "" || userID == 0 {
 		return models.MediaMetadata{}, ErrMediaNotFound
 	}
