@@ -39,6 +39,21 @@ export const postsAPI = {
     return response.data;
   },
 
+  setMusic: async (postId, musicData) => {
+    const response = await API.post(`/posts/${postId}/music`, {
+      uploadId: musicData.uploadId,
+      startSec: musicData.startSec ?? 0,
+      endSec: musicData.endSec ?? 0,
+      volume: musicData.volume ?? 1,
+    });
+    return response.data;
+  },
+
+  removeMusic: async (postId) => {
+    const response = await API.delete(`/posts/${postId}/music`);
+    return response.data;
+  },
+
   toggleLike: async (id) => {
     const response = await API.post(`/posts/${id}/like`);
     return response.data;
