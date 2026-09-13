@@ -5,20 +5,32 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
 
 type Track struct {
-	ID          string  `json:"id"`
-	Provider    string  `json:"provider"`
-	Title       string  `json:"title"`
-	Artist      string  `json:"artist"`
-	Album       string  `json:"album,omitempty"`
-	ArtworkURL  string  `json:"artworkUrl,omitempty"`
-	PreviewURL  string  `json:"previewUrl,omitempty"`
-	DurationSec float64 `json:"durationSec"`
-	CanUseInPost bool   `json:"canUseInPost"`
+	ID              string   `json:"id"`
+	Provider        string   `json:"provider"`
+	ProviderTrackID string   `json:"providerTrackId,omitempty"`
+	Title           string   `json:"title"`
+	Artist          string   `json:"artist"`
+	Album           string   `json:"album,omitempty"`
+	ArtworkURL      string   `json:"artworkUrl,omitempty"`
+	PreviewURL      string   `json:"previewUrl,omitempty"`
+	DurationSec     float64  `json:"durationSec"`
+	CanUseInPost    bool     `json:"canUseInPost"`
+	Rights          Rights   `json:"rights"`
+}
+
+type Rights struct {
+	Licensed       bool     `json:"licensed"`
+	UGCUse         bool     `json:"ugcUse"`
+	Streaming      bool     `json:"streaming"`
+	Territories    []string `json:"territories,omitempty"`
+	Attribution    bool     `json:"attributionRequired"`
+	ProviderStatus string   `json:"providerStatus,omitempty"`
 }
 
 type SearchResponse struct {
@@ -28,17 +40,27 @@ type SearchResponse struct {
 }
 
 type HealthResponse struct {
-	Service string `json:"service"`
-	Status  string `json:"status"`
-	Time    string `json:"time"`
+	Service  string `json:"service"`
+	Status   string `json:"status"`
+	Provider string `json:"provider"`
+	Time     string `json:"time"`
 }
 
 var catalog = []Track{
 	{
-		ID: "internal-demo-001", Provider: "internal", Title: "Notell Demo Sound",
-		Artist: "Notell Library", Album: "Demo", DurationSec: 30,
+		ID: "internal-demo-001", Provider: "internal", ProviderTrackID: "internal-demo-001",
+		Title: "Notell Demo Sound", Artist: "Notell Library", Album: "Demo", DurationSec: 30,
 		CanUseInPost: true,
+		Rights: Rights{Licensed: true, UGCUse: true, Streaming: true, Territories: []string{"*"}, Attribution: false, ProviderStatus: "demo"},
 	},
+}
+
+func configuredProvider() string {
+	provider := strings.TrimSpace(strings.ToLower(os.Getenv("MUSIC_PROVIDER")))
+	if provider == "" {
+		return "internal"
+	}
+	return provider
 }
 
 func main() {
@@ -48,6 +70,7 @@ func main() {
 	mux.HandleFunc("/api/music/search", search)
 	mux.HandleFunc("/api/music/trending", trending)
 	mux.HandleFunc("/api/music/tracks/", track)
+	mux.HandleFunc("/api/music/tracks/segment", segment)
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -63,7 +86,7 @@ func main() {
 		IdleTimeout:       60 * time.Second,
 	}
 
-	log.Printf("music service listening on %s", server.Addr)
+	log.Printf("music service listening on %s provider=%s", server.Addr, configuredProvider())
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
@@ -75,9 +98,7 @@ func health(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, HealthResponse{
-		Service: "music",
-		Status:  "ok",
-		Time:    time.Now().UTC().Format(time.RFC3339),
+		Service: "music", Status: "ok", Provider: configuredProvider(), Time: time.Now().UTC().Format(time.RFC3339),
 	})
 }
 
@@ -130,6 +151,87 @@ func track(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusNotFound, map[string]string{"error": "track not found"})
 }
+
+func segment(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	trackID := strings.TrimSpace(r.URL.Query().Get("trackId"))
+	if trackID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "trackId is required"})
+		return
+	}
+
+	var selected *Track
+	for i := range catalog {
+		if catalog[i].ID == trackID {
+			selected = &catalog[i]
+			break
+		}
+	}
+	if selected == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "track not found"})
+		return
+	}
+
+	start, err := queryFloat(r, "startSec", 0)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid startSec"})
+		return
+	}
+	end, err := queryFloat(r, "endSec", selected.DurationSec)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid endSec"})
+		return
+	}
+	maxSegment := 60.0
+	if configured := os.Getenv("MUSIC_MAX_SEGMENT_SECONDS"); configured != "" {
+		if value, parseErr := strconv.ParseFloat(configured, 64); parseErr == nil && value > 0 {
+			maxSegment = value
+		}
+	}
+	if err := validateSegment(start, end, selected.DurationSec, maxSegment); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"trackId": trackID, "startSec": start, "endSec": end, "durationSec": selected.DurationSec,
+		"provider": selected.Provider, "canUseInPost": selected.CanUseInPost,
+	})
+}
+
+func queryFloat(r *http.Request, name string, fallback float64) (float64, error) {
+	value := strings.TrimSpace(r.URL.Query().Get(name))
+	if value == "" {
+		return fallback, nil
+	}
+	return strconv.ParseFloat(value, 64)
+}
+
+func validateSegment(start, end, duration, maxLength float64) error {
+	if start < 0 || end <= start {
+		return errInvalidSegment
+	}
+	if duration <= 0 || end > duration {
+		return errSegmentOutsideTrack
+	}
+	if end-start > maxLength {
+		return errSegmentTooLong
+	}
+	return nil
+}
+
+var (
+	errInvalidSegment    = simpleError("music segment must satisfy 0 <= startSec < endSec")
+	errSegmentOutsideTrack = simpleError("music segment exceeds track duration")
+	errSegmentTooLong    = simpleError("music segment exceeds the configured maximum length")
+)
+
+type simpleError string
+func (e simpleError) Error() string { return string(e) }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
