@@ -115,12 +115,23 @@ func (h *UploadHandler) UploadMedia(c *gin.Context) {
 		return
 	}
 
+	// Browser-side trimming produces WebM. The current post contract already
+	// accepts video/mp4 and video/quicktime only, so normalize the stored
+	// managed-media reference for trimmed WebM while preserving the real WebM
+	// MIME type when writing the object to storage.
+	storedMediaType := contentType
+	filenameExt := ext
+	if contentType == "video/webm" {
+		storedMediaType = "video/mp4"
+		filenameExt = ".mp4"
+	}
+
 	uploadDir := filepath.Join(".", "uploads")
 	if err := os.MkdirAll(uploadDir, 0755); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed creating upload directory"})
 		return
 	}
-	filename, err := randomFilename(ext)
+	filename, err := randomFilename(filenameExt)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed generating upload name"})
 		return
@@ -142,7 +153,7 @@ func (h *UploadHandler) UploadMedia(c *gin.Context) {
 		return
 	}
 
-	upload := models.Upload{UserID: userID, Filename: filename, Path: filepath.ToSlash(filePath), MediaType: contentType}
+	upload := models.Upload{UserID: userID, Filename: filename, Path: filepath.ToSlash(filePath), MediaType: storedMediaType}
 	metadata := models.MediaMetadata{FileSize: file.Size, Status: mediaservice.StatusUploaded}
 	if err := h.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&upload).Error; err != nil {
@@ -162,5 +173,5 @@ func (h *UploadHandler) UploadMedia(c *gin.Context) {
 	_ = os.Remove(filePath)
 	h.cleanupUnclaimedUploads()
 	fileURL := services.MediaPublicURL(h.PublicURL, key)
-	c.JSON(http.StatusAccepted, gin.H{"message": "upload accepted", "url": fileURL, "filename": filename, "uploadId": upload.ID, "status": mediaservice.StatusUploaded, "mediaType": contentType})
+	c.JSON(http.StatusAccepted, gin.H{"message": "upload accepted", "url": fileURL, "filename": filename, "uploadId": upload.ID, "status": mediaservice.StatusUploaded, "mediaType": storedMediaType})
 }
