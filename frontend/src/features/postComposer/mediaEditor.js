@@ -24,6 +24,8 @@ export const DEFAULT_EDITS = {
   crop: "original",
 };
 
+const MAX_VIDEO_OUTPUT_SIZE = 100 * 1024 * 1024;
+
 export const getFilter = (id) => FILTERS.find((item) => item.id === id)?.css ?? "none";
 
 const getCropRatio = (id) => CROP_RATIOS.find((item) => item.id === id)?.value ?? null;
@@ -212,6 +214,10 @@ export const trimVideo = async (file, startSec, endSec) => {
       recorder.start(250);
       video.play().catch(() => fail(new Error("The browser blocked video trimming playback. Try again.")));
     });
+
+    if (blob.size > MAX_VIDEO_OUTPUT_SIZE) {
+      throw new Error("The trimmed video is still larger than 100MB. Choose a shorter clip.");
+    }
 
     return new File([blob], file.name.replace(/\.[^.]+$/, "") + `-trimmed-${Math.round(safeStart)}-${Math.round(safeEnd)}.webm`, { type: "video/webm", lastModified: Date.now() });
   } finally {
