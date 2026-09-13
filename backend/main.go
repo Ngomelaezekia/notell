@@ -145,7 +145,7 @@ func main() {
 	defer sqlDB.Close()
 	if err := sqlDB.Ping(); err != nil { log.Fatalf("Failed to ping PostgreSQL database: %v", err) }
 	if result := db.Exec(`DELETE FROM post_views WHERE NOT EXISTS (SELECT 1 FROM posts WHERE posts.id = post_views.post_id)`); result.Error != nil { log.Fatalf("Failed cleaning orphan post views: %v", result.Error) }
-	if err := db.AutoMigrate(&models.User{}, &models.Post{}, &models.Comment{}, &models.Like{}, &models.Relationship{}, &models.Channel{}, &models.Notification{}, &models.Upload{}, &models.MediaMetadata{}, &models.MediaJob{}, &models.PostView{}); err != nil { log.Fatalf("Database auto-migration failed: %v", err) }
+	if err := db.AutoMigrate(&models.User{}, &models.Post{}, &models.Comment{}, &models.Like{}, &models.Relationship{}, &models.Channel{}, &models.Notification{}, &models.Upload{}, &models.MediaMetadata{}, &models.MediaJob{}, &models.PostView{}, &models.PostMusic{}); err != nil { log.Fatalf("Database auto-migration failed: %v", err) }
 	mediaStorage, err := services.NewMediaStorage(cfg)
 	if err != nil { log.Fatalf("Media storage initialization failed: %v", err) }
 	storageCtx, storageCancel := context.WithCancel(context.Background())
