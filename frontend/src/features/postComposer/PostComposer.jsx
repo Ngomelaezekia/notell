@@ -13,6 +13,7 @@ import {
   Plus,
   RotateCcw,
   RotateCw,
+  Scissors,
   SlidersHorizontal,
   Sparkles,
   SunMedium,
@@ -22,11 +23,11 @@ import {
 import { usePostActions } from "../../hooks/usePosts";
 import { postsAPI } from "../../services/post/postsApi";
 import { uploadAPI } from "../../services/post/UploadApi";
-import { CROP_RATIOS, DEFAULT_EDITS, FILTERS, exportEditedImage, getMediaStyle } from "./mediaEditor";
+import { CROP_RATIOS, DEFAULT_EDITS, FILTERS, exportEditedImage, getMediaStyle, trimVideo } from "./mediaEditor";
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024;
 const MAX_CAPTION_LENGTH = 2000;
-const EDITOR_TABS = ["Adjust", "Filters", "Crop", "Transform"];
+const EDITOR_TABS = ["Adjust", "Filters", "Trim", "Crop", "Transform"];
 const ADJUSTMENTS = [
   { key: "brightness", label: "Brightness", icon: SunMedium, min: 70, max: 140 },
   { key: "contrast", label: "Contrast", icon: Contrast, min: 70, max: 140 },
@@ -45,6 +46,13 @@ const editsChanged = (edits) =>
   edits.flipX ||
   edits.crop !== "original";
 
+const formatSeconds = (value) => {
+  const total = Math.max(0, Math.round(Number(value) || 0));
+  const minutes = Math.floor(total / 60);
+  const seconds = String(total % 60).padStart(2, "0");
+  return `${minutes}:${seconds}`;
+};
+
 const pressable = "transition-[transform,background-color,opacity,box-shadow] duration-150 ease-out active:scale-[0.96] disabled:active:scale-100";
 const editorButton = `${pressable} disabled:opacity-50`;
 
@@ -53,6 +61,7 @@ export const PostComposer = () => {
   const inputRef = useRef(null);
   const musicInputRef = useRef(null);
   const editSnapshotRef = useRef(DEFAULT_EDITS);
+  const trimSnapshotRef = useRef({ start: 0, end: 0 });
   const { createPost, loading, error } = usePostActions();
   const [step, setStep] = useState("select");
   const [file, setFile] = useState(null);
@@ -66,6 +75,10 @@ export const PostComposer = () => {
   const [editorTab, setEditorTab] = useState("Adjust");
   const [edits, setEdits] = useState(DEFAULT_EDITS);
   const [editing, setEditing] = useState(false);
+  const [trimDuration, setTrimDuration] = useState(0);
+  const [trimStart, setTrimStart] = useState(0);
+  const [trimEnd, setTrimEnd] = useState(0);
+  const [videoTrimmed, setVideoTrimmed] = useState(false);
   const [musicFile, setMusicFile] = useState(null);
   const [musicPreviewUrl, setMusicPreviewUrl] = useState("");
 
@@ -92,6 +105,11 @@ export const PostComposer = () => {
     setKind(fileKind(nextFile));
     setEdits(DEFAULT_EDITS);
     editSnapshotRef.current = DEFAULT_EDITS;
+    setTrimDuration(0);
+    setTrimStart(0);
+    setTrimEnd(0);
+    trimSnapshotRef.current = { start: 0, end: 0 };
+    setVideoTrimmed(false);
     setStep("preview");
     setLocalError("");
   }, []);
@@ -146,6 +164,11 @@ export const PostComposer = () => {
     setKind(null);
     setEdits(DEFAULT_EDITS);
     editSnapshotRef.current = DEFAULT_EDITS;
+    setTrimDuration(0);
+    setTrimStart(0);
+    setTrimEnd(0);
+    trimSnapshotRef.current = { start: 0, end: 0 };
+    setVideoTrimmed(false);
     setCaption("");
     setAccept(ACCEPTED_MEDIA);
     setLocalError("");
@@ -155,13 +178,16 @@ export const PostComposer = () => {
   const openEditor = () => {
     if (!file || uploading || loading) return;
     editSnapshotRef.current = edits;
-    setEditorTab("Adjust");
+    trimSnapshotRef.current = { start: trimStart, end: trimEnd };
+    setEditorTab(kind === "video" ? "Trim" : "Adjust");
     setLocalError("");
     setStep("edit");
   };
 
   const cancelEditor = () => {
     setEdits(editSnapshotRef.current);
+    setTrimStart(trimSnapshotRef.current.start);
+    setTrimEnd(trimSnapshotRef.current.end);
     setLocalError("");
     setStep("preview");
   };
@@ -178,6 +204,37 @@ export const PostComposer = () => {
     }));
 
   const resetEdits = () => setEdits(DEFAULT_EDITS);
+
+  const handleVideoMetadata = (event) => {
+    const duration = Number(event.currentTarget.duration);
+    if (!Number.isFinite(duration) || duration <= 0) return;
+    setTrimDuration(duration);
+    setTrimEnd((current) => current > 0 ? Math.min(current, duration) : duration);
+  };
+
+  const trimChanged = kind === "video" && trimDuration > 0 && (trimStart > 0.05 || trimEnd < trimDuration - 0.05);
+
+  const updateTrimStart = (value) => {
+    const next = Math.max(0, Math.min(Number(value) || 0, Math.max(0, trimEnd - 0.1)));
+    setTrimStart(Math.min(next, Math.max(0, trimDuration - 0.1)));
+  };
+
+  const updateTrimEnd = (value) => {
+    const next = Math.min(trimDuration, Math.max(Number(value) || 0, trimStart + 0.1));
+    setTrimEnd(next);
+  };
+
+  const setTrimPreset = (seconds) => {
+    if (!trimDuration) return;
+    if (seconds === "full") {
+      setTrimStart(0);
+      setTrimEnd(trimDuration);
+      return;
+    }
+    const length = Math.min(Number(seconds), trimDuration);
+    setTrimStart(0);
+    setTrimEnd(length);
+  };
 
   const applyEdits = async () => {
     if (!file || editing) return;
@@ -201,8 +258,31 @@ export const PostComposer = () => {
       } finally {
         setEditing(false);
       }
+    }
+
+    if (kind === "video" && trimChanged) {
+      setEditing(true);
+      try {
+        const trimmedFile = await trimVideo(file, trimStart, trimEnd);
+        const trimmedUrl = URL.createObjectURL(trimmedFile);
+        setPreviewUrl((current) => {
+          if (current?.startsWith("blob:")) URL.revokeObjectURL(current);
+          return trimmedUrl;
+        });
+        setFile(trimmedFile);
+        setTrimDuration(0);
+        setTrimStart(0);
+        setTrimEnd(0);
+        trimSnapshotRef.current = { start: 0, end: 0 };
+        setVideoTrimmed(true);
+      } catch (trimError) {
+        setLocalError(trimError.message || "Could not render the trimmed video.");
+        return;
+      } finally {
+        setEditing(false);
+      }
     } else {
-      editSnapshotRef.current = edits;
+      trimSnapshotRef.current = { start: trimStart, end: trimEnd };
     }
 
     setStep("preview");
@@ -250,7 +330,7 @@ export const PostComposer = () => {
           </button>
           <h1 className="text-[15px] font-bold sm:text-[16px]">Edit {kind === "video" ? "video" : "photo"}</h1>
           <button type="button" onClick={applyEdits} disabled={editing} className={`flex h-9 items-center gap-1.5 rounded-full bg-white px-4 text-sm font-bold text-black shadow-sm hover:bg-white/90 ${editorButton}`}>
-            {editing ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} Done
+            {editing ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} {editing ? "Rendering" : "Done"}
           </button>
         </header>
 
@@ -259,7 +339,7 @@ export const PostComposer = () => {
         <section className="mx-auto flex min-h-[calc(100vh-56px)] w-full max-w-3xl flex-col px-0 pb-3 sm:min-h-[calc(100vh-64px)] sm:px-3 sm:pb-4">
           <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-black sm:mt-3 sm:rounded-[28px] sm:ring-1 sm:ring-white/10">
             {kind === "video" ? (
-              <video src={previewUrl} controls playsInline preload="metadata" className="max-h-[72vh] max-w-full object-contain sm:max-h-[64vh]" style={mediaStyle} />
+              <video src={previewUrl} controls playsInline preload="metadata" onLoadedMetadata={handleVideoMetadata} className="max-h-[72vh] max-w-full object-contain sm:max-h-[64vh]" style={mediaStyle} />
             ) : (
               <img src={previewUrl} alt="Editing preview" className="max-h-[72vh] max-w-full object-contain sm:max-h-[64vh]" style={mediaStyle} />
             )}
@@ -269,9 +349,9 @@ export const PostComposer = () => {
           <div className="border-t border-white/10 bg-black px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-2 sm:mt-3 sm:rounded-[24px] sm:border sm:bg-neutral-900 sm:p-3">
             <div className="mb-2 flex gap-1 overflow-x-auto border-b border-white/10 pb-2 sm:mb-3 sm:border-0 sm:pb-0" role="tablist" aria-label="Editor tools">
               {EDITOR_TABS.map((tab) => {
-                const videoDisabled = kind === "video" && (tab === "Crop" || tab === "Transform");
+                const disabled = kind === "video" ? (tab === "Crop" || tab === "Transform") : tab === "Trim";
                 return (
-                  <button key={tab} type="button" onClick={() => !videoDisabled && setEditorTab(tab)} disabled={videoDisabled} aria-pressed={editorTab === tab} className={`shrink-0 rounded-full px-4 py-2 text-xs font-bold ${pressable} ${editorTab === tab ? "bg-white text-black" : "text-white/55 hover:bg-white/10 hover:text-white"} ${videoDisabled ? "cursor-not-allowed opacity-30" : ""}`}>
+                  <button key={tab} type="button" onClick={() => !disabled && setEditorTab(tab)} disabled={disabled} aria-pressed={editorTab === tab} className={`shrink-0 rounded-full px-4 py-2 text-xs font-bold ${pressable} ${editorTab === tab ? "bg-white text-black" : "text-white/55 hover:bg-white/10 hover:text-white"} ${disabled ? "cursor-not-allowed opacity-30" : ""}`}>
                     {tab}
                   </button>
                 );
@@ -311,6 +391,33 @@ export const PostComposer = () => {
               </div>
             )}
 
+            {editorTab === "Trim" && kind === "video" && (
+              <div className="space-y-4">
+                {trimDuration > 0 ? (
+                  <>
+                    <div className="flex items-end justify-between gap-3">
+                      <div><div className="flex items-center gap-2 text-sm font-bold text-white"><Scissors size={16} /> Trim video</div><p className="mt-1 text-[11px] leading-5 text-white/45">Choose exactly which part of the video will be uploaded to the post.</p></div>
+                      <div className="shrink-0 text-right text-[11px] font-bold tabular-nums text-white/70">{formatSeconds(trimStart)} — {formatSeconds(trimEnd)}<div className="mt-0.5 text-[10px] font-normal text-white/35">{Math.max(0, trimEnd - trimStart).toFixed(1)}s clip</div></div>
+                    </div>
+                    <div className="rounded-2xl bg-white/[0.04] p-3">
+                      <div className="mb-3 flex items-center justify-between text-[10px] font-semibold uppercase tracking-[0.14em] text-white/35"><span>Start</span><span>{formatSeconds(trimDuration)} full video</span><span>End</span></div>
+                      <label className="block text-[11px] font-semibold text-white/60">Start at {formatSeconds(trimStart)}<input aria-label="Video trim start" type="range" min="0" max={Math.max(0, trimDuration - 0.1)} step="0.1" value={trimStart} onChange={(event) => updateTrimStart(event.target.value)} disabled={editing} className="mt-2 w-full accent-white" /></label>
+                      <label className="mt-4 block text-[11px] font-semibold text-white/60">End at {formatSeconds(trimEnd)}<input aria-label="Video trim end" type="range" min={Math.min(trimDuration, 0.1)} max={trimDuration} step="0.1" value={trimEnd || trimDuration} onChange={(event) => updateTrimEnd(event.target.value)} disabled={editing} className="mt-2 w-full accent-white" /></label>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {[15, 30, 60].filter((seconds) => seconds < trimDuration).map((seconds) => <button key={seconds} type="button" onClick={() => setTrimPreset(seconds)} disabled={editing} className={`rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-[11px] font-bold text-white/75 hover:bg-white/10 ${editorButton}`}>First {seconds}s</button>)}
+                      <button type="button" onClick={() => setTrimPreset("full")} disabled={editing || (!trimStart && trimEnd >= trimDuration - 0.05)} className={`rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-[11px] font-bold text-white/75 hover:bg-white/10 ${editorButton}`}>Full video</button>
+                    </div>
+                    <div className={`rounded-2xl border px-3 py-2.5 text-[11px] leading-5 ${trimChanged ? "border-emerald-400/20 bg-emerald-400/[0.06] text-emerald-200/75" : "border-white/10 bg-white/[0.025] text-white/45"}`}>
+                      {trimChanged ? "Done will render the selected clip locally. Only that clip is uploaded to Notell." : "No trim selected. The original video will be uploaded unchanged."}
+                    </div>
+                  </>
+                ) : (
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-5 text-center text-xs text-white/50">Loading video duration…</div>
+                )}
+              </div>
+            )}
+
             {editorTab === "Crop" && (
               <div className="flex gap-2 overflow-x-auto pb-1">
                 {CROP_RATIOS.map((ratio) => {
@@ -338,7 +445,7 @@ export const PostComposer = () => {
             )}
           </div>
 
-          {kind === "video" && <p className="px-3 pt-2 text-center text-[10px] text-amber-200/70 sm:text-[11px]">Video edits are preview-only for now. Your original video is uploaded unchanged.</p>}
+          {kind === "video" && <p className="px-3 pt-2 text-center text-[10px] text-white/40 sm:text-[11px]">Trim is rendered locally when you press Done. Filters and lighting remain preview-only; an untrimmed video uploads unchanged.</p>}
           {kind === "image" && <p className="px-3 pt-2 text-center text-[10px] text-white/35 sm:text-[11px]">Edits are rendered locally only when you press Done. Cancel keeps the current media unchanged.</p>}
         </section>
       </main>
@@ -365,6 +472,7 @@ export const PostComposer = () => {
               <span className="absolute right-4 bottom-4 flex items-center gap-1.5 rounded-full bg-black/60 px-3 py-2 text-[11px] font-bold text-white backdrop-blur">{kind === "video" ? <Video size={13} /> : <ImageIcon size={13} />}{kind === "video" ? "Video" : "Photo"}</span>
             </div>
             <div className="border-t border-white/10 bg-neutral-950 p-4">
+              {kind === "video" && videoTrimmed && <div className="mb-3 flex items-center gap-2 rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.06] px-3 py-2.5 text-[11px] font-semibold text-emerald-200/80"><Scissors size={14} /> Trimmed clip ready — only this clip will be uploaded.</div>}
               <label htmlFor="post-caption" className="text-xs font-bold text-white/55">Caption</label>
               <textarea id="post-caption" value={caption} onChange={(event) => setCaption(event.target.value)} maxLength={MAX_CAPTION_LENGTH} rows={3} placeholder="Tell your community what this moment is about..." className="mt-2 w-full resize-none bg-transparent text-sm leading-6 text-white outline-none placeholder:text-white/30" />
               <div className="mt-1 text-right text-[10px] text-white/30">{caption.length}/{MAX_CAPTION_LENGTH}</div>
@@ -378,7 +486,9 @@ export const PostComposer = () => {
               </div>
             </div>
           </div>
-          {(hasVideoPreviewEdits || imageHasEdits) && <p className="mt-2 text-center text-[10px] text-slate-400">{hasVideoPreviewEdits ? "Video adjustments are preview-only and will not alter the uploaded source." : "Edited photo ready to share."}</p>}
+          {videoTrimmed && <p className="mt-2 text-center text-[10px] text-slate-400">Your selected video clip has been rendered locally and is ready to upload.</p>}
+          {hasVideoPreviewEdits && !videoTrimmed && <p className="mt-2 text-center text-[10px] text-slate-400">Video adjustments are preview-only and will not alter the uploaded source.</p>}
+          {imageHasEdits && <p className="mt-2 text-center text-[10px] text-slate-400">Edited photo ready to share.</p>}
         </section>
         <input ref={musicInputRef} type="file" accept={ACCEPTED_MUSIC} onChange={handleMusicInput} className="hidden" />
       </main>
@@ -401,7 +511,7 @@ export const PostComposer = () => {
           <div className="absolute left-5 top-5 flex items-center gap-2 rounded-full border border-slate-200 bg-white/90 px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm"><Sparkles size={14} className="text-blue-600" /> Media studio</div>
           <div className="flex h-20 w-20 items-center justify-center rounded-[24px] bg-blue-50 text-blue-600 ring-8 ring-blue-50/60"><Plus size={38} strokeWidth={1.8} /></div>
           <h2 className="mt-7 text-[21px] font-bold tracking-tight text-slate-950">Pick a photo or video</h2>
-          <p className="mt-2 max-w-sm text-sm leading-5 text-slate-500">Select media first. You can then add an optional MP3, preview everything, edit the media, and share.</p>
+          <p className="mt-2 max-w-sm text-sm leading-5 text-slate-500">Select media first. You can then trim a video, add an optional MP3, preview everything, edit the media, and share.</p>
           <button type="button" onClick={() => { setAccept(ACCEPTED_MEDIA); inputRef.current?.click(); }} className={`mt-6 rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white shadow-sm hover:bg-slate-800 ${pressable}`}>Browse device</button>
           <div className="mt-5 flex flex-wrap justify-center gap-2 text-[11px] font-medium text-slate-400"><span>JPG</span><span>•</span><span>PNG</span><span>•</span><span>WEBP</span><span>•</span><span>MP4</span><span>•</span><span>MOV</span><span>•</span><span>Up to 100MB</span></div>
         </div>
