@@ -27,18 +27,21 @@ func newCorrectnessIntegrationDB(t *testing.T) *gorm.DB {
 	}
 
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
-		// Post and Upload intentionally have a bidirectional relationship:
-		// Post.UploadID references uploads while Upload.PostID references posts.
-		// These correctness tests do not exercise database FK enforcement, so
-		// let PostgreSQL create the tables without GORM trying to create the
-		// cyclic constraints in migration order. Production migrations keep
-		// the real relationship constraints enabled.
 		DisableForeignKeyConstraintWhenMigrating: true,
 	})
 	if err != nil {
 		t.Fatalf("open PostgreSQL test database: %v", err)
 	}
-	if err := db.AutoMigrate(&models.User{}, &models.Post{}, &models.Comment{}, &models.Like{}, &models.Notification{}); err != nil {
+	if err := db.AutoMigrate(
+		&models.User{},
+		&models.Upload{},
+		&models.MediaMetadata{},
+		&models.Post{},
+		&models.PostMusic{},
+		&models.Comment{},
+		&models.Like{},
+		&models.Notification{},
+	); err != nil {
 		_ = closePostLifecycleDB(db)
 		t.Fatalf("migrate correctness test database: %v", err)
 	}
@@ -65,13 +68,13 @@ func createCorrectnessUser(t *testing.T, db *gorm.DB, suffix string) models.User
 		var postIDs []uint
 		_ = db.Model(&models.Post{}).Where("user_id = ?", user.ID).Pluck("id", &postIDs).Error
 		if len(postIDs) > 0 {
+			_ = db.Where("post_id IN ?", postIDs).Delete(&models.PostMusic{}).Error
 			_ = db.Where("post_id IN ?", postIDs).Delete(&models.Like{}).Error
 			_ = db.Where("post_id IN ?", postIDs).Delete(&models.Comment{}).Error
 			_ = db.Where("post_id IN ?", postIDs).Delete(&models.Notification{}).Error
 			_ = db.Where("id IN ?", postIDs).Delete(&models.Post{}).Error
 		}
-		_ = db.Where("user_id = ?", user.ID).Delete(&models.Comment{}).Error
-		_ = db.Where("user_id = ?", user.ID).Delete(&models.Like{}).Error
+		_ = db.Where("user_id = ?", user.ID).Delete(&models.Upload{}).Error
 		_ = db.Where("actor_id = ? OR user_id = ?", user.ID, user.ID).Delete(&models.Notification{}).Error
 		_ = db.Delete(&user).Error
 	})
