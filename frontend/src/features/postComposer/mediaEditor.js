@@ -54,61 +54,69 @@ export const exportEditedImage = async (file, edits) => {
       image.onerror = () => reject(new Error("Could not prepare the image for editing."));
     });
 
-    const quarterTurn = Math.abs(edits.rotation % 180) === 90;
+    const rotation = ((edits.rotation % 360) + 360) % 360;
+    const quarterTurn = rotation === 90 || rotation === 270;
     const ratio = getCropRatio(edits.crop);
-    const orientedWidth = quarterTurn ? image.naturalHeight : image.naturalWidth;
-    const orientedHeight = quarterTurn ? image.naturalWidth : image.naturalHeight;
-    let targetWidth = orientedWidth;
-    let targetHeight = orientedHeight;
 
+    // Crop in the source orientation first. For a quarter-turn the desired
+    // display ratio is inverted relative to the source image.
+    const sourceRatio = ratio ? (quarterTurn ? 1 / ratio : ratio) : image.naturalWidth / image.naturalHeight;
+    let cropWidth = image.naturalWidth;
+    let cropHeight = image.naturalHeight;
     if (ratio) {
-      if (orientedWidth / orientedHeight > ratio) targetWidth = orientedHeight * ratio;
-      else targetHeight = orientedWidth / ratio;
+      if (image.naturalWidth / image.naturalHeight > sourceRatio) {
+        cropWidth = image.naturalHeight * sourceRatio;
+      } else {
+        cropHeight = image.naturalWidth / sourceRatio;
+      }
     }
 
+    const sourceX = (image.naturalWidth - cropWidth) / 2;
+    const sourceY = (image.naturalHeight - cropHeight) / 2;
+    const orientedWidth = quarterTurn ? cropHeight : cropWidth;
+    const orientedHeight = quarterTurn ? cropWidth : cropHeight;
+
     const maxDimension = 4096;
-    const scale = Math.min(1, maxDimension / Math.max(targetWidth, targetHeight));
-    targetWidth = Math.max(1, Math.round(targetWidth * scale));
-    targetHeight = Math.max(1, Math.round(targetHeight * scale));
+    const scale = Math.min(1, maxDimension / Math.max(orientedWidth, orientedHeight));
+    const targetWidth = Math.max(1, Math.round(orientedWidth * scale));
+    const targetHeight = Math.max(1, Math.round(orientedHeight * scale));
+    const drawWidth = Math.max(1, Math.round(cropWidth * scale));
+    const drawHeight = Math.max(1, Math.round(cropHeight * scale));
 
     const canvas = document.createElement("canvas");
     canvas.width = targetWidth;
     canvas.height = targetHeight;
-    const context = canvas.getContext("2d", { alpha: false });
+    const context = canvas.getContext("2d", { alpha: true });
     if (!context) throw new Error("Image editor is not available in this browser.");
 
     context.save();
     context.translate(targetWidth / 2, targetHeight / 2);
-    context.rotate((edits.rotation * Math.PI) / 180);
+    context.rotate((rotation * Math.PI) / 180);
     context.scale(edits.flipX ? -1 : 1, 1);
     context.filter = `${getFilter(edits.filter)} brightness(${edits.brightness}%) contrast(${edits.contrast}%) saturate(${edits.saturation}%)`;
-
-    const cropWidth = ratio
-      ? (image.naturalWidth / image.naturalHeight > ratio ? image.naturalHeight * ratio : image.naturalWidth)
-      : image.naturalWidth;
-    const cropHeight = ratio
-      ? (image.naturalWidth / image.naturalHeight > ratio ? image.naturalHeight : image.naturalWidth / ratio)
-      : image.naturalHeight;
-    const sourceX = (image.naturalWidth - cropWidth) / 2;
-    const sourceY = (image.naturalHeight - cropHeight) / 2;
-    const scaleX = targetWidth / (quarterTurn ? cropHeight : cropWidth);
-    const scaleY = targetHeight / (quarterTurn ? cropWidth : cropHeight);
-    const drawScale = Math.max(scaleX, scaleY);
-    const drawWidth = image.naturalWidth * drawScale;
-    const drawHeight = image.naturalHeight * drawScale;
-
-    if (ratio) {
-      context.beginPath();
-      context.rect(-targetWidth / 2, -targetHeight / 2, targetWidth, targetHeight);
-      context.clip();
-    }
-    context.drawImage(image, -drawWidth / 2 - sourceX * drawScale, -drawHeight / 2 - sourceY * drawScale, drawWidth, drawHeight);
+    context.drawImage(
+      image,
+      sourceX,
+      sourceY,
+      cropWidth,
+      cropHeight,
+      -drawWidth / 2,
+      -drawHeight / 2,
+      drawWidth,
+      drawHeight,
+    );
     context.restore();
 
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.94));
+    const output = file.type === "image/png"
+      ? { type: "image/png", quality: undefined, extension: "png" }
+      : file.type === "image/webp"
+        ? { type: "image/webp", quality: 0.94, extension: "webp" }
+        : { type: "image/jpeg", quality: 0.94, extension: "jpg" };
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, output.type, output.quality));
     if (!blob) throw new Error("Could not export the edited image.");
-    return new File([blob], file.name.replace(/\.[^.]+$/, "") + "-edited.jpg", {
-      type: "image/jpeg",
+
+    return new File([blob], file.name.replace(/\.[^.]+$/, "") + `-edited.${output.extension}`, {
+      type: output.type,
       lastModified: Date.now(),
     });
   } finally {
