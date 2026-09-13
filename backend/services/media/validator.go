@@ -15,6 +15,7 @@ var allowedMediaTypes = map[string]struct{}{
 	"image/webp":      {},
 	"video/mp4":       {},
 	"video/quicktime": {},
+	"video/webm":      {},
 	"audio/mpeg":      {},
 }
 
@@ -34,6 +35,9 @@ func ValidateUploadMetadata(contentType string, size int64, filename string) err
 	}
 	if contentType == "audio/mpeg" && strings.ToLower(filepath.Ext(filename)) != ".mp3" {
 		return fmt.Errorf("audio media must use an .mp3 filename")
+	}
+	if contentType == "video/webm" && strings.ToLower(filepath.Ext(filename)) != ".webm" {
+		return fmt.Errorf("WebM video must use a .webm filename")
 	}
 	return nil
 }
