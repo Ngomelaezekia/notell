@@ -60,6 +60,23 @@ services:
       - key: B2_REGION
         sync: false
 
+  - type: web
+    name: music
+    runtime: go
+    rootDir: music
+    plan: free
+    region: singapore
+    buildCommand: go mod tidy && go build -tags netgo -ldflags '-s -w' -o app
+    startCommand: ./app
+    healthCheckPath: /health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: FRONTEND_URL
+        value: https://notell-web.onrender.com
+
   - type: static
     name: notell-web
     plan: free
@@ -71,6 +88,10 @@ services:
       - key: VITE_API_URL
         value: https://notell.onrender.com/api
 
+# Music is intentionally stateless in this first deployment phase.
+# Render Free allows only one active Free Postgres database per workspace,
+# so the existing Notell database remains untouched. The Music service can
+# later receive its own datastore on a paid plan or external managed database.
 databases:
   - name: notels05
     plan: free
