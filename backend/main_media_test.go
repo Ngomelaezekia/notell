@@ -16,6 +16,7 @@ type mediaTestStorage struct{}
 
 func (mediaTestStorage) Put(context.Context, string, string, string) error { return nil }
 func (mediaTestStorage) Delete(context.Context, string) error              { return nil }
+func (mediaTestStorage) Exists(context.Context, string) (bool, error)       { return true, nil }
 func (mediaTestStorage) Open(context.Context, string, string) (io.ReadCloser, string, int64, string, error) {
 	return io.NopCloser(errorReader{}), "image/jpeg", 0, "", nil
 }
@@ -26,6 +27,7 @@ type trackingMediaStorage struct {
 
 func (s *trackingMediaStorage) Put(context.Context, string, string, string) error { return nil }
 func (s *trackingMediaStorage) Delete(context.Context, string) error              { return nil }
+func (s *trackingMediaStorage) Exists(context.Context, string) (bool, error)       { return true, nil }
 func (s *trackingMediaStorage) Open(context.Context, string, string) (io.ReadCloser, string, int64, string, error) {
 	s.opened = true
 	return io.NopCloser(errorReader{}), "image/jpeg", 0, "", nil
