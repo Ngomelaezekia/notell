@@ -57,14 +57,29 @@ func invokeRemovePostMusic(t *testing.T, h *PostHandler, userID, postID uint) *h
 	return w
 }
 
-func TestPostMusicLifecycle_AttachAndRemove(t *testing.T) {
-	db := newPostLifecycleIntegrationDB(t)
-	user := createLifecycleUser(t, db, "music_attach")
+func createMusicTestPost(t *testing.T, db *gorm.DB, userID uint, visibility string) models.Post {
+	t.Helper()
 
-	post := models.Post{UserID: user.ID, ContentType: "image", ContentURL: "https://example.test/uploads/post.jpg", Visibility: "public"}
+	primaryFilename := fmt.Sprintf("%d-primary.jpg", time.Now().UnixNano())
+	primaryUpload := createLifecycleUpload(t, db, userID, primaryFilename, "image/jpeg")
+
+	post := models.Post{
+		UserID:      userID,
+		UploadID:    &primaryUpload.ID,
+		ContentType: "image",
+		ContentURL:  "https://example.test/uploads/" + primaryFilename,
+		Visibility:  visibility,
+	}
 	if err := db.Create(&post).Error; err != nil {
 		t.Fatalf("create post: %v", err)
 	}
+	return post
+}
+
+func TestPostMusicLifecycle_AttachAndRemove(t *testing.T) {
+	db := newPostLifecycleIntegrationDB(t)
+	user := createLifecycleUser(t, db, "music_attach")
+	post := createMusicTestPost(t, db, user.ID, "public")
 
 	filename := fmt.Sprintf("%d.mp3", time.Now().UnixNano())
 	upload := createLifecycleUpload(t, db, user.ID, filename, "audio/mpeg")
@@ -114,10 +129,7 @@ func TestPostMusicLifecycle_RejectsCrossUserAndNotReadyAudio(t *testing.T) {
 	db := newPostLifecycleIntegrationDB(t)
 	owner := createLifecycleUser(t, db, "music_owner")
 	attacker := createLifecycleUser(t, db, "music_attacker")
-	post := models.Post{UserID: owner.ID, ContentType: "image", ContentURL: "https://example.test/uploads/post.jpg", Visibility: "private"}
-	if err := db.Create(&post).Error; err != nil {
-		t.Fatalf("create post: %v", err)
-	}
+	post := createMusicTestPost(t, db, owner.ID, "private")
 
 	attackerAudio := createLifecycleUpload(t, db, attacker.ID, fmt.Sprintf("%d.mp3", time.Now().UnixNano()), "audio/mpeg")
 	if err := db.Model(&models.MediaMetadata{}).Where("upload_id = ?", attackerAudio.ID).Update("duration", 120).Error; err != nil {
@@ -143,10 +155,7 @@ func TestPostMusicLifecycle_RejectsCrossUserAndNotReadyAudio(t *testing.T) {
 func TestPostMusicLifecycle_ReplacementReleasesPreviousUpload(t *testing.T) {
 	db := newPostLifecycleIntegrationDB(t)
 	user := createLifecycleUser(t, db, "music_replace")
-	post := models.Post{UserID: user.ID, ContentType: "image", ContentURL: "https://example.test/uploads/post.jpg", Visibility: "public"}
-	if err := db.Create(&post).Error; err != nil {
-		t.Fatalf("create post: %v", err)
-	}
+	post := createMusicTestPost(t, db, user.ID, "public")
 
 	first := createLifecycleUpload(t, db, user.ID, fmt.Sprintf("%d-first.mp3", time.Now().UnixNano()), "audio/mpeg")
 	second := createLifecycleUpload(t, db, user.ID, fmt.Sprintf("%d-second.mp3", time.Now().UnixNano()), "audio/mpeg")
@@ -193,10 +202,7 @@ func TestPostMusicLifecycle_DeletePostCascadesMusicAndAudioClaim(t *testing.T) {
 	}
 
 	h := NewPostHandler(db, "https://example.test")
-	post := models.Post{UserID: user.ID, ContentType: "image", ContentURL: "https://example.test/uploads/post.jpg", Visibility: "public"}
-	if err := db.Create(&post).Error; err != nil {
-		t.Fatalf("create post: %v", err)
-	}
+	post := createMusicTestPost(t, db, user.ID, "public")
 	attach := invokeSetPostMusic(t, h, user.ID, post.ID, upload.ID, 0, 0, 1)
 	if attach.Code != http.StatusCreated {
 		t.Fatalf("attach status = %d, want %d; body=%s", attach.Code, http.StatusCreated, attach.Body.String())
