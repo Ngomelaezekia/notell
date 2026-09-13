@@ -8,6 +8,7 @@ import {
   Crop,
   Image as ImageIcon,
   Loader2,
+  Music2,
   Pencil,
   Plus,
   RotateCcw,
@@ -19,6 +20,7 @@ import {
   X,
 } from "lucide-react";
 import { usePostActions } from "../../hooks/usePosts";
+import { postsAPI } from "../../services/post/postsApi";
 import { uploadAPI } from "../../services/post/UploadApi";
 import { CROP_RATIOS, DEFAULT_EDITS, FILTERS, exportEditedImage, getMediaStyle } from "./mediaEditor";
 
@@ -32,6 +34,7 @@ const ADJUSTMENTS = [
 ];
 
 const ACCEPTED_MEDIA = "image/jpeg,image/png,image/webp,video/mp4,video/quicktime";
+const ACCEPTED_MUSIC = "audio/mpeg,.mp3";
 const fileKind = (file) => (file?.type?.startsWith("video/") ? "video" : "image");
 const editsChanged = (edits) =>
   edits.filter !== "original" ||
@@ -48,6 +51,7 @@ const editorButton = `${pressable} disabled:opacity-50`;
 export const PostComposer = () => {
   const navigate = useNavigate();
   const inputRef = useRef(null);
+  const musicInputRef = useRef(null);
   const editSnapshotRef = useRef(DEFAULT_EDITS);
   const { createPost, loading, error } = usePostActions();
   const [step, setStep] = useState("select");
@@ -62,10 +66,13 @@ export const PostComposer = () => {
   const [editorTab, setEditorTab] = useState("Adjust");
   const [edits, setEdits] = useState(DEFAULT_EDITS);
   const [editing, setEditing] = useState(false);
+  const [musicFile, setMusicFile] = useState(null);
+  const [musicPreviewUrl, setMusicPreviewUrl] = useState("");
 
   useEffect(() => () => {
     if (previewUrl?.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
-  }, [previewUrl]);
+    if (musicPreviewUrl?.startsWith("blob:")) URL.revokeObjectURL(musicPreviewUrl);
+  }, [musicPreviewUrl, previewUrl]);
 
   const chooseFile = useCallback((nextFile) => {
     if (!nextFile?.type?.startsWith("image/") && !nextFile?.type?.startsWith("video/")) {
@@ -89,10 +96,42 @@ export const PostComposer = () => {
     setLocalError("");
   }, []);
 
+  const chooseMusic = useCallback((nextFile) => {
+    if (!nextFile || nextFile.type !== "audio/mpeg") {
+      setLocalError("Choose an MP3 audio file.");
+      return;
+    }
+    if (nextFile.size > MAX_FILE_SIZE) {
+      setLocalError("Audio file size must be below 100MB.");
+      return;
+    }
+    const nextUrl = URL.createObjectURL(nextFile);
+    setMusicPreviewUrl((current) => {
+      if (current?.startsWith("blob:")) URL.revokeObjectURL(current);
+      return nextUrl;
+    });
+    setMusicFile(nextFile);
+    setLocalError("");
+  }, []);
+
   const handleInput = (event) => {
     const nextFile = event.target.files?.[0];
     if (nextFile) chooseFile(nextFile);
     event.target.value = "";
+  };
+
+  const handleMusicInput = (event) => {
+    const nextFile = event.target.files?.[0];
+    if (nextFile) chooseMusic(nextFile);
+    event.target.value = "";
+  };
+
+  const removeMusic = () => {
+    setMusicPreviewUrl((current) => {
+      if (current?.startsWith("blob:")) URL.revokeObjectURL(current);
+      return "";
+    });
+    setMusicFile(null);
   };
 
   const reset = () => {
@@ -100,6 +139,9 @@ export const PostComposer = () => {
       if (current?.startsWith("blob:")) URL.revokeObjectURL(current);
       return "";
     });
+    if (musicPreviewUrl?.startsWith("blob:")) URL.revokeObjectURL(musicPreviewUrl);
+    setMusicPreviewUrl("");
+    setMusicFile(null);
     setFile(null);
     setKind(null);
     setEdits(DEFAULT_EDITS);
@@ -169,6 +211,7 @@ export const PostComposer = () => {
   const handleShare = async () => {
     if (!file || uploading || loading) return;
     setLocalError("");
+    let createdPostId = null;
     try {
       setUploading(true);
       const response = await uploadAPI.uploadMedia(file);
@@ -176,10 +219,18 @@ export const PostComposer = () => {
       const mediaUrl = response.url.startsWith("http")
         ? response.url
         : `${import.meta.env.VITE_SERVER_URL ?? "http://localhost:8080"}${response.url}`;
-      await createPost({ contentType: kind, contentUrl: mediaUrl, caption: caption.trim() });
+      const created = await createPost({ contentType: kind, contentUrl: mediaUrl, caption: caption.trim() });
+      createdPostId = created?.data?.postId ?? created?.postId ?? null;
+
+      if (musicFile) {
+        if (!createdPostId) throw new Error("Post created without a usable ID for music attachment.");
+        const musicResponse = await uploadAPI.uploadMedia(musicFile);
+        if (!musicResponse?.uploadId) throw new Error("Music upload completed without an upload ID.");
+        await postsAPI.setMusic(createdPostId, { uploadId: musicResponse.uploadId, startSec: 0, endSec: 0, volume: 1 });
+      }
       navigate("/");
     } catch (shareError) {
-      setLocalError(shareError.message || "Failed to publish post.");
+      setLocalError(createdPostId ? "Post was created, but the music could not be attached. You can try adding it again later." : (shareError.message || "Failed to publish post."));
     } finally {
       setUploading(false);
     }
@@ -313,10 +364,23 @@ export const PostComposer = () => {
               <button type="button" onClick={reset} disabled={uploading || loading} className={`absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-black/65 text-white backdrop-blur hover:bg-black/85 ${pressable} disabled:opacity-50`} aria-label="Remove media"><X size={18} /></button>
               <span className="absolute right-4 bottom-4 flex items-center gap-1.5 rounded-full bg-black/60 px-3 py-2 text-[11px] font-bold text-white backdrop-blur">{kind === "video" ? <Video size={13} /> : <ImageIcon size={13} />}{kind === "video" ? "Video" : "Photo"}</span>
             </div>
-            <div className="border-t border-white/10 bg-neutral-950 p-4"><label htmlFor="post-caption" className="text-xs font-bold text-white/55">Caption</label><textarea id="post-caption" value={caption} onChange={(event) => setCaption(event.target.value)} maxLength={MAX_CAPTION_LENGTH} rows={3} placeholder="Tell your community what this moment is about..." className="mt-2 w-full resize-none bg-transparent text-sm leading-6 text-white outline-none placeholder:text-white/30" /><div className="mt-1 text-right text-[10px] text-white/30">{caption.length}/{MAX_CAPTION_LENGTH}</div></div>
+            <div className="border-t border-white/10 bg-neutral-950 p-4">
+              <label htmlFor="post-caption" className="text-xs font-bold text-white/55">Caption</label>
+              <textarea id="post-caption" value={caption} onChange={(event) => setCaption(event.target.value)} maxLength={MAX_CAPTION_LENGTH} rows={3} placeholder="Tell your community what this moment is about..." className="mt-2 w-full resize-none bg-transparent text-sm leading-6 text-white outline-none placeholder:text-white/30" />
+              <div className="mt-1 text-right text-[10px] text-white/30">{caption.length}/{MAX_CAPTION_LENGTH}</div>
+
+              <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0"><div className="flex items-center gap-2 text-xs font-bold text-white"><Music2 size={15} /> Add music</div><p className="mt-1 truncate text-[11px] text-white/40">Optional MP3 track for this post</p></div>
+                  {musicFile ? <button type="button" onClick={removeMusic} disabled={uploading || loading} className={`flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-white/10 px-3 text-[11px] font-bold text-white hover:bg-white/15 ${pressable}`}>Remove</button> : <button type="button" onClick={() => musicInputRef.current?.click()} disabled={uploading || loading} className={`flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-white px-3 text-[11px] font-bold text-black hover:bg-white/90 ${pressable}`}>Choose MP3</button>}
+                </div>
+                {musicPreviewUrl && <div className="mt-3 rounded-xl bg-black/30 p-2"><audio src={musicPreviewUrl} controls className="h-9 w-full" preload="metadata" /></div>}
+              </div>
+            </div>
           </div>
           {(hasVideoPreviewEdits || imageHasEdits) && <p className="mt-2 text-center text-[10px] text-slate-400">{hasVideoPreviewEdits ? "Video adjustments are preview-only and will not alter the uploaded source." : "Edited photo ready to share."}</p>}
         </section>
+        <input ref={musicInputRef} type="file" accept={ACCEPTED_MUSIC} onChange={handleMusicInput} className="hidden" />
       </main>
     );
   }
@@ -337,7 +401,7 @@ export const PostComposer = () => {
           <div className="absolute left-5 top-5 flex items-center gap-2 rounded-full border border-slate-200 bg-white/90 px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm"><Sparkles size={14} className="text-blue-600" /> Media studio</div>
           <div className="flex h-20 w-20 items-center justify-center rounded-[24px] bg-blue-50 text-blue-600 ring-8 ring-blue-50/60"><Plus size={38} strokeWidth={1.8} /></div>
           <h2 className="mt-7 text-[21px] font-bold tracking-tight text-slate-950">Pick a photo or video</h2>
-          <p className="mt-2 max-w-sm text-sm leading-5 text-slate-500">Select media first. You will preview it, then optionally edit it, then share.</p>
+          <p className="mt-2 max-w-sm text-sm leading-5 text-slate-500">Select media first. You can then add an optional MP3, preview everything, edit the media, and share.</p>
           <button type="button" onClick={() => { setAccept(ACCEPTED_MEDIA); inputRef.current?.click(); }} className={`mt-6 rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white shadow-sm hover:bg-slate-800 ${pressable}`}>Browse device</button>
           <div className="mt-5 flex flex-wrap justify-center gap-2 text-[11px] font-medium text-slate-400"><span>JPG</span><span>•</span><span>PNG</span><span>•</span><span>WEBP</span><span>•</span><span>MP4</span><span>•</span><span>MOV</span><span>•</span><span>Up to 100MB</span></div>
         </div>
@@ -346,7 +410,7 @@ export const PostComposer = () => {
           <button type="button" onClick={() => { setAccept("image/*"); inputRef.current?.click(); }} className={`flex h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white text-sm font-bold text-slate-800 shadow-sm hover:bg-slate-50 ${pressable}`}><ImageIcon size={18} className="text-blue-600" /> Photo</button>
           <button type="button" onClick={() => { setAccept("video/*"); inputRef.current?.click(); }} className={`flex h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white text-sm font-bold text-slate-800 shadow-sm hover:bg-slate-50 ${pressable}`}><Video size={18} className="text-blue-600" /> Video</button>
         </div>
-        <p className="pb-2 pt-4 text-center text-[11px] leading-5 text-slate-400">Nothing is uploaded until you press Share after the preview step.</p>
+        <p className="pb-2 pt-4 text-center text-[11px] leading-5 text-slate-400">Music is optional and attached only after the main post media is published.</p>
       </section>
     </main>
   );
