@@ -194,6 +194,8 @@ func main() {
 			protected.POST("/posts", middleware.RateLimit(30, time.Minute), post.CreatePost)
 			protected.GET("/posts/feed", middleware.RateLimit(120, time.Minute), post.GetCategorizedFeed)
 			protected.DELETE("/posts/:id", middleware.RateLimit(30, time.Minute), post.DeletePost)
+			protected.POST("/posts/:id/music", middleware.RateLimit(30, time.Minute), post.SetPostMusic)
+			protected.DELETE("/posts/:id/music", middleware.RateLimit(30, time.Minute), post.RemovePostMusic)
 			protected.POST("/posts/:id/view", middleware.RateLimit(240, time.Minute), post.RecordPostView)
 			protected.POST("/posts/:id/like", middleware.RateLimit(120, time.Minute), post.ToggleLike)
 			protected.POST("/posts/:id/comments", middleware.RateLimit(60, time.Minute), post.AddComment)
