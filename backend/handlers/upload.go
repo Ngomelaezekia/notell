@@ -52,10 +52,14 @@ func (h *UploadHandler) cleanupUnclaimedUploads() {
 		var claimed models.Upload
 		result := h.DB.Where("id = ? AND post_id IS NULL AND created_at < ?", upload.ID, cutoff).First(&claimed)
 		if result.Error != nil { continue }
+		key := services.MediaObjectKey(claimed.Filename)
+		if h.Storage != nil {
+			if err := h.Storage.Delete(context.Background(), key); err != nil {
+				continue
+			}
+		}
 		deleteResult := h.DB.Where("id = ? AND post_id IS NULL AND created_at < ?", claimed.ID, cutoff).Delete(&models.Upload{})
 		if deleteResult.Error != nil || deleteResult.RowsAffected != 1 { continue }
-		key := services.MediaObjectKey(claimed.Filename)
-		if h.Storage != nil { _ = h.Storage.Delete(context.Background(), key) }
 		if claimed.Path != "" { _ = os.Remove(claimed.Path) }
 	}
 }
