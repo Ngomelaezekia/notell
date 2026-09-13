@@ -14,13 +14,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func createLifecycleAudioUpload(t *testing.T, db interface {
-	Create(value interface{}) interface{ Error }
-}, _ uint) {
-	// Intentionally unused helper signature guard; concrete fixtures are created
-	// below through the existing lifecycle helpers in this package.
-}
-
 func invokeSetPostMusic(t *testing.T, h *PostHandler, userID, postID, uploadID uint, startSec, endSec, volume float64) *httptest.ResponseRecorder {
 	t.Helper()
 
@@ -62,12 +55,6 @@ func invokeRemovePostMusic(t *testing.T, h *PostHandler, userID, postID uint) *h
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	return w
-}
-
-func createLifecyclePostForMusic(t *testing.T, db interface {
-	Create(value interface{}) interface{ Error }
-}, userID uint) uint {
-	return 0
 }
 
 func TestPostMusicLifecycle_AttachAndRemove(t *testing.T) {
