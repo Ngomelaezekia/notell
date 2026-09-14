@@ -1,6 +1,6 @@
 package main
 
-import("crypto/rand";"encoding/hex";"errors";"net/http";"os";"strconv";"strings";"time";"github.com/gin-contrib/cors";"github.com/gin-gonic/gin";"github.com/golang-jwt/jwt/v5";"github.com/livekit/protocol/auth";lksdk "github.com/livekit/server-sdk-go/v2";"gorm.io/driver/postgres";"gorm.io/gorm")
+import("crypto/rand";"encoding/hex";"encoding/json";"errors";"net/http";"os";"strconv";"strings";"time";"github.com/gin-contrib/cors";"github.com/gin-gonic/gin";"github.com/golang-jwt/jwt/v5";"github.com/livekit/protocol/auth";lksdk "github.com/livekit/server-sdk-go/v2";"gorm.io/driver/postgres";"gorm.io/gorm")
 type StreamStatus string
 const(Draft StreamStatus="draft";Live StreamStatus="live";Ended StreamStatus="ended")
 type Stream struct{ID uint `gorm:"primaryKey" json:"id"`;ChannelID uint `gorm:"not null;index" json:"channelId"`;OwnerID uint `gorm:"not null;index" json:"ownerId"`;Title string `gorm:"size:160;not null" json:"title"`;Description string `gorm:"type:text" json:"description,omitempty"`;Status StreamStatus `gorm:"size:16;not null;index" json:"status"`;IngestKey string `gorm:"size:128;uniqueIndex;not null" json:"-"`;RoomName string `gorm:"size:160;uniqueIndex" json:"roomName"`;StartedAt *time.Time `json:"startedAt,omitempty"`;EndedAt *time.Time `json:"endedAt,omitempty"`;CreatedAt time.Time `json:"createdAt"`;UpdatedAt time.Time `json:"updatedAt"`}
