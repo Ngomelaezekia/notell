@@ -111,12 +111,17 @@ services:
       - key: VITE_API_URL
         value: https://notell.onrender.com/api
 
+databases:
+  - name: notels05
+    plan: free
+    region: singapore
+    postgresMajorVersion: "18"
+    databaseName: notelldb
+    user: notellusers
+
 # Music and Channel are intentionally independent application services.
 # Channel expects DATABASE_URL so its datastore can be provisioned separately
 # without coupling its schema to the existing Notell database.
 # No Docker/Kubernetes configuration is used.
 # Render Free allows only one active Free Postgres database per workspace,
 # so Channel's database is deliberately external/configured separately for now.
-databases:
-  - name: notels05
-    plan: free
