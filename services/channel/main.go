@@ -15,11 +15,10 @@ func main(){
  if cfg.JWTSecret==""{log.Fatal("JWT_SECRET is required")}
  db,err:=gorm.Open(postgres.Open(cfg.DatabaseURL),&gorm.Config{})
  if err!=nil{log.Fatalf("database connection failed: %v",err)}
- if err:=db.AutoMigrate(&Channel{},&ChannelMember{},&ChannelPlan{},&ChannelEntitlement{},&ChannelTeamMember{},&ChannelInvitation{},&ChannelProgram{},&ChannelSchedule{},&ChannelContent{},&ChannelSetting{},&LiveSession{},&MediaReference{},&SafetyCase{},&RightsRecord{},&MonetizationEligibility{},&RevenueEvent{},&AdCampaign{},&ChannelMetric{});err!=nil{log.Fatalf("migration failed: %v",err)}
- if err:=repairMembershipIndex(db);err!=nil{log.Fatalf("membership index repair failed: %v",err)}
+ if err:=runChannelMigrations(db);err!=nil{log.Fatalf("database migrations failed: %v",err)}
  seedPlans(db)
  r:=gin.New();r.Use(gin.Logger(),gin.Recovery())
- cc:=cors.DefaultConfig();cc.AllowCredentials=true;cc.AllowHeaders=[]string{"Origin","Content-Type","Accept","Authorization"}
+ cc:=cors.DefaultConfig();cc.AllowCredentials=true;cc.AllowHeaders=[]string{"Origin","Content-Type","Accept","Authorization","X-Channel-Service-Key"}
  if cfg.FrontendURL!=""{cc.AllowOrigins=[]string{cfg.FrontendURL}}else if cfg.Environment!="production"{cc.AllowAllOrigins=true;cc.AllowCredentials=false}else{log.Fatal("FRONTEND_URL is required in production")}
  r.Use(cors.New(cc))
  r.GET("/health",func(c *gin.Context){c.JSON(200,gin.H{"status":"ok","service":"channel"})})
