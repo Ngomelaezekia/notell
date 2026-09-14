@@ -14,25 +14,15 @@ services:
       - key: PORT
         value: 10000
       - key: DB_HOST
-        fromDatabase:
-          name: notels05
-          property: host
+        fromDatabase: {name: notels05, property: host}
       - key: DB_PORT
-        fromDatabase:
-          name: notels05
-          property: port
+        fromDatabase: {name: notels05, property: port}
       - key: DB_USER
-        fromDatabase:
-          name: notels05
-          property: user
+        fromDatabase: {name: notels05, property: user}
       - key: DB_PASSWORD
-        fromDatabase:
-          name: notels05
-          property: password
+        fromDatabase: {name: notels05, property: password}
       - key: DB_NAME
-        fromDatabase:
-          name: notels05
-          property: database
+        fromDatabase: {name: notels05, property: database}
       - key: JWT_SECRET
         sync: false
       - key: GOOGLE_CLIENT_ID
@@ -149,8 +139,6 @@ services:
         sync: false
       - key: FRONTEND_URL
         value: https://notell-web.onrender.com
-      - key: CHANNEL_SERVICE_URL
-        sync: false
       - key: PAYMENT_SERVICE_URL
         sync: false
       - key: INTERNAL_SERVICE_KEY
@@ -180,6 +168,8 @@ services:
         sync: false
       - key: STRIPE_WEBHOOK_SECRET
         sync: false
+      - key: INTERNAL_SERVICE_KEY
+        sync: false
 
   - type: static
     name: notell-web
@@ -199,15 +189,9 @@ databases:
     postgresMajorVersion: "18"
     databaseName: notelldb
     user: notellusers
-
   - name: notell-live-db
     plan: free
     region: singapore
     postgresMajorVersion: "18"
     databaseName: notelllive
     user: notelllive
-
-# Channel, Message, Live, and Payment are independent application services.
-# Live owns stream state and receives identity through the shared Notell JWT contract.
-# Payment owns subscription state; channel/live integrate through stable IDs and service contracts.
-# No Docker/Kubernetes configuration is used.
