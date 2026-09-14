@@ -108,7 +108,7 @@ export default function CommentSection({ postId, onCommentCountChange }) {
   const totalCount = comments.length + replyCount;
 
   return (
-    <section className="mt-4 rounded-2xl border border-neutral-900/90 bg-neutral-950/50 p-3 sm:mt-5 sm:p-4" aria-label="Comments">
+    <section className="mt-3 rounded-2xl border border-neutral-900/90 bg-neutral-950/55 p-3 sm:mt-4 sm:p-4" aria-label="Comments">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2.5">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-neutral-400"><MessageSquare size={15} /></span>
