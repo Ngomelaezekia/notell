@@ -52,7 +52,7 @@ func main() {
  db,err:=gorm.Open(postgres.Open(cfg.DatabaseURL),&gorm.Config{}); if err!=nil { log.Fatal(err) }
  sqlDB,err:=db.DB(); if err!=nil { log.Fatal(err) }
  if err:=runMigrations(sqlDB,"migrations"); err!=nil { log.Fatalf("payment migrations failed: %v",err) }
- s:=&Server{cfg:cfg,db:db}; r:=gin.New(); r.Use(gin.Recovery()); r.Use(cors.New(cors.Config{AllowOrigins:[]string{cfg.FrontendURL},AllowMethods:[]string{"GET","POST","PATCH","OPTIONS"},AllowHeaders:[]string{"Origin","Content-Type","Authorization","Idempotency-Key"},AllowCredentials:true}))
+ s:=&Server{cfg:cfg,db:db}; r:=gin.New(); r.Use(gin.Recovery()); r.Use(cors.New(cors.Config{AllowOrigins:[]string{cfg.FrontendURL},AllowMethods:[]string{"GET","POST","PATCH","OPTIONS"},AllowHeaders:[]string{"Origin","Content-Type","Authorization","Idempotency-Key","Stripe-Signature"},AllowCredentials:true}))
  r.GET("/health",func(c *gin.Context){ c.JSON(200,gin.H{"status":"ok","service":"payment"}) }); r.GET("/ready",func(c *gin.Context){ sqlDB,e:=db.DB(); if e!=nil || sqlDB.Ping()!=nil { c.JSON(503,gin.H{"status":"not_ready"}); return }; c.JSON(200,gin.H{"status":"ready"}) })
  api:=r.Group("/v1"); api.Use(s.auth)
  api.GET("/payments",func(c *gin.Context){ uid:=c.GetString("user_id"); var p []Payment; if err:=db.Where("user_id = ?",uid).Order("created_at desc").Limit(100).Find(&p).Error; err!=nil { c.JSON(500,gin.H{"error":"failed to load payments"}); return }; c.JSON(200,gin.H{"payments":p}) })
@@ -78,5 +78,6 @@ func main() {
   if err:=tx.Commit().Error; err!=nil { c.JSON(500,gin.H{"error":"payment transaction failed"}); return }
   c.JSON(200,gin.H{"payment":p})
  })
+ registerStripeRoutes(r,s)
  if err:=r.Run(":"+cfg.Port); err!=nil { log.Fatal(err) }
 }
