@@ -194,7 +194,8 @@ export const PostComposer = () => {
 
   const updateEdit = (key, value) => setEdits((current) => ({ ...current, [key]: value }));
 
-  const autoFix = () =>
+  const autoFix = () => {
+    if (kind !== "image") return;
     setEdits((current) => ({
       ...current,
       filter: current.filter === "original" ? "vivid" : current.filter,
@@ -202,6 +203,7 @@ export const PostComposer = () => {
       contrast: 108,
       saturation: 112,
     }));
+  };
 
   const resetEdits = () => setEdits(DEFAULT_EDITS);
 
@@ -318,7 +320,6 @@ export const PostComposer = () => {
 
   const displayError = localError || error;
   const mediaStyle = getMediaStyle(edits);
-  const hasVideoPreviewEdits = kind === "video" && editsChanged(edits);
   const imageHasEdits = kind === "image" && editsChanged(edits);
 
   if (step === "edit") {
@@ -343,13 +344,13 @@ export const PostComposer = () => {
             ) : (
               <img src={previewUrl} alt="Editing preview" className="max-h-[72vh] max-w-full object-contain sm:max-h-[64vh]" style={mediaStyle} />
             )}
-            <button type="button" onClick={autoFix} disabled={editing} aria-label="Auto fix" className={`absolute left-3 top-3 flex items-center gap-2 rounded-full bg-black/65 px-3 py-2 text-xs font-bold text-white backdrop-blur hover:bg-black/85 ${editorButton}`}><Sparkles size={14} /> Auto Fix</button>
+            <button type="button" onClick={autoFix} disabled={editing || kind !== "image"} aria-label="Auto fix" className={`absolute left-3 top-3 flex items-center gap-2 rounded-full bg-black/65 px-3 py-2 text-xs font-bold text-white backdrop-blur hover:bg-black/85 ${editorButton}`}><Sparkles size={14} /> Auto Fix</button>
           </div>
 
           <div className="border-t border-white/10 bg-black px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-2 sm:mt-3 sm:rounded-[24px] sm:border sm:bg-neutral-900 sm:p-3">
             <div className="mb-2 flex gap-1 overflow-x-auto border-b border-white/10 pb-2 sm:mb-3 sm:border-0 sm:pb-0" role="tablist" aria-label="Editor tools">
               {EDITOR_TABS.map((tab) => {
-                const disabled = kind === "video" ? (tab === "Crop" || tab === "Transform") : tab === "Trim";
+                const disabled = kind === "video" ? tab !== "Trim" : tab === "Trim";
                 return (
                   <button key={tab} type="button" onClick={() => !disabled && setEditorTab(tab)} disabled={disabled} aria-pressed={editorTab === tab} className={`shrink-0 rounded-full px-4 py-2 text-xs font-bold ${pressable} ${editorTab === tab ? "bg-white text-black" : "text-white/55 hover:bg-white/10 hover:text-white"} ${disabled ? "cursor-not-allowed opacity-30" : ""}`}>
                     {tab}
@@ -377,11 +378,7 @@ export const PostComposer = () => {
                   return (
                     <button key={filter.id} type="button" onClick={() => updateEdit("filter", filter.id)} disabled={editing} aria-pressed={selected} className={`group w-[72px] shrink-0 rounded-xl p-1 ${pressable} ${selected ? "bg-white shadow-[0_0_0_2px_rgba(255,255,255,0.22)]" : "bg-white/[0.04]"}`}>
                       <div className={`relative aspect-square overflow-hidden rounded-lg bg-neutral-800 transition-transform duration-200 ${selected ? "scale-[0.96]" : "group-hover:scale-[0.98]"}`}>
-                        {kind === "video" ? (
-                          <video src={previewUrl} muted playsInline preload="none" aria-hidden="true" className="h-full w-full object-cover" style={{ filter: filter.css }} />
-                        ) : (
-                          <img src={previewUrl} alt="" className="h-full w-full object-cover" style={{ filter: filter.css }} />
-                        )}
+                        <img src={previewUrl} alt="" className="h-full w-full object-cover" style={{ filter: filter.css }} />
                         {selected && <span className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-white text-black shadow-sm"><Check size={12} strokeWidth={3} /></span>}
                       </div>
                       <span className={`mt-1 block truncate text-[10px] font-semibold ${selected ? "text-black" : "text-white/65"}`}>{filter.label}</span>
@@ -424,14 +421,11 @@ export const PostComposer = () => {
                   const selected = edits.crop === ratio.id;
                   return (
                     <button key={ratio.id} type="button" onClick={() => updateEdit("crop", ratio.id)} disabled={editing || kind === "video"} aria-pressed={selected} className={`relative flex min-w-[78px] flex-col items-center gap-2 rounded-2xl border px-3 py-3 text-xs font-bold ${pressable} ${selected ? "border-white bg-white text-black shadow-sm" : "border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/10"} ${kind === "video" ? "opacity-45" : ""}`}>
-                      <Crop size={17} />
-                      {ratio.label}
-                      {selected && <Check size={12} className="absolute right-2 top-2" strokeWidth={3} />}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+                    <Crop size={16} /> {ratio.label}
+                  </button>
+                );
+              })}
+            </div>
 
             {editorTab === "Transform" && (
               <div className="flex flex-wrap gap-2">
@@ -445,7 +439,7 @@ export const PostComposer = () => {
             )}
           </div>
 
-          {kind === "video" && <p className="px-3 pt-2 text-center text-[10px] text-white/40 sm:text-[11px]">Trim is rendered locally when you press Done. Filters and lighting remain preview-only; an untrimmed video uploads unchanged.</p>}
+          {kind === "video" && <p className="px-3 pt-2 text-center text-[10px] text-white/40 sm:text-[11px]">Video editing currently supports local trimming only. Other image-only tools are disabled so the published file always matches the editor.</p>}
           {kind === "image" && <p className="px-3 pt-2 text-center text-[10px] text-white/35 sm:text-[11px]">Edits are rendered locally only when you press Done. Cancel keeps the current media unchanged.</p>}
         </section>
       </main>
@@ -466,7 +460,7 @@ export const PostComposer = () => {
 
           <div className="mt-4 overflow-hidden rounded-[28px] bg-neutral-950 shadow-xl">
             <div className="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-black">
-              {kind === "video" ? <video src={previewUrl} controls playsInline preload="metadata" className="h-full w-full object-contain" style={mediaStyle} /> : <img src={previewUrl} alt="Post preview" className="h-full w-full object-contain" />}
+              {kind === "video" ? <video src={previewUrl} controls playsInline preload="metadata" className="h-full w-full object-contain" /> : <img src={previewUrl} alt="Post preview" className="h-full w-full object-contain" />}
               <button type="button" onClick={openEditor} disabled={uploading || loading} className={`absolute bottom-4 left-4 flex h-11 w-11 items-center justify-center rounded-full bg-black/70 text-white shadow-lg ring-1 ring-white/15 backdrop-blur hover:bg-black/85 ${pressable} disabled:opacity-50`} aria-label="Edit media" title="Edit media"><Pencil size={17} /></button>
               <button type="button" onClick={reset} disabled={uploading || loading} className={`absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-black/65 text-white backdrop-blur hover:bg-black/85 ${pressable} disabled:opacity-50`} aria-label="Remove media"><X size={18} /></button>
               <span className="absolute right-4 bottom-4 flex items-center gap-1.5 rounded-full bg-black/60 px-3 py-2 text-[11px] font-bold text-white backdrop-blur">{kind === "video" ? <Video size={13} /> : <ImageIcon size={13} />}{kind === "video" ? "Video" : "Photo"}</span>
@@ -487,7 +481,6 @@ export const PostComposer = () => {
             </div>
           </div>
           {videoTrimmed && <p className="mt-2 text-center text-[10px] text-slate-400">Your selected video clip has been rendered locally and is ready to upload.</p>}
-          {hasVideoPreviewEdits && !videoTrimmed && <p className="mt-2 text-center text-[10px] text-slate-400">Video adjustments are preview-only and will not alter the uploaded source.</p>}
           {imageHasEdits && <p className="mt-2 text-center text-[10px] text-slate-400">Edited photo ready to share.</p>}
         </section>
         <input ref={musicInputRef} type="file" accept={ACCEPTED_MUSIC} onChange={handleMusicInput} className="hidden" />
