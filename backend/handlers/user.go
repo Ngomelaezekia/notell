@@ -45,8 +45,11 @@ func (h *UserHandler) SearchUsers(c *gin.Context) {
 	viewerIDValue,exists:=c.Get("userId");if !exists{c.JSON(http.StatusUnauthorized,gin.H{"message":"unauthorized"});return};viewerID:=viewerIDValue.(uint)
 	page,_:=strconv.Atoi(c.DefaultQuery("page","1"));limit,_:=strconv.Atoi(c.DefaultQuery("limit","20"));if page<1{page=1};if limit<1{limit=20};if limit>50{limit=50}
 	usernameQuery:=strings.TrimPrefix(query,"@");if usernameQuery==""{usernameQuery=query};escaped:=escapeLikePattern(usernameQuery);pattern:="%"+escaped+"%";prefixPattern:=escaped+"%";var total int64
-	base:=h.DB.Model(&models.User{}).Where("username ILIKE ? ESCAPE '\\'",pattern);if err:=base.Count(&total).Error;err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"message":"database error"});return}
-	var users []searchUserResult;orderRank:=gorm.Expr("CASE WHEN username ILIKE ? THEN 0 WHEN username ILIKE ? ESCAPE '\\' THEN 1 WHEN username ILIKE ? ESCAPE '\\' THEN 2 ELSE 3 END",usernameQuery,prefixPattern,pattern);followingExpr:="EXISTS (SELECT 1 FROM user_relationships ur WHERE ur.follower_id = ? AND ur.following_id = users.id AND ur.status = 'accepted')";selectExpr:=gorm.Expr("users.id, users.username, users.profile_picture, users.cover_picture, users.bio, users.country, users.city, users.status, users.allow_followers, users.created_at, "+followingExpr+" AS following",viewerID)
+	base:=h.DB.Model(&models.User{}).Where("(username ILIKE ? ESCAPE '\\' OR COALESCE(bio,'') ILIKE ? ESCAPE '\\' OR COALESCE(city,'') ILIKE ? ESCAPE '\\' OR COALESCE(country,'') ILIKE ? ESCAPE '\\')",pattern,pattern,pattern,pattern);if err:=base.Count(&total).Error;err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"message":"database error"});return}
+	var users []searchUserResult
+	orderRank:=gorm.Expr("CASE WHEN username ILIKE ? THEN 0 WHEN username ILIKE ? ESCAPE '\\' THEN 1 WHEN username ILIKE ? ESCAPE '\\' THEN 2 ELSE 3 END",usernameQuery,prefixPattern,pattern)
+	followingExpr:="EXISTS (SELECT 1 FROM user_relationships ur WHERE ur.follower_id = ? AND ur.following_id = users.id AND ur.status = 'accepted')"
+	selectExpr:=gorm.Expr("users.id, users.username, users.profile_picture, users.cover_picture, users.bio, users.country, users.city, users.status, users.allow_followers, users.created_at, "+followingExpr+" AS following",viewerID)
 	err:=base.Table("users").Select(selectExpr).Order(orderRank).Order("username ASC").Order("id ASC").Offset((page-1)*limit).Limit(limit).Find(&users).Error;if err!=nil{c.JSON(http.StatusInternalServerError,gin.H{"message":"database error"});return};c.JSON(http.StatusOK,gin.H{"data":gin.H{"users":users,"pagination":gin.H{"page":page,"limit":limit,"total":total,"hasMore":int64(page*limit)<total}}})
 }
 
