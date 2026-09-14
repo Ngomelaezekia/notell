@@ -1,12 +1,9 @@
 package main
 
 import (
-    "encoding/json"
-    "net/http"
     "strings"
     "time"
     "github.com/gin-gonic/gin"
-    "gorm.io/gorm"
 )
 
 type Subscription struct {
@@ -32,7 +29,4 @@ func registerSubscriptionRoutes(r *gin.Engine, s *Server) {
     api.POST("/subscriptions", func(c *gin.Context){
         var in struct{ResourceType string `json:"resourceType" binding:"required"`;ResourceID string `json:"resourceId" binding:"required"`;PriceID string `json:"priceId" binding:"required"`};if c.ShouldBindJSON(&in)!=nil{c.JSON(400,gin.H{"error":"resourceType, resourceId and priceId are required"});return};in.ResourceType=strings.TrimSpace(in.ResourceType);in.ResourceID=strings.TrimSpace(in.ResourceID);in.PriceID=strings.TrimSpace(in.PriceID);if len(in.ResourceType)>64||len(in.ResourceID)>128||len(in.PriceID)>128{c.JSON(400,gin.H{"error":"subscription identifiers are too long"});return};uid:=c.GetString("user_id");var existing Subscription;if err:=s.db.Where("user_id = ? AND resource_type = ? AND resource_id = ?",uid,in.ResourceType,in.ResourceID).First(&existing).Error;err==nil{c.JSON(200,gin.H{"subscription":existing,"idempotent":true});return};row:=Subscription{ID:newID("sub"),UserID:uid,ResourceType:in.ResourceType,ResourceID:in.ResourceID,PriceID:in.PriceID,Provider:"stripe",Status:"incomplete"};if err:=s.db.Create(&row).Error;err!=nil{c.JSON(409,gin.H{"error":"subscription could not be created"});return};c.JSON(201,gin.H{"subscription":row,"next":"checkout"})
     })
-    _ = json.Valid
-    _ = http.MethodGet
-    _ = gorm.ErrRecordNotFound
 }
