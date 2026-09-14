@@ -421,11 +421,12 @@ export const PostComposer = () => {
                   const selected = edits.crop === ratio.id;
                   return (
                     <button key={ratio.id} type="button" onClick={() => updateEdit("crop", ratio.id)} disabled={editing || kind === "video"} aria-pressed={selected} className={`relative flex min-w-[78px] flex-col items-center gap-2 rounded-2xl border px-3 py-3 text-xs font-bold ${pressable} ${selected ? "border-white bg-white text-black shadow-sm" : "border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/10"} ${kind === "video" ? "opacity-45" : ""}`}>
-                    <Crop size={16} /> {ratio.label}
-                  </button>
-                );
-              })}
-            </div>
+                      <Crop size={16} /> {ratio.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             {editorTab === "Transform" && (
               <div className="flex flex-wrap gap-2">
