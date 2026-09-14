@@ -16,20 +16,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-
       - name: Install dependencies
         run: npm ci
-
       - name: Lint
         run: npm run lint
-
       - name: Build
         run: npm run build
 
@@ -58,25 +54,45 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
           go-version-file: backend/go.mod
           cache: true
           cache-dependency-path: backend/go.sum
-
       - name: Synchronize Go modules
         run: go mod tidy
-
       - name: Verify module graph
         run: go mod tidy -diff
-
       - name: Verify dependencies
         run: go mod verify
-
       - name: Test
         run: go test -mod=readonly ./...
+      - name: Build
+        run: go build -mod=readonly ./...
 
+  channel:
+    name: Channel service test and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/channel
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: services/channel/go.mod
+          cache: true
+          cache-dependency-path: services/channel/go.sum
+      - name: Synchronize Go modules
+        run: go mod tidy
+      - name: Verify module graph
+        run: go mod tidy -diff
+      - name: Verify dependencies
+        run: go mod verify
+      - name: Test
+        run: go test -mod=readonly ./...
       - name: Build
         run: go build -mod=readonly ./...
