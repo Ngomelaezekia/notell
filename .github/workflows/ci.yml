@@ -84,8 +84,7 @@ jobs:
         uses: actions/setup-go@v7
         with:
           go-version-file: services/channel/go.mod
-          cache: true
-          cache-dependency-path: services/channel/go.sum
+          cache: false
       - name: Synchronize Go modules
         run: go mod tidy
       - name: Verify module graph
