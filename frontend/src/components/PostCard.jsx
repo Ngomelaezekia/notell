@@ -206,10 +206,32 @@ export const PostCard = ({ post, onPostDeleted, priority = false }) => {
           )}
         </div>}
 
-        <section className="px-3.5 pb-3.5 sm:px-4 sm:pb-4">
-          <div className="flex items-center justify-between gap-3 border-b border-neutral-900/80 py-2.5 sm:py-3"><div className="flex items-center gap-0.5"><button type="button" onClick={handleLike} disabled={likeLoading} aria-pressed={liked} aria-label={liked ? "Unlike post" : "Like post"} className={`group flex min-h-10 items-center gap-2 rounded-xl px-2.5 text-sm font-medium transition-all duration-200 active:scale-90 disabled:cursor-wait disabled:opacity-70 sm:px-3 ${liked ? "bg-red-500/10 text-red-500 hover:bg-red-500/15" : "text-neutral-400 hover:bg-neutral-900 hover:text-neutral-100"}`}><Heart size={19} strokeWidth={liked ? 2.5 : 2} fill={liked ? "currentColor" : "none"} className={`transition-transform duration-200 group-hover:scale-110 ${likeBurst ? "scale-125" : ""}`} /><span className="tabular-nums">{likeCount}</span></button><button type="button" onClick={() => setShowComments((previous) => !previous)} className={`group flex min-h-10 items-center gap-2 rounded-xl px-2.5 text-sm font-medium transition-all duration-200 active:scale-90 sm:px-3 ${showComments ? "bg-neutral-900 text-neutral-100" : "text-neutral-400 hover:bg-neutral-900 hover:text-neutral-100"}`} aria-expanded={showComments} aria-label={showComments ? "Hide comments" : "Show comments"}><MessageSquare size={19} strokeWidth={2} className="transition-transform duration-200 group-hover:scale-105" /><span>Comment</span><span className="tabular-nums">{commentCount}</span></button></div>{likeCount > 0 && <span className="pr-1 text-[11px] font-medium text-neutral-600 sm:text-xs">{likeCount === 1 ? "1 like" : `${likeCount} likes`}</span>}</div>
-          {caption && <div className="mt-3.5 text-sm leading-6 text-neutral-200 sm:mt-4"><p className="whitespace-pre-wrap break-words"><button type="button" onClick={openAuthorProfile} disabled={!authorId} className="mr-2 font-semibold text-neutral-100 hover:underline disabled:cursor-default">{username}</button>{visibleCaption}</p>{hasLongCaption && <button type="button" onClick={() => setShowFullCaption((previous) => !previous)} className="mt-1 text-sm font-medium text-neutral-500 hover:text-neutral-300">{showFullCaption ? "Show less" : "more"}</button>}</div>}
+        <section className="px-3.5 pb-4 sm:px-4 sm:pb-5">
+          <div className="flex items-center justify-between gap-3 border-b border-neutral-900/80 py-2 sm:py-2.5">
+            <div className="flex items-center gap-1">
+              <button type="button" onClick={handleLike} disabled={likeLoading} aria-pressed={liked} aria-label={liked ? "Unlike post" : "Like post"} className={`group flex min-h-10 items-center gap-2 rounded-xl px-2.5 text-sm font-medium transition-all duration-200 active:scale-90 disabled:cursor-wait disabled:opacity-70 sm:px-3 ${liked ? "bg-red-500/10 text-red-500 hover:bg-red-500/15" : "text-neutral-400 hover:bg-neutral-900 hover:text-neutral-100"}`}>
+                <Heart size={19} strokeWidth={liked ? 2.5 : 2} fill={liked ? "currentColor" : "none"} className={`transition-transform duration-200 group-hover:scale-110 ${likeBurst ? "scale-125" : ""}`} />
+                <span className="tabular-nums">{likeCount}</span>
+              </button>
+              <button type="button" onClick={() => setShowComments((previous) => !previous)} className={`group flex min-h-10 items-center gap-2 rounded-xl px-2.5 text-sm font-medium transition-all duration-200 active:scale-90 sm:px-3 ${showComments ? "bg-neutral-900 text-neutral-100" : "text-neutral-400 hover:bg-neutral-900 hover:text-neutral-100"}`} aria-expanded={showComments} aria-label={showComments ? "Hide comments" : "Show comments"}>
+                <MessageSquare size={19} strokeWidth={2} className="transition-transform duration-200 group-hover:scale-105" />
+                <span>Comment</span>
+                <span className="tabular-nums">{commentCount}</span>
+              </button>
+            </div>
+            <span className="shrink-0 pr-1 text-[10px] font-medium uppercase tracking-[0.14em] text-neutral-600 sm:text-[11px]">{likeCount > 0 ? `${likeCount} ${likeCount === 1 ? "like" : "likes"}` : ""}</span>
+          </div>
+
+          {caption && <div className="pt-3.5 sm:pt-4">
+            <p className="whitespace-pre-wrap break-words text-[13px] leading-[1.65] text-neutral-300 sm:text-sm sm:leading-6">
+              <button type="button" onClick={openAuthorProfile} disabled={!authorId} className="mr-1.5 font-semibold text-neutral-100 hover:underline disabled:cursor-default">{username}</button>
+              {visibleCaption}
+            </p>
+            {hasLongCaption && <button type="button" onClick={() => setShowFullCaption((previous) => !previous)} className="mt-1.5 rounded-lg px-1 py-0.5 text-xs font-semibold text-neutral-500 transition hover:bg-neutral-900 hover:text-neutral-200">{showFullCaption ? "Show less" : "more"}</button>}
+          </div>}
+
           {musicUrl && <div className="mt-3.5 overflow-hidden rounded-2xl border border-neutral-800/90 bg-neutral-900/50 p-3 sm:mt-4"><div className="mb-2 flex items-center gap-2 text-xs font-semibold text-neutral-300"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-neutral-800 text-neutral-200"><Music2 size={14} /></span><span>Post music</span></div><audio ref={musicRef} src={musicUrl} controls preload="metadata" onLoadedMetadata={handleMusicLoaded} onTimeUpdate={handleMusicTimeUpdate} className="h-9 w-full" aria-label="Post music" /></div>}
+
           {showComments && <div className="mt-3 border-t border-neutral-900 pt-3"><CommentSection postId={postId} onCommentCountChange={setCommentCount} /></div>}
         </section>
       </article>
