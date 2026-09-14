@@ -170,6 +170,10 @@ services:
         sync: false
       - key: INTERNAL_SERVICE_KEY
         sync: false
+      - key: SUBSCRIPTION_SUCCESS_URL
+        sync: false
+      - key: SUBSCRIPTION_CANCEL_URL
+        sync: false
 
   - type: static
     name: notell-web
