@@ -12,6 +12,8 @@ func TestC4Roles(t *testing.T) {
 }
 
 func TestC5StatusValues(t *testing.T) {
-	if ChannelProgram{}.Status != "" { t.Fatal("zero program status should be empty before handler defaulting") }
-	if ChannelSchedule{}.Status != "" { t.Fatal("zero schedule status should be empty before handler defaulting") }
+	p := ChannelProgram{}
+	s := ChannelSchedule{}
+	if p.Status != "" { t.Fatal("zero program status should be empty before handler defaulting") }
+	if s.Status != "" { t.Fatal("zero schedule status should be empty before handler defaulting") }
 }
