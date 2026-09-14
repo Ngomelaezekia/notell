@@ -106,9 +106,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
       - name: Setup Go
-        uses: actions/setup-node@v7
+        uses: actions/setup-go@v7
         with:
-          node-version: 24
+          go-version-file: services/message/go.mod
+          cache: false
       - name: Synchronize Go modules
         run: go mod tidy
       - name: Verify module graph
