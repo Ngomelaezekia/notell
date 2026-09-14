@@ -7,6 +7,7 @@ import (
  "log"
  "net/http"
  "os"
+ "strconv"
  "strings"
  "time"
  "github.com/gin-contrib/cors"
@@ -16,9 +17,10 @@ import (
  "gorm.io/gorm"
 )
 
-type Config struct { Port string; DatabaseURL string; JWTSecret string; FrontendURL string; Env string }
-func loadConfig() Config { return Config{Port:getenv("PORT","10000"),DatabaseURL:os.Getenv("DATABASE_URL"),JWTSecret:os.Getenv("JWT_SECRET"),FrontendURL:getenv("FRONTEND_URL","http://localhost:5173"),Env:getenv("APP_ENV","development")} }
+type Config struct { Port string; DatabaseURL string; JWTSecret string; FrontendURL string; Env string; CostRates CostRates; DefaultRiskReserveBps int64; DefaultPlatformMarginBps int64 }
+func loadConfig() Config { return Config{Port:getenv("PORT","10000"),DatabaseURL:os.Getenv("DATABASE_URL"),JWTSecret:os.Getenv("JWT_SECRET"),FrontendURL:getenv("FRONTEND_URL","http://localhost:5173"),Env:getenv("APP_ENV","development"),CostRates:CostRates{StreamMinuteMicros:getenvInt64("COST_STREAM_MINUTE_MICROS",0),ViewerMinuteMicros:getenvInt64("COST_VIEWER_MINUTE_MICROS",1000),TranscodeMinuteMicros:getenvInt64("COST_TRANSCODE_MINUTE_MICROS",0),StorageGBMonthMicros:getenvInt64("COST_STORAGE_GB_MONTH_MICROS",0),ComputeMinuteMicros:getenvInt64("COST_COMPUTE_MINUTE_MICROS",0),CDNMinuteMicros:getenvInt64("COST_CDN_MINUTE_MICROS",0)},DefaultRiskReserveBps:getenvInt64("COST_RISK_RESERVE_BPS",500),DefaultPlatformMarginBps:getenvInt64("COST_PLATFORM_MARGIN_BPS",2000)} }
 func getenv(k,d string) string { if v:=os.Getenv(k); v!="" { return v }; return d }
+func getenvInt64(k string, d int64) int64 { v:=strings.TrimSpace(os.Getenv(k)); if v=="" { return d }; n,err:=strconv.ParseInt(v,10,64); if err!=nil || n<0 { return d }; return n }
 func newID(prefix string) string { b:=make([]byte,16); if _,err:=rand.Read(b); err!=nil { panic(err) }; return prefix+"_"+hex.EncodeToString(b) }
 const ( PaymentPending="pending"; PaymentProcessing="processing"; PaymentSucceeded="succeeded"; PaymentFailed="failed"; PaymentCanceled="canceled" )
 type Payment struct { ID string `gorm:"primaryKey"`; UserID string `gorm:"index;not null"`; CustomerID string; PriceID string; Amount int64 `gorm:"not null"`; Currency string `gorm:"not null"`; Status string `gorm:"index;not null"`; Provider string `gorm:"not null"`; ProviderPaymentID string `gorm:"index"`; IdempotencyKey string `gorm:"uniqueIndex;not null"`; FailureCode string; FailureMessage string; CreatedAt time.Time; UpdatedAt time.Time }
