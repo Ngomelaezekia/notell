@@ -127,6 +127,31 @@ services:
       - key: LIVEKIT_API_SECRET
         sync: false
 
+  - type: web
+    name: payment
+    runtime: go
+    rootDir: services/payment
+    plan: free
+    region: singapore
+    buildCommand: go mod tidy && go build -tags netgo -ldflags '-s -w' -o app
+    startCommand: ./app
+    healthCheckPath: /ready
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: FRONTEND_URL
+        value: https://notell-web.onrender.com
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+
   - type: static
     name: notell-web
     plan: free
@@ -146,6 +171,6 @@ databases:
     databaseName: notelldb
     user: notellusers
 
-# Channel and Message are intentionally independent application services.
+# Channel, Message, and Payment are intentionally independent application services.
 # Their DATABASE_URL values are supplied by separate external PostgreSQL providers for now.
 # No Docker/Kubernetes configuration is used.
