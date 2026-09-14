@@ -8,7 +8,11 @@ type Upload struct {
 	Filename  string     `gorm:"uniqueIndex;not null;size:255" json:"filename"`
 	Path      string     `gorm:"uniqueIndex;not null;size:255" json:"path"`
 	MediaType string     `gorm:"not null;size:32" json:"mediaType"`
-	PostID    *uint      `gorm:"uniqueIndex" json:"postId,omitempty"`
+	// Multiple managed media objects may belong to the same post (for example
+	// the primary image/video plus an attached music track). PostMusic is the
+	// one-per-post relation for music; Upload.PostID must therefore be a normal
+	// lookup index rather than a unique index.
+	PostID    *uint      `gorm:"index" json:"postId,omitempty"`
 	CreatedAt time.Time  `json:"createdAt"`
 	ClaimedAt *time.Time `json:"claimedAt,omitempty"`
 
