@@ -107,9 +107,7 @@ export const PostCard = ({ post, onPostDeleted, priority = false }) => {
           videoRef.current.pause();
         }
       }
-      if (musicRef.current && !entry.isIntersecting) {
-        musicRef.current.pause();
-      }
+      if (musicRef.current && !entry.isIntersecting) musicRef.current.pause();
     }, { threshold: [0, 0.25, 0.5, 0.6], rootMargin: "180px 0px" });
     observer.observe(target);
     return () => observer.disconnect();
@@ -133,22 +131,16 @@ export const PostCard = ({ post, onPostDeleted, priority = false }) => {
 
   const openAuthorProfile = () => { if (authorId) navigate(`/users/${authorId}`); };
   const openVideoFeed = () => { if (postId && isLongVideo) { videoRef.current?.pause(); navigate(`/video-feed/${postId}`); } };
-
   const handleDelete = async () => {
     if (!postId || !window.confirm("Delete this post?")) return;
-    try { await deletePost(postId); onPostDeleted?.(postId); }
-    catch (error) { console.error(error); }
-    finally { setShowMenu(false); }
+    try { await deletePost(postId); onPostDeleted?.(postId); } catch (error) { console.error(error); } finally { setShowMenu(false); }
   };
-
   const handleLike = async () => {
     if (!postId || likeLoading) return;
     const previousLiked = liked;
-    setLikeLoading(true);
-    setLiked(!previousLiked);
+    setLikeLoading(true); setLiked(!previousLiked);
     setLikeCount((current) => Math.max(0, current + (previousLiked ? -1 : 1)));
-    setLikeBurst(true);
-    window.setTimeout(() => setLikeBurst(false), 420);
+    setLikeBurst(true); window.setTimeout(() => setLikeBurst(false), 420);
     try {
       const response = await toggleLike(postId);
       setLiked(Boolean(response?.liked));
@@ -159,15 +151,11 @@ export const PostCard = ({ post, onPostDeleted, priority = false }) => {
       console.error(error);
     } finally { setLikeLoading(false); }
   };
-
   const handleMediaDoubleClick = () => { if (!liked && !likeLoading) handleLike(); };
   const toggleAudio = (event) => {
     event.stopPropagation();
     if (!videoRef.current) return;
-    if (isLongVideo) {
-      openVideoFeed();
-      return;
-    }
+    if (isLongVideo) { openVideoFeed(); return; }
     const nextMuted = !videoRef.current.muted;
     videoRef.current.muted = nextMuted;
     setVideoMuted(nextMuted);
@@ -175,26 +163,19 @@ export const PostCard = ({ post, onPostDeleted, priority = false }) => {
   };
   const handleVideoKeyDown = (event) => {
     if (!isLongVideo) return;
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      openVideoFeed();
-    }
+    if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openVideoFeed(); }
   };
-  const handleMusicLoaded = () => {
-    if (!musicRef.current) return;
-    musicRef.current.currentTime = Math.max(0, musicStart);
-  };
+  const handleMusicLoaded = () => { if (musicRef.current) musicRef.current.currentTime = Math.max(0, musicStart); };
   const handleMusicTimeUpdate = () => {
     if (!musicRef.current || musicEnd <= 0) return;
     if (musicRef.current.currentTime >= musicEnd) {
-      musicRef.current.pause();
-      musicRef.current.currentTime = Math.max(0, musicStart);
+      musicRef.current.pause(); musicRef.current.currentTime = Math.max(0, musicStart);
     }
   };
 
   return (
     <>
-      <article className="overflow-hidden rounded-[1.25rem] border border-neutral-900/90 bg-neutral-950/80 shadow-[0_10px_34px_rgba(0,0,0,0.14)] transition-[border-color,box-shadow,transform] duration-200 hover:border-neutral-800 hover:shadow-[0_14px_42px_rgba(0,0,0,0.2)] sm:rounded-[1.4rem]">
+      <article className="overflow-hidden rounded-[1.35rem] border border-neutral-900/90 bg-neutral-950/90 shadow-[0_12px_38px_rgba(0,0,0,0.16)] transition-[border-color,box-shadow,transform] duration-200 hover:border-neutral-800 hover:shadow-[0_16px_46px_rgba(0,0,0,0.22)] sm:rounded-[1.5rem]">
         <header className="flex items-center justify-between gap-3 px-3.5 py-3 sm:px-4 sm:py-3.5">
           <button type="button" onClick={openAuthorProfile} disabled={!authorId} className="group flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left transition active:scale-[0.99] disabled:cursor-default sm:gap-3.5" aria-label={`View ${username}'s profile`}>
             <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-neutral-800 bg-neutral-900 text-sm font-semibold text-neutral-300 shadow-sm transition duration-200 group-hover:border-neutral-600 group-hover:ring-2 group-hover:ring-neutral-800 sm:h-11 sm:w-11">
@@ -205,27 +186,21 @@ export const PostCard = ({ post, onPostDeleted, priority = false }) => {
           {isOwner && <div className="relative shrink-0" data-post-menu><button type="button" onClick={() => setShowMenu((previous) => !previous)} disabled={loading} aria-label="Post options" aria-expanded={showMenu} className={`flex h-9 w-9 items-center justify-center rounded-full transition active:scale-90 ${showMenu ? "bg-neutral-900 text-neutral-100" : "text-neutral-500 hover:bg-neutral-900 hover:text-neutral-200"}`}>{loading ? <Loader2 size={18} className="animate-spin" /> : <MoreHorizontal size={19} />}</button>{showMenu && <div className="absolute right-0 z-30 mt-1 w-40 origin-top-right overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950 p-1 shadow-2xl shadow-black/50"><button type="button" onClick={handleDelete} disabled={loading} className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-red-400 transition hover:bg-red-950/40 active:bg-red-950/60"><Trash2 size={15} /> Delete post</button></div>}</div>}
         </header>
 
-        {mediaUrl && <div ref={mediaContainerRef} className="group/media relative aspect-[4/3] w-full overflow-hidden border-y border-neutral-900 bg-black" onDoubleClick={handleMediaDoubleClick}>
+        {mediaUrl && <div ref={mediaContainerRef} className="group/media relative aspect-[4/3] w-full overflow-hidden border-y border-neutral-900/80 bg-neutral-900" onDoubleClick={handleMediaDoubleClick}>
+          <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.045),transparent_65%)]" />
           {isVideo ? (
-            <div
-              className={`relative h-full w-full ${isLongVideo ? "cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-neutral-300" : ""}`}
-              onClick={isLongVideo ? openVideoFeed : undefined}
-              onKeyDown={handleVideoKeyDown}
-              role={isLongVideo ? "button" : undefined}
-              tabIndex={isLongVideo ? 0 : undefined}
-              aria-label={isLongVideo ? "Open video feed viewer" : undefined}
-            >
+            <div className={`relative z-[1] h-full w-full ${isLongVideo ? "cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-neutral-300" : ""}`} onClick={isLongVideo ? openVideoFeed : undefined} onKeyDown={handleVideoKeyDown} role={isLongVideo ? "button" : undefined} tabIndex={isLongVideo ? 0 : undefined} aria-label={isLongVideo ? "Open video feed viewer" : undefined}>
               <video ref={videoRef} src={mediaUrl} muted defaultMuted playsInline loop preload="metadata" onLoadedMetadata={(event) => setVideoDuration(event.currentTarget.duration || 0)} className="block h-full w-full object-cover" aria-label={caption || "Post video"} />
-              <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-black/35 to-transparent" />
-              {isLongVideo && <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/25 to-transparent px-4 pb-4 pt-14 text-xs font-medium text-white/90">Tap to watch full video</span>}
-              <button type="button" onClick={toggleAudio} className="absolute bottom-3 left-3 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-black/60 text-white shadow-lg backdrop-blur-md transition hover:bg-black/80 active:scale-90" aria-label={videoMuted ? "Allow sound" : "Mute video"}>{videoMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}</button>
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/18 via-transparent to-black/20" />
+              {isLongVideo && <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent px-4 pb-4 pt-16 text-xs font-medium text-white/90">Tap to watch full video</span>}
+              <button type="button" onClick={toggleAudio} className="absolute bottom-3 left-3 z-10 flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-black/60 text-white shadow-xl backdrop-blur-md transition hover:bg-black/80 hover:scale-[1.03] active:scale-90" aria-label={videoMuted ? "Allow sound" : "Mute video"}>{videoMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}</button>
               {likeBurst && <span className="pointer-events-none absolute inset-0 flex items-center justify-center"><Heart size={82} fill="currentColor" strokeWidth={1.5} className="scale-125 text-white opacity-0 drop-shadow-[0_4px_18px_rgba(0,0,0,0.55)]" style={{ animation: "notellLikePop 420ms ease-out forwards" }} /></span>}
             </div>
           ) : (
-            <button type="button" onClick={() => setLightboxOpen(true)} className="relative block h-full w-full cursor-zoom-in text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-neutral-300" aria-label="Open image viewer">
-              <img src={mediaUrl} alt={caption || "Post"} className="block h-full w-full object-cover transition duration-300 group-hover/media:scale-[1.008]" loading={priority ? "eager" : "lazy"} fetchPriority={priority ? "high" : "auto"} decoding="async" draggable="false" />
-              <span className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-black/25 to-transparent" />
-              <span className="pointer-events-none absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-black/55 text-white opacity-0 backdrop-blur-md transition-opacity duration-200 group-hover/media:opacity-100 sm:h-9 sm:w-9"><Maximize2 size={15} /></span>
+            <button type="button" onClick={() => setLightboxOpen(true)} className="relative z-[1] block h-full w-full cursor-zoom-in text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-neutral-300" aria-label="Open image viewer">
+              <img src={mediaUrl} alt={caption || "Post"} className="block h-full w-full object-cover transition duration-300 group-hover/media:scale-[1.01]" loading={priority ? "eager" : "lazy"} fetchPriority={priority ? "high" : "auto"} decoding="async" draggable="false" />
+              <span className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/12 via-transparent to-black/12" />
+              <span className="pointer-events-none absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-black/55 text-white opacity-0 backdrop-blur-md transition-all duration-200 group-hover/media:opacity-100 group-hover/media:scale-105 sm:h-9 sm:w-9"><Maximize2 size={15} /></span>
               {likeBurst && <span className="pointer-events-none absolute inset-0 flex items-center justify-center"><Heart size={82} fill="currentColor" strokeWidth={1.5} className="scale-125 text-white opacity-0 drop-shadow-[0_4px_18px_rgba(0,0,0,0.55)]" style={{ animation: "notellLikePop 420ms ease-out forwards" }} /></span>}
             </button>
           )}
