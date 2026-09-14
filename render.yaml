@@ -128,6 +128,33 @@ services:
         sync: false
 
   - type: web
+    name: live
+    runtime: go
+    rootDir: services/live
+    plan: free
+    region: singapore
+    buildCommand: go mod tidy && go build -tags netgo -ldflags '-s -w' -o app
+    startCommand: ./app
+    healthCheckPath: /ready
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: FRONTEND_URL
+        value: https://notell-web.onrender.com
+      - key: CHANNEL_SERVICE_URL
+        sync: false
+      - key: PAYMENT_SERVICE_URL
+        sync: false
+      - key: INTERNAL_SERVICE_KEY
+        sync: false
+
+  - type: web
     name: payment
     runtime: go
     rootDir: services/payment
@@ -171,6 +198,13 @@ databases:
     databaseName: notelldb
     user: notellusers
 
-# Channel, Message, and Payment are intentionally independent application services.
-# Their DATABASE_URL values are supplied by separate external PostgreSQL providers for now.
+  - name: notell-live-db
+    plan: free
+    region: singapore
+    postgresMajorVersion: "18"
+    databaseName: notelllive
+    user: notelllive
+
+# Channel, Message, Live, and Payment are independent application services.
+# Their DATABASE_URL values are supplied independently so each service owns its persistence boundary.
 # No Docker/Kubernetes configuration is used.
