@@ -1,0 +1,135 @@
+/* Notell feed post actions + caption refinement. Scoped to PostCard markup. */
+article.overflow-hidden > section {
+  padding-top: 0.65rem;
+}
+
+article.overflow-hidden > section > div:first-child {
+  margin-inline: 0.1rem;
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.018);
+  padding: 0.22rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+article.overflow-hidden > section > div:first-child > div {
+  gap: 0.15rem;
+}
+
+article.overflow-hidden > section > div:first-child button {
+  min-height: 2.65rem;
+  border-radius: 0.85rem;
+  padding-inline: 0.65rem;
+  transition: background-color 160ms ease, color 160ms ease, transform 120ms ease, box-shadow 160ms ease;
+}
+
+article.overflow-hidden > section > div:first-child button:hover {
+  background: rgba(255, 255, 255, 0.055);
+}
+
+article.overflow-hidden > section > div:first-child button:active {
+  transform: scale(0.96);
+}
+
+article.overflow-hidden > section > div:first-child button[aria-pressed="true"] {
+  background: rgba(239, 68, 68, 0.09);
+  box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.08);
+}
+
+article.overflow-hidden > section > div:first-child button svg {
+  flex: 0 0 auto;
+}
+
+article.overflow-hidden > section > div:first-child button span {
+  font-variant-numeric: tabular-nums;
+}
+
+article.overflow-hidden > section > div:first-child > span {
+  margin-right: 0.2rem;
+}
+
+article.overflow-hidden > section > div:nth-child(2) {
+  margin-top: 0.85rem;
+  color: rgba(245, 245, 245, 0.88);
+}
+
+article.overflow-hidden > section > div:nth-child(2) p {
+  font-size: 0.9rem;
+  line-height: 1.55rem;
+  letter-spacing: -0.006em;
+}
+
+article.overflow-hidden > section > div:nth-child(2) p > button:first-child {
+  margin-right: 0.4rem;
+  color: rgba(250, 250, 250, 0.96);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+article.overflow-hidden > section > div:nth-child(2) p > button:first-child:hover {
+  text-decoration: none;
+  color: #fff;
+}
+
+article.overflow-hidden > section > div:nth-child(2) p > button:last-child {
+  margin-left: 0.2rem;
+  border-radius: 999px;
+  padding: 0.08rem 0.38rem;
+  color: rgba(163, 163, 163, 0.9);
+  font-weight: 650;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+article.overflow-hidden > section > div:nth-child(2) p > button:last-child:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(245, 245, 245, 0.95);
+}
+
+article.overflow-hidden > section > div:nth-child(3) {
+  margin-top: 0.8rem;
+  border-color: rgba(255, 255, 255, 0.065);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.012));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+article.overflow-hidden > section > div:nth-child(3) > div:first-child {
+  color: rgba(229, 229, 229, 0.86);
+}
+
+article.overflow-hidden > section > div:nth-child(3) audio {
+  display: block;
+  width: 100%;
+  height: 2rem;
+  opacity: 0.88;
+}
+
+@media (max-width: 640px) {
+  article.overflow-hidden > section {
+    padding-top: 0.5rem;
+  }
+
+  article.overflow-hidden > section > div:first-child {
+    margin-inline: 0;
+    border-radius: 0.95rem;
+  }
+
+  article.overflow-hidden > section > div:first-child button {
+    min-height: 2.75rem;
+    padding-inline: 0.58rem;
+  }
+
+  article.overflow-hidden > section > div:first-child button svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  article.overflow-hidden > section > div:nth-child(2) {
+    margin-top: 0.8rem;
+  }
+
+  article.overflow-hidden > section > div:nth-child(2) p {
+    font-size: 0.875rem;
+    line-height: 1.48rem;
+  }
+}
