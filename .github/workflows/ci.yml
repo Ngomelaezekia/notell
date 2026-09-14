@@ -106,9 +106,33 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
       - name: Setup Go
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Synchronize Go modules
+        run: go mod tidy
+      - name: Verify module graph
+        run: go mod tidy -diff
+      - name: Verify dependencies
+        run: go mod verify
+      - name: Test
+        run: go test -mod=readonly ./...
+      - name: Build
+        run: go build -mod=readonly ./...
+
+  live:
+    name: Live service test and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/live
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version-file: services/message/go.mod
+          go-version-file: services/live/go.mod
           cache: false
       - name: Synchronize Go modules
         run: go mod tidy
