@@ -63,18 +63,18 @@ const Posts = () => {
 
   return (
     <div className="flex h-[calc(100dvh-5rem)] w-full overflow-hidden bg-neutral-950 text-neutral-100 md:h-screen">
-      <main className="mx-auto flex h-full w-full min-w-0 max-w-5xl flex-col border-x border-neutral-900/80">
+      <main className="mx-auto flex h-full w-full min-w-0 max-w-6xl flex-col border-x border-neutral-900/80">
         <section ref={scrollContainerRef} className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain">
           <Headerposts />
           <FeedCategories category={category} onChange={setCategory} />
-          <div className="relative mx-auto w-full max-w-2xl">
+          <div className="relative mx-auto w-full max-w-3xl">
             {loading && posts.length > 0 && <div className="pointer-events-none sticky top-0 z-20 h-0.5 overflow-hidden bg-neutral-900"><div className="h-full w-1/3 animate-pulse bg-neutral-500" /></div>}
-            {!loading && !error && posts.length > 0 && <div className="flex items-center justify-between px-4 pb-2 pt-4 sm:px-5 sm:pt-5"><span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-600">{FEED_CATEGORIES.find((item) => item.id === category)?.label} feed</span></div>}
+            {!loading && !error && posts.length > 0 && <div className="flex items-center justify-between px-4 pb-2 pt-5 sm:px-6 sm:pt-6"><span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-600">{FEED_CATEGORIES.find((item) => item.id === category)?.label} feed</span><span className="hidden text-[10px] font-medium text-neutral-700 sm:block">Latest posts</span></div>}
             {loading && posts.length === 0 && <div className="min-h-40" aria-label="Loading feed" />}
             {!loading && error && posts.length === 0 && <div className="mx-3 my-5 flex min-h-56 flex-col items-center justify-center rounded-2xl border border-neutral-900 bg-neutral-950/70 px-5 text-center sm:mx-5"><p className="max-w-sm text-sm leading-6 text-red-400">{error}</p><button type="button" onClick={() => void refetch()} className="mt-4 rounded-full bg-neutral-800 px-5 py-2 text-sm font-medium text-neutral-200 transition hover:bg-neutral-700 active:scale-[0.98]">Try again</button></div>}
             {!loading && !error && posts.length === 0 && <EmptyFeed category={category} />}
-            {posts.length > 0 && <div className="space-y-4 px-2 pb-6 pt-2 sm:space-y-5 sm:px-3 sm:pb-8 sm:pt-3">{posts.map((post, index) => <PostCard key={post.postId} post={post} priority={index < 3} onPostDeleted={removePost} />)}</div>}
-            {error && posts.length > 0 && <div className="mx-2 my-3 flex items-center justify-center gap-3 rounded-xl border border-red-950/60 bg-red-950/10 px-3 py-3 text-xs text-red-400 sm:mx-3"><span>{error}</span><button type="button" onClick={() => void loadMore()} className="shrink-0 rounded-full bg-neutral-800 px-3 py-1.5 font-medium text-neutral-200 transition hover:bg-neutral-700">Retry</button></div>}
+            {posts.length > 0 && <div className="space-y-5 px-2.5 pb-8 pt-2 sm:space-y-6 sm:px-4 sm:pb-10 sm:pt-3 lg:px-6">{posts.map((post, index) => <PostCard key={post.postId} post={post} priority={index < 3} onPostDeleted={removePost} />)}</div>}
+            {error && posts.length > 0 && <div className="mx-2.5 my-3 flex items-center justify-center gap-3 rounded-xl border border-red-950/60 bg-red-950/10 px-3 py-3 text-xs text-red-400 sm:mx-4 lg:mx-6"><span>{error}</span><button type="button" onClick={() => void loadMore()} className="shrink-0 rounded-full bg-neutral-800 px-3 py-1.5 font-medium text-neutral-200 transition hover:bg-neutral-700">Retry</button></div>}
             <div ref={loadMoreRef} className="flex min-h-24 items-center justify-center px-4 py-7">{loadingMore && <div className="flex items-center gap-2 rounded-full border border-neutral-900 bg-neutral-950 px-4 py-2 text-xs text-neutral-500"><Loader2 size={14} className="animate-spin" /> Loading more posts...</div>}{!loadingMore && !hasMore && posts.length > 0 && <div className="flex items-center gap-2 text-[11px] text-neutral-700"><span className="h-px w-8 bg-neutral-900" /> You&apos;re all caught up. <span className="h-px w-8 bg-neutral-900" /></div>}</div>
           </div>
         </section>
