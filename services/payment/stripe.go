@@ -1,0 +1,104 @@
+package main
+
+import (
+    "bytes"
+    "crypto/hmac"
+    "crypto/sha256"
+    "encoding/hex"
+    "encoding/json"
+    "errors"
+    "fmt"
+    "io"
+    "net/http"
+    "strconv"
+    "strings"
+    "time"
+)
+
+type PaymentProvider interface {
+    CreatePaymentIntent(payment Payment) (string, string, error)
+    RefundPayment(payment Payment, amount int64, reason string) (string, string, error)
+}
+
+type StripeProvider struct {
+    secretKey string
+    baseURL   string
+    client    *http.Client
+}
+
+func NewStripeProvider(secretKey string) *StripeProvider {
+    return &StripeProvider{secretKey: strings.TrimSpace(secretKey), baseURL: "https://api.stripe.com/v1", client: &http.Client{Timeout: 20 * time.Second}}
+}
+
+func (p *StripeProvider) enabled() bool { return p != nil && p.secretKey != "" }
+
+func (p *StripeProvider) request(method, path string, form map[string]string) (map[string]any, error) {
+    if !p.enabled() { return nil, errors.New("stripe provider is not configured") }
+    body := bytes.NewBufferString(encodeForm(form))
+    req, err := http.NewRequest(method, p.baseURL+path, body)
+    if err != nil { return nil, err }
+    req.SetBasicAuth(p.secretKey, "")
+    req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+    resp, err := p.client.Do(req)
+    if err != nil { return nil, err }
+    defer resp.Body.Close()
+    raw, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+    if err != nil { return nil, err }
+    var out map[string]any
+    if err := json.Unmarshal(raw, &out); err != nil { return nil, fmt.Errorf("stripe response decode: %w", err) }
+    if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+        if msg, ok := out["error"].(map[string]any); ok { if m, ok := msg["message"].(string); ok { return nil, errors.New(m) } }
+        return nil, fmt.Errorf("stripe returned status %d", resp.StatusCode)
+    }
+    return out, nil
+}
+
+func encodeForm(values map[string]string) string {
+    var parts []string
+    for k, v := range values { parts = append(parts, urlQueryEscape(k)+"="+urlQueryEscape(v)) }
+    return strings.Join(parts, "&")
+}
+
+func urlQueryEscape(s string) string {
+    var b strings.Builder
+    const hexChars = "0123456789ABCDEF"
+    for i := 0; i < len(s); i++ { c := s[i]; if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || strings.ContainsRune("-_.~", rune(c)) { b.WriteByte(c) } else { b.WriteByte('%'); b.WriteByte(hexChars[c>>4]); b.WriteByte(hexChars[c&15]) } }
+    return b.String()
+}
+
+func (p *StripeProvider) CreatePaymentIntent(payment Payment) (string, string, error) {
+    out, err := p.request(http.MethodPost, "/payment_intents", map[string]string{
+        "amount": strconv.FormatInt(payment.Amount, 10),
+        "currency": strings.ToLower(payment.Currency),
+        "metadata[payment_id]": payment.ID,
+        "metadata[user_id]": payment.UserID,
+    })
+    if err != nil { return "", "", err }
+    id, _ := out["id"].(string); clientSecret, _ := out["client_secret"].(string)
+    if id == "" { return "", "", errors.New("stripe payment intent id missing") }
+    return id, clientSecret, nil
+}
+
+func (p *StripeProvider) RefundPayment(payment Payment, amount int64, reason string) (string, string, error) {
+    form := map[string]string{"payment_intent": payment.ProviderPaymentID, "metadata[payment_id]": payment.ID}
+    if amount > 0 { form["amount"] = strconv.FormatInt(amount, 10) }
+    if reason != "" { form["reason"] = reason }
+    out, err := p.request(http.MethodPost, "/refunds", form)
+    if err != nil { return "", "", err }
+    id, _ := out["id"].(string); status, _ := out["status"].(string)
+    if id == "" { return "", "", errors.New("stripe refund id missing") }
+    return id, status, nil
+}
+
+func verifyStripeSignature(payload []byte, header, secret string, tolerance time.Duration) error {
+    if strings.TrimSpace(secret) == "" { return errors.New("stripe webhook secret is not configured") }
+    var timestamp int64
+    var signatures []string
+    for _, item := range strings.Split(header, ",") { parts := strings.SplitN(strings.TrimSpace(item), "=", 2); if len(parts) != 2 { continue }; switch parts[0] { case "t": timestamp, _ = strconv.ParseInt(parts[1], 10, 64); case "v1": signatures = append(signatures, parts[1]) } }
+    if timestamp == 0 || len(signatures) == 0 { return errors.New("invalid stripe signature") }
+    if tolerance > 0 && time.Since(time.Unix(timestamp, 0)) > tolerance { return errors.New("stripe webhook timestamp outside tolerance") }
+    signed := strconv.FormatInt(timestamp, 10) + "." + string(payload)
+    mac := hmac.New(sha256.New, []byte(secret)); _, _ = mac.Write([]byte(signed)); expected := hex.EncodeToString(mac.Sum(nil))
+    for _, sig := range signatures { if hmac.Equal([]byte(expected), []byte(sig)) { return nil } }
+    return errors.New("invalid stripe webhook signature")
+}
