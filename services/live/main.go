@@ -1,0 +1,65 @@
+package main
+
+import (
+    "crypto/rand"
+    "encoding/hex"
+    "errors"
+    "net/http"
+    "os"
+    "strconv"
+    "strings"
+    "time"
+
+    "github.com/gin-contrib/cors"
+    "github.com/gin-gonic/gin"
+    "github.com/golang-jwt/jwt/v5"
+    "gorm.io/driver/postgres"
+    "gorm.io/gorm"
+)
+
+type StreamStatus string
+const (
+    Draft StreamStatus = "draft"
+    Live StreamStatus = "live"
+    Ended StreamStatus = "ended"
+)
+
+type Stream struct {
+    ID uint `gorm:"primaryKey" json:"id"`
+    ChannelID uint `gorm:"not null;index" json:"channelId"`
+    OwnerID uint `gorm:"not null;index" json:"ownerId"`
+    Title string `gorm:"size:160;not null" json:"title"`
+    Description string `gorm:"type:text" json:"description,omitempty"`
+    Status StreamStatus `gorm:"size:16;not null;index" json:"status"`
+    IngestKey string `gorm:"size:128;uniqueIndex;not null" json:"-"`
+    PlaybackToken string `gorm:"size:128;uniqueIndex;not null" json:"-"`
+    StartedAt *time.Time `json:"startedAt,omitempty"`
+    EndedAt *time.Time `json:"endedAt,omitempty"`
+    CreatedAt time.Time `json:"createdAt"`
+    UpdatedAt time.Time `json:"updatedAt"`
+}
+
+type claims struct { UserID uint `json:"userId"`; jwt.RegisteredClaims }
+
+func userID(c *gin.Context) (uint, bool) { v, ok := c.Get("userId"); if !ok { return 0,false }; id,ok:=v.(uint); return id,ok }
+func auth(secret string) gin.HandlerFunc { return func(c *gin.Context) {
+    h:=c.GetHeader("Authorization"); if !strings.HasPrefix(h,"Bearer "){ c.AbortWithStatusJSON(401,gin.H{"message":"authentication required"}); return }
+    tok,err:=jwt.ParseWithClaims(strings.TrimPrefix(h,"Bearer "),&claims{},func(t *jwt.Token)(interface{},error){ if t.Method.Alg()!=jwt.SigningMethodHS256.Alg(){return nil,errors.New("invalid signing method")}; return []byte(secret),nil })
+    if err!=nil || !tok.Valid { c.AbortWithStatusJSON(401,gin.H{"message":"invalid authentication"}); return }
+    cl,ok:=tok.Claims.(*claims); if !ok || cl.UserID==0 { c.AbortWithStatusJSON(401,gin.H{"message":"invalid authentication"}); return }; c.Set("userId",cl.UserID); c.Next()
+} }
+func randomKey() string { b:=make([]byte,24); if _,err:=rand.Read(b);err!=nil { panic(err) }; return hex.EncodeToString(b) }
+func main(){
+    dsn:=os.Getenv("DATABASE_URL"); secret:=os.Getenv("JWT_SECRET"); if dsn==""||secret=="" { panic("DATABASE_URL and JWT_SECRET are required") }
+    db,err:=gorm.Open(postgres.Open(dsn),&gorm.Config{}); if err!=nil { panic(err) }; if err:=db.AutoMigrate(&Stream{});err!=nil {panic(err)}
+    r:=gin.New(); r.Use(gin.Logger(),gin.Recovery()); cc:=cors.DefaultConfig(); cc.AllowCredentials=true; cc.AllowHeaders=[]string{"Origin","Content-Type","Accept","Authorization","X-Internal-Service-Key"}; if f:=os.Getenv("FRONTEND_URL");f!=""{cc.AllowOrigins=[]string{f}}else if os.Getenv("APP_ENV")!="production"{cc.AllowAllOrigins=true;cc.AllowCredentials=false}else{panic("FRONTEND_URL is required in production")}; r.Use(cors.New(cc))
+    r.GET("/health",func(c *gin.Context){c.JSON(200,gin.H{"status":"ok","service":"live"})}); r.GET("/ready",func(c *gin.Context){s,e:=db.DB();if e!=nil||s.Ping()!=nil{c.JSON(503,gin.H{"status":"not_ready"});return};c.JSON(200,gin.H{"status":"ready","service":"live"})})
+    api:=r.Group("/v1"); api.Use(auth(secret))
+    api.POST("/channels/:channelId/streams",func(c *gin.Context){ uid,_:=userID(c); cid,e:=strconv.ParseUint(c.Param("channelId"),10,64);if e!=nil||cid==0{c.JSON(400,gin.H{"message":"invalid channelId"});return}; var in struct{Title string `json:"title"`;Description string `json:"description"`};if c.ShouldBindJSON(&in)!=nil||strings.TrimSpace(in.Title)==""{c.JSON(400,gin.H{"message":"title is required"});return}; s:=Stream{ChannelID:uint(cid),OwnerID:uid,Title:strings.TrimSpace(in.Title),Description:strings.TrimSpace(in.Description),Status:Draft,IngestKey:randomKey(),PlaybackToken:randomKey()};if db.Create(&s).Error!=nil{c.JSON(500,gin.H{"message":"failed creating stream"});return};c.JSON(201,gin.H{"stream":s,"ingestKey":s.IngestKey,"playbackToken":s.PlaybackToken})})
+    api.GET("/streams/:id",func(c *gin.Context){ var s Stream;if db.First(&s,c.Param("id")).Error!=nil{c.JSON(404,gin.H{"message":"stream not found"});return};c.JSON(200,gin.H{"stream":s})})
+    api.POST("/streams/:id/start",func(c *gin.Context){uid,_:=userID(c);var s Stream;if db.First(&s,c.Param("id")).Error!=nil{c.JSON(404,gin.H{"message":"stream not found"});return};if s.OwnerID!=uid{c.JSON(403,gin.H{"message":"stream owner required"});return};if s.Status==Ended{c.JSON(409,gin.H{"message":"ended stream cannot be restarted"});return};now:=time.Now().UTC();s.Status=Live;s.StartedAt=&now;if db.Save(&s).Error!=nil{c.JSON(500,gin.H{"message":"failed starting stream"});return};c.JSON(200,gin.H{"stream":s})})
+    api.POST("/streams/:id/end",func(c *gin.Context){uid,_:=userID(c);var s Stream;if db.First(&s,c.Param("id")).Error!=nil{c.JSON(404,gin.H{"message":"stream not found"});return};if s.OwnerID!=uid{c.JSON(403,gin.H{"message":"stream owner required"});return};if s.Status!=Live{c.JSON(409,gin.H{"message":"stream is not live"});return};now:=time.Now().UTC();s.Status=Ended;s.EndedAt=&now;if db.Save(&s).Error!=nil{c.JSON(500,gin.H{"message":"failed ending stream"});return};c.JSON(200,gin.H{"stream":s})})
+    api.GET("/channels/:channelId/live",func(c *gin.Context){var s Stream;if db.Where("channel_id = ? AND status = ?",c.Param("channelId"),Live).Order("started_at DESC").First(&s).Error!=nil{c.JSON(404,gin.H{"message":"no live stream"});return};c.JSON(200,gin.H{"stream":s})})
+    api.POST("/streams/:id/playback-token",func(c *gin.Context){var s Stream;if db.First(&s,c.Param("id")).Error!=nil||s.Status!=Live{c.JSON(404,gin.H{"message":"live stream not found"});return};c.JSON(200,gin.H{"token":s.PlaybackToken,"expiresAt":time.Now().UTC().Add(5*time.Minute)})})
+    port:=os.Getenv("PORT");if port==""{port="8080"};_ = http.ListenAndServe(":"+port,r)
+}
