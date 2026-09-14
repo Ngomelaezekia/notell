@@ -142,7 +142,9 @@ services:
       - key: PORT
         value: 10000
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: notell-live-db
+          property: connectionString
       - key: JWT_SECRET
         sync: false
       - key: FRONTEND_URL
@@ -206,5 +208,6 @@ databases:
     user: notelllive
 
 # Channel, Message, Live, and Payment are independent application services.
-# Their DATABASE_URL values are supplied independently so each service owns its persistence boundary.
+# Live owns stream state and receives identity through the shared Notell JWT contract.
+# Payment owns subscription state; channel/live integrate through stable IDs and service contracts.
 # No Docker/Kubernetes configuration is used.
