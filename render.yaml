@@ -143,6 +143,10 @@ services:
         sync: false
       - key: INTERNAL_SERVICE_KEY
         sync: false
+      - key: CHANNEL_SERVICE_URL
+        value: https://channel.onrender.com
+      - key: CHANNEL_INTERNAL_SERVICE_KEY
+        sync: false
       - key: LIVEKIT_URL
         sync: false
       - key: LIVEKIT_API_KEY
