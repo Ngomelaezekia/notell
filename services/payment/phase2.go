@@ -19,8 +19,9 @@ type PlatformFee struct {
 }
 
 func calculatePlatformFee(amount, basisPoints int64) PlatformFee {
-	if amount <= 0 || basisPoints <= 0 {
+	fee, ok := bpsCeil(amount, basisPoints)
+	if !ok {
 		return PlatformFee{}
 	}
-	return PlatformFee{Amount: (amount*basisPoints + 9999) / 10000}
+	return PlatformFee{Amount: fee}
 }
