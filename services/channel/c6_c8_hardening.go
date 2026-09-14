@@ -3,24 +3,44 @@ package main
 import (
     "strings"
     "time"
-
     "github.com/gin-gonic/gin"
     "gorm.io/gorm"
 )
 
-// registerC6C8Hardened replaces the vulnerable C6-C8 mutation handlers while
-// the original handlers remain source-compatible. All sensitive mutations use
-// the existing C4 permission model instead of owner-only checks.
+// registerC6C8Hardened is the single C6-C8 route registration point.
+// Read-only/reference endpoints remain available while sensitive mutations use C4 permissions.
 func registerC6C8Hardened(db *gorm.DB, p *gin.RouterGroup) {
+    p.GET("/channels/:id/live", listLive(db))
     p.POST("/channels/:id/live", hardenedCreateLive(db))
     p.PATCH("/channels/:id/live/:sessionId", hardenedUpdateLive(db))
     p.POST("/channels/:id/live/:sessionId/start", hardenedStartLive(db))
     p.POST("/channels/:id/live/:sessionId/end", hardenedEndLive(db))
     p.DELETE("/channels/:id/live/:sessionId", hardenedCancelLive(db))
+
+    p.GET("/channels/:id/media", listMediaRefs(db))
+    p.POST("/channels/:id/media", addMediaRef(db))
+    p.DELETE("/channels/:id/media/:mediaId", removeMediaRef(db))
+    p.GET("/channels/:id/playback/:mediaId", playbackAuthorization(db))
+
     p.POST("/channels/:id/reports", hardenedReportCase(db))
     p.GET("/channels/:id/safety/cases", hardenedListCases(db))
     p.PATCH("/channels/:id/safety/cases/:caseId", hardenedUpdateCase(db))
-    p.POST("/channels/:id/revenue", hardenedRecordRevenue(db))
+    p.POST("/channels/:id/rights", setRights(db))
+    p.GET("/channels/:id/rights", listRights(db))
+
+    p.GET("/channels/:id/monetization", getEligibility(db))
+    p.PUT("/channels/:id/monetization", setEligibility(db))
+    p.GET("/channels/:id/revenue", listRevenue(db))
+    p.POST("/channels/:id/ads", createAd(db))
+    p.GET("/channels/:id/ads", listAds(db))
+    p.GET("/channels/:id/analytics", analytics(db))
+
+    // Revenue ingestion is trusted-service only. Billing/event producers must use
+    // the internal endpoint; authenticated channel users cannot mint revenue.
+    p.POST("/channels/:id/revenue", func(c *gin.Context) {
+        c.JSON(403, gin.H{"message": "revenue events must be ingested by a trusted service"})
+    })
+    p.POST("/internal/channels/:id/revenue", internalRevenueIngest(db))
 }
 
 func hardenedChannelPermission(db *gorm.DB, c *gin.Context, permission string) (Channel, bool) {
@@ -30,9 +50,7 @@ func hardenedChannelPermission(db *gorm.DB, c *gin.Context, permission string) (
         c.JSON(404, gin.H{"message": "channel not found"})
         return ch, false
     }
-    if !hasPermission(db, c, id, permission) {
-        return ch, false
-    }
+    if !hasPermission(db, c, id, permission) { return ch, false }
     return ch, true
 }
 
@@ -108,17 +126,22 @@ func hardenedUpdateCase(db *gorm.DB) gin.HandlerFunc { return func(c *gin.Contex
     c.JSON(200,x)
 } }
 
-func hardenedRecordRevenue(db *gorm.DB) gin.HandlerFunc { return func(c *gin.Context) {
-    ch,ok:=hardenedChannelPermission(db,c,"channel");if !ok{return}
+func internalRevenueIngest(db *gorm.DB) gin.HandlerFunc { return func(c *gin.Context) {
+    expected := strings.TrimSpace(getenv("CHANNEL_INTERNAL_SERVICE_KEY", ""))
+    supplied := strings.TrimSpace(c.GetHeader("X-Channel-Service-Key"))
+    if expected == "" || supplied == "" || supplied != expected { c.JSON(401, gin.H{"message":"trusted service authentication required"}); return }
+    channel := channelID(c)
     var in struct{UserID uint64 `json:"userId"`;EventType string `json:"eventType"`;ReferenceID string `json:"referenceId"`;Currency string `json:"currency"`;GrossCents int64 `json:"grossCents"`}
     if c.ShouldBindJSON(&in)!=nil || strings.TrimSpace(in.EventType)=="" || in.GrossCents<=0 {c.JSON(400,gin.H{"message":"eventType and positive grossCents are required"});return}
     in.ReferenceID=strings.TrimSpace(in.ReferenceID)
-    if in.ReferenceID=="" {c.JSON(400,gin.H{"message":"referenceId is required for idempotent revenue events"});return}
+    if in.ReferenceID=="" {c.JSON(400,gin.H{"message":"referenceId is required"});return}
     var existing RevenueEvent
-    if db.Where("channel_id=? AND reference_id=?",ch.ID,in.ReferenceID).First(&existing).Error==nil {c.JSON(409,gin.H{"message":"revenue reference already exists"});return}
+    err:=db.Where("channel_id=? AND reference_id=?",channel,in.ReferenceID).First(&existing).Error
+    if err==nil {c.JSON(409,gin.H{"message":"revenue reference already exists"});return}
+    if err!=nil && err!=gorm.ErrRecordNotFound {c.JSON(500,gin.H{"message":"failed to check revenue reference"});return}
     currency:=strings.ToUpper(strings.TrimSpace(in.Currency));if currency==""{currency="USD"}
     fee:=in.GrossCents/5
-    x:=RevenueEvent{ChannelID:ch.ID,UserID:in.UserID,EventType:strings.TrimSpace(in.EventType),ReferenceID:in.ReferenceID,GrossCents:in.GrossCents,PlatformFeeCents:fee,CreatorCents:in.GrossCents-fee,Currency:currency,Status:"PENDING"}
+    x:=RevenueEvent{ChannelID:channel,UserID:in.UserID,EventType:strings.TrimSpace(in.EventType),ReferenceID:in.ReferenceID,GrossCents:in.GrossCents,PlatformFeeCents:fee,CreatorCents:in.GrossCents-fee,Currency:currency,Status:"PENDING"}
     if err:=db.Create(&x).Error;err!=nil {c.JSON(500,gin.H{"message":"failed to record revenue event"});return}
     c.JSON(201,x)
 } }
