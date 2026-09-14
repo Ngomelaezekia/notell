@@ -100,6 +100,33 @@ services:
       - key: FRONTEND_URL
         value: https://notell-web.onrender.com
 
+  - type: web
+    name: message
+    runtime: go
+    rootDir: services/message
+    plan: free
+    region: singapore
+    buildCommand: go mod tidy && go build -tags netgo -ldflags '-s -w' -o app
+    startCommand: ./app
+    healthCheckPath: /ready
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: FRONTEND_URL
+        value: https://notell-web.onrender.com
+      - key: LIVEKIT_URL
+        sync: false
+      - key: LIVEKIT_API_KEY
+        sync: false
+      - key: LIVEKIT_API_SECRET
+        sync: false
+
   - type: static
     name: notell-web
     plan: free
@@ -119,9 +146,6 @@ databases:
     databaseName: notelldb
     user: notellusers
 
-# Music and Channel are intentionally independent application services.
-# Channel expects DATABASE_URL so its datastore can be provisioned separately
-# without coupling its schema to the existing Notell database.
+# Channel and Message are intentionally independent application services.
+# Their DATABASE_URL values are supplied by separate external PostgreSQL providers for now.
 # No Docker/Kubernetes configuration is used.
-# Render Free allows only one active Free Postgres database per workspace,
-# so Channel's database is deliberately external/configured separately for now.
