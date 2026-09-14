@@ -28,7 +28,22 @@ const EmptyFeed = ({ category }) => {
 };
 
 const FeedCategories = ({ category, onChange }) => (
-  <nav className="sticky top-0 z-30 border-b border-neutral-900/90 bg-neutral-950/95 px-2 py-2 backdrop-blur-xl sm:px-4" aria-label="Feed categories"><div className="mx-auto flex w-full max-w-2xl gap-1 overflow-x-auto no-scrollbar">{FEED_CATEGORIES.map(({ id, label, icon: Icon }) => { const active = category === id; return <button key={id} type="button" onClick={() => onChange(id)} aria-current={active ? "page" : undefined} className={`inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-xs font-semibold transition active:scale-[0.98] ${active ? "bg-neutral-100 text-neutral-950 shadow-sm" : "text-neutral-500 hover:bg-neutral-900 hover:text-neutral-200"}`}><Icon size={14} /> {label}</button>; })}</div></nav>
+  <nav className="sticky top-[60px] z-30 border-b border-neutral-900/80 bg-neutral-950/85 px-2 py-2.5 backdrop-blur-2xl sm:top-[65px] sm:px-4" aria-label="Feed categories">
+    <div className="mx-auto w-full max-w-2xl overflow-x-auto no-scrollbar">
+      <div className="flex min-w-max items-center gap-1 rounded-2xl border border-neutral-900 bg-neutral-950/70 p-1 shadow-lg shadow-black/10">
+        {FEED_CATEGORIES.map(({ id, label, icon: Icon }) => {
+          const active = category === id;
+          return (
+            <button key={id} type="button" onClick={() => onChange(id)} aria-current={active ? "page" : undefined} className={`group relative inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl px-3.5 text-xs font-semibold transition-all duration-200 active:scale-[0.97] sm:px-4 ${active ? "bg-neutral-100 text-neutral-950 shadow-md shadow-black/20" : "text-neutral-500 hover:bg-neutral-900/80 hover:text-neutral-200"}`}>
+              <Icon size={15} strokeWidth={active ? 2.2 : 1.9} className={`transition-transform duration-200 ${active ? "scale-105" : "group-hover:scale-105"}`} />
+              <span>{label}</span>
+              {active && <span className="absolute inset-x-3 -bottom-px h-px bg-neutral-950/20" />}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  </nav>
 );
 
 const Posts = () => {
