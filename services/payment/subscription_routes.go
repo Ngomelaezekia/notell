@@ -30,6 +30,8 @@ func subscriptionActive(s Subscription) bool {
 }
 
 func registerSubscriptionRoutes(r *gin.Engine, s *Server) {
+	stripeReconciliationOnce.Do(func() { startStripeSubscriptionReconciliation(s) })
+
 	api := r.Group("/v1")
 	api.Use(s.auth)
 	api.GET("/subscriptions", func(c *gin.Context) {
@@ -161,7 +163,6 @@ func applyStripeSubscriptionEvent(s *Server, eventType string, object map[string
 	if status != "" {
 		sub.Status = status
 	}
-	sub.CancelAtPeriodEnd = false
 	if v, ok := object["cancel_at_period_end"].(bool); ok {
 		sub.CancelAtPeriodEnd = v
 	}
