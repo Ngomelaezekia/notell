@@ -1,6 +1,12 @@
 package main
 
+import "sync"
+
+var stripeReconciliationOnce sync.Once
+
 func applyStripeSubscriptionEventAndSync(s *Server, eventType string, object map[string]any) error {
+	stripeReconciliationOnce.Do(func() { startStripeSubscriptionReconciliation(s) })
+
 	if err := applyStripeSubscriptionEvent(s, eventType, object); err != nil {
 		return err
 	}
