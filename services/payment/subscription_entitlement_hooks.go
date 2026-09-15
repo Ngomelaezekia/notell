@@ -1,15 +1,11 @@
 package main
 
-// applyStripeSubscriptionEventAndSync applies Stripe subscription changes and
-// then updates the entitlement boundary consumed by channel/live/message
-// services. Keeping this wrapper separate avoids changing webhook behavior
-// until callers are migrated to the synchronized path.
 func applyStripeSubscriptionEventAndSync(s *Server, eventType string, object map[string]any) error {
 	if err := applyStripeSubscriptionEvent(s, eventType, object); err != nil {
 		return err
 	}
 
-	providerID, _ := object["id"].(string)
+	providerID := stripeSubscriptionIDForEvent(eventType, object)
 	if providerID == "" {
 		return nil
 	}
