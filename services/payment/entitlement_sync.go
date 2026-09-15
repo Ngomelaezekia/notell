@@ -2,39 +2,40 @@ package main
 
 import "time"
 
-// Subscription lifecycle to entitlement state mapping.
-// Channel, live and message services consume entitlement state and never
-// depend directly on payment provider details.
-
-func entitlementStatusForSubscription(status string) string {
- switch status {
- case PaymentSucceeded, "active":
-  return "active"
- case "past_due", PaymentFailed:
-  return "suspended"
- case PaymentCanceled, "canceled", "expired":
-  return "revoked"
- default:
-  return "pending"
- }
+func entitlementStatusForSubscription(status string, periodEnd time.Time) string {
+	now := time.Now().UTC()
+	if !periodEnd.IsZero() && !periodEnd.After(now) {
+		return "revoked"
+	}
+	switch status {
+	case PaymentSucceeded, "active", "trialing", "past_due", "canceled":
+		return "active"
+	case "expired":
+		return "revoked"
+	default:
+		return "pending"
+	}
 }
 
 type EntitlementEvent struct {
- UserID string
- ResourceType string
- ResourceID string
- Status string
- EffectiveAt time.Time
- Reason string
+	UserID       string
+	ResourceType string
+	ResourceID   string
+	Status       string
+	EffectiveAt  time.Time
+	Reason       string
+	EndsAt       *time.Time
 }
 
-func buildEntitlementEvent(userID, resourceType, resourceID, subscriptionStatus string) EntitlementEvent {
- return EntitlementEvent{
-  UserID:userID,
-  ResourceType:resourceType,
-  ResourceID:resourceID,
-  Status:entitlementStatusForSubscription(subscriptionStatus),
-  EffectiveAt:time.Now().UTC(),
-  Reason:"subscription_state_changed",
- }
+func buildEntitlementEvent(userID, resourceType, resourceID, subscriptionStatus string, periodEnd time.Time) EntitlementEvent {
+	status := entitlementStatusForSubscription(subscriptionStatus, periodEnd)
+	var endsAt *time.Time
+	if !periodEnd.IsZero() {
+		end := periodEnd.UTC()
+		endsAt = &end
+	}
+	return EntitlementEvent{
+		UserID: userID, ResourceType: resourceType, ResourceID: resourceID,
+		Status: status, EffectiveAt: time.Now().UTC(), Reason: "subscription_state_changed", EndsAt: endsAt,
+	}
 }
