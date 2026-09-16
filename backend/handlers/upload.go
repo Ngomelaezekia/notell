@@ -136,10 +136,6 @@ func (h *UploadHandler) UploadMedia(c *gin.Context) {
 
 	storedMediaType := contentType
 	filenameExt := ext
-	if contentType == "video/webm" {
-		storedMediaType = "video/mp4"
-		filenameExt = ".mp4"
-	}
 
 	uploadDir := filepath.Join(".", "uploads")
 	if err := os.MkdirAll(uploadDir, 0755); err != nil {
