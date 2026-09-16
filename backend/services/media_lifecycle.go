@@ -23,7 +23,3 @@ func ValidateMediaTransition(from, to string) error {
 	}
 	return fmt.Errorf("invalid media transition %s -> %s", from, to)
 }
-
-func CanGeneratePlayback(state string) bool {
-	return state == "READY"
-}
