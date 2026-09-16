@@ -1,25 +1,23 @@
 package handlers
 
 import (
-	"context"
-	"crypto/rand"
-	"encoding/hex"
-	"encoding/json"
-	"errors"
-	"fmt"
-	"net/http"
-	"strings"
-	"time"
-
-	"notell/config"
-	"notell/models"
-	"notell/services"
-
-	"github.com/gin-gonic/gin"
-	"golang.org/x/crypto/bcrypt"
-	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/google"
-	"gorm.io/gorm"
+ "context"
+ "crypto/rand"
+ "encoding/hex"
+ "encoding/json"
+ "errors"
+ "fmt"
+ "net/http"
+ "strings"
+ "time"
+ "notell/config"
+ "notell/models"
+ "notell/services"
+ "github.com/gin-gonic/gin"
+ "golang.org/x/crypto/bcrypt"
+ "golang.org/x/oauth2"
+ "golang.org/x/oauth2/google"
+ "gorm.io/gorm"
 )
 
 type AuthHandler struct { DB *gorm.DB; Config *config.Config }
@@ -43,4 +41,4 @@ func (h *AuthHandler) updateGoogleUser(user *models.User, googleUser *GoogleUser
 func (h *AuthHandler) findGoogleUser(googleUser *GoogleUser) (*models.User, error) { var user models.User; err := h.DB.Where("google_id = ? OR email = ?", googleUser.ID, strings.ToLower(googleUser.Email)).First(&user).Error; if err != nil { return nil, err }; if err := h.updateGoogleUser(&user, googleUser); err != nil { return nil, err }; return &user, nil }
 func truncateUsername(value string, maxRunes int) string { runes := []rune(value); if len(runes) <= maxRunes { return value }; return string(runes[:maxRunes]) }
 func (h *AuthHandler) createGoogleUser(googleUser *GoogleUser) (*models.User, error) { baseUsername := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(googleUser.Name), " ", "_")); if baseUsername == "" { baseUsername = strings.Split(strings.ToLower(googleUser.Email), "@")[0] }; baseUsername = truncateUsername(baseUsername, 40); if baseUsername == "" { return nil, errors.New("unable to derive Google username") }; profilePicture := googleUser.Picture; for attempt := 0; attempt < 5; attempt++ { username := baseUsername; if attempt > 0 { suffix := fmt.Sprintf("_%d", time.Now().UnixNano()%1000000000); username = truncateUsername(baseUsername, 50-len([]rune(suffix))) + suffix }; user := models.User{Username: username, Email: strings.ToLower(googleUser.Email), GoogleID: &googleUser.ID, ProfilePicture: &profilePicture}; if err := h.DB.Create(&user).Error; err != nil { continue }; return &user, nil }; return nil, fmt.Errorf("failed to create Google user after concurrent uniqueness conflicts") }
-func (h *AuthHandler) GoogleCallback(c *gin.Context) { cookieState, err := c.Cookie("oauth_state"); if err != nil || cookieState == "" || cookieState != c.Query("state") { c.Redirect(307, h.Config.FrontendURL+"/auth?error=invalid_state"); return }; mode, _ := c.Cookie("oauth_mode"); if mode != "signup" { mode = "login" }; h.setSessionCookie(c, "oauth_state", "", -1); h.setSessionCookie(c, "oauth_mode", "", -1); code := c.Query("code"); if code == "" { c.Redirect(307, h.Config.FrontendURL+"/auth?error=no_code"); return }; ctx := c.Request.Context(); oauthToken, err := h.googleOAuthConfig().Exchange(ctx, code); if err != nil { c.Redirect(307, h.Config.FrontendURL+"/auth?error=exchange_failed"); return }; googleUser, err := h.getGoogleUser(ctx, oauthToken); if err != nil { c.Redirect(307, h.Config.FrontendURL+"/auth?error=user_fetch_failed"); return }; existingUser, findErr := h.findGoogleUser(googleUser); if mode == "login" { if findErr != nil { if errors.Is(findErr, gorm.ErrRecordNotFound) { c.Redirect(307, h.Config.FrontendURL+"/auth?error=google_account_not_registered"); return }; c.Redirect(307, h.Config.FrontendURL+"/auth?error=google_login_failed"); return }; if err := h.createSession(c, *existingUser); err != nil { c.Redirect(307, h.Config.FrontendURL+"/auth?error=session_failed"); return }; c.Redirect(307, h.Config.FrontendURL+"/"); return }; if findErr == nil { c.Redirect(307, h.Config.FrontURL+"/auth?error=google_account_already_registered"); return }; if !errors.Is(findErr, gorm.ErrRecordNotFound) { c.Redirect(307, h.Config.FrontendURL+"/auth?error=google_signup_failed"); return }; user, err := h.createGoogleUser(googleUser); if err != nil { c.Redirect(307, h.Config.FrontendURL+"/auth?error=google_signup_failed"); return }; if err := h.createSession(c, *user); err != nil { c.Redirect(307, h.Config.FrontendURL+"/auth?error=session_failed"); return }; c.Redirect(307, h.Config.FrontendURL+"/") }
+func (h *AuthHandler) GoogleCallback(c *gin.Context) { cookieState, err := c.Cookie("oauth_state"); if err != nil || cookieState == "" || cookieState != c.Query("state") { c.Redirect(307, h.Config.FrontendURL+"/auth?error=invalid_state"); return }; mode, _ := c.Cookie("oauth_mode"); if mode != "signup" { mode = "login" }; h.setSessionCookie(c, "oauth_state", "", -1); h.setSessionCookie(c, "oauth_mode", "", -1); code := c.Query("code"); if code == "" { c.Redirect(307, h.Config.FrontendURL+"/auth?error=no_code"); return }; ctx := c.Request.Context(); oauthToken, err := h.googleOAuthConfig().Exchange(ctx, code); if err != nil { c.Redirect(307, h.Config.FrontendURL+"/auth?error=exchange_failed"); return }; googleUser, err := h.getGoogleUser(ctx, oauthToken); if err != nil { c.Redirect(307, h.Config.FrontendURL+"/auth?error=user_fetch_failed"); return }; existingUser, findErr := h.findGoogleUser(googleUser); if mode == "login" { if findErr != nil { if errors.Is(findErr, gorm.ErrRecordNotFound) { c.Redirect(307, h.Config.FrontendURL+"/auth?error=google_account_not_registered"); return }; c.Redirect(307, h.Config.FrontendURL+"/auth?error=google_login_failed"); return }; if err := h.createSession(c, *existingUser); err != nil { c.Redirect(307, h.Config.FrontendURL+"/auth?error=session_failed"); return }; c.Redirect(307, h.Config.FrontendURL+"/"); return }; if findErr == nil { c.Redirect(307, h.Config.FrontendURL+"/auth?error=google_account_already_registered"); return }; if !errors.Is(findErr, gorm.ErrRecordNotFound) { c.Redirect(307, h.Config.FrontendURL+"/auth?error=google_signup_failed"); return }; user, err := h.createGoogleUser(googleUser); if err != nil { c.Redirect(307, h.Config.FrontendURL+"/auth?error=google_signup_failed"); return }; if err := h.createSession(c, *user); err != nil { c.Redirect(307, h.Config.FrontendURL+"/auth?error=session_failed"); return }; c.Redirect(307, h.Config.FrontendURL+"/") }
