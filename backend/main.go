@@ -28,10 +28,6 @@ import (
 const maxJSONBodyBytes int64 = 2 << 20
 const privatePlaybackURLExpiry = 5 * time.Minute
 
-type playbackSigner interface {
-	GeneratePlaybackURL(context.Context, string, time.Duration) (string, error)
-}
-
 func envInt(key string, fallback int) int {
 	value := strings.TrimSpace(os.Getenv(key))
 	if value == "" {
@@ -109,13 +105,7 @@ func serveMedia(storage services.MediaStorage, access func(context.Context, stri
 		}
 
 		if private {
-			signer, ok := storage.(playbackSigner)
-			if !ok {
-				log.Printf("private media playback signer unavailable for %q", key)
-				c.JSON(http.StatusServiceUnavailable, gin.H{"message": "private media playback is unavailable"})
-				return
-			}
-			playbackURL, signErr := signer.GeneratePlaybackURL(c.Request.Context(), key, privatePlaybackURLExpiry)
+			playbackURL, signErr := services.GenerateMediaPlaybackURL(c.Request.Context(), key, privatePlaybackURLExpiry)
 			if signErr != nil {
 				log.Printf("failed generating private media playback URL %q: %v", key, signErr)
 				c.JSON(http.StatusBadGateway, gin.H{"message": "failed generating media playback URL"})
