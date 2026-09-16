@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"log"
-	"strings"
 	"time"
 
 	"notell/models"
@@ -42,8 +41,8 @@ func StartMediaWorker(ctx context.Context, db *gorm.DB) {
 }
 
 // recoverStaleMediaJobs makes the worker self-healing after a process crash or
-// instance restart. If processing already produced ready metadata, the job is
-// safely completed; otherwise an interrupted attempt is returned to the queue.
+// instance restart. Each stale transition updates the job and metadata in one
+// transaction so their lifecycle states cannot diverge.
 func recoverStaleMediaJobs(db *gorm.DB) {
 	cutoff := time.Now().Add(-mediaJobStaleAfter)
 
@@ -59,86 +58,82 @@ func recoverStaleMediaJobs(db *gorm.DB) {
 		}
 		lease := *job.LockedAt
 
-		var metadata models.MediaMetadata
-		metadataErr := db.Where("upload_id = ?", job.UploadID).First(&metadata).Error
-
-		if metadataErr == nil && metadata.Status == "ready" {
-			if err := CompleteMediaJob(db, job.ID, &lease); err != nil {
-				log.Printf("media worker stale-job completion failed job=%d: %v", job.ID, err)
-			}
-			continue
-		}
-
-		if job.Attempts >= MaxMediaAttempts {
-			message := "media processing interrupted after maximum attempts"
-			if metadataErr != nil && !errors.Is(metadataErr, gorm.ErrRecordNotFound) {
-				message = metadataErr.Error()
-			}
-			result := db.Model(&models.MediaJob{}).
-				Where("id = ? AND status = ? AND locked_at = ?", job.ID, "processing", lease).
-				Updates(map[string]any{
-					"status":    "failed",
-					"locked_at": nil,
-					"error":     message,
-				})
-			if result.Error != nil {
-				log.Printf("media worker stale-job failure update failed job=%d: %v", job.ID, result.Error)
-				continue
-			}
-			if result.RowsAffected != 1 {
-				continue
-			}
-			if metadataErr == nil {
-				_ = db.Model(&models.MediaMetadata{}).Where("upload_id = ?", job.UploadID).Updates(map[string]any{
-					"status":           "failed",
-					"processing_error": message,
-				}).Error
-			}
-			continue
-		}
-
-		result := db.Model(&models.MediaJob{}).
-			Where("id = ? AND status = ? AND locked_at = ?", job.ID, "processing", lease).
-			Updates(map[string]any{
-				"status":    "pending",
-				"locked_at": nil,
-			})
-		if result.Error != nil {
-			log.Printf("media worker stale-job requeue failed job=%d: %v", job.ID, result.Error)
-			continue
-		}
-		if result.RowsAffected != 1 {
-			continue
-		}
-		// A stale job that is being retried is still processing from the media
-		// pipeline's perspective. Do not expose a transient retry as terminal
-		// failure in MediaMetadata.
-		if metadataErr == nil {
-			_ = db.Model(&models.MediaMetadata{}).Where("upload_id = ?", job.UploadID).Updates(map[string]any{
-				"status": "processing",
-			}).Error
+		if err := recoverStaleMediaJob(db, job, lease); err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			log.Printf("media worker stale-job recovery failed job=%d: %v", job.ID, err)
 		}
 	}
 }
 
-// synchronizeRetryMetadata keeps the media state machine aligned with the job
-// state. A retryable job must remain processing; only an exhausted job is failed.
-func synchronizeRetryMetadata(db *gorm.DB, jobID, uploadID uint) {
-	var job models.MediaJob
-	if err := db.Select("status, error").First(&job, jobID).Error; err != nil {
-		log.Printf("media worker retry-state lookup failed job=%d: %v", jobID, err)
-		return
-	}
-	if job.Status != "pending" {
-		return
-	}
-	updates := map[string]any{"status": "processing"}
-	if strings.TrimSpace(job.Error) != "" {
-		updates["processing_error"] = job.Error
-	}
-	if err := db.Model(&models.MediaMetadata{}).Where("upload_id = ?", uploadID).Updates(updates).Error; err != nil {
-		log.Printf("media worker retry-state metadata update failed upload=%d: %v", uploadID, err)
-	}
+func recoverStaleMediaJob(db *gorm.DB, job models.MediaJob, lease time.Time) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		var current models.MediaJob
+		if err := tx.Where("id = ? AND status = ? AND locked_at = ?", job.ID, "processing", lease).First(&current).Error; err != nil {
+			return err
+		}
+
+		var metadata models.MediaMetadata
+		metadataErr := tx.Where("upload_id = ?", current.UploadID).First(&metadata).Error
+
+		if metadataErr == nil && metadata.Status == models.MediaStatusReady {
+			result := tx.Model(&models.MediaJob{}).
+				Where("id = ? AND status = ? AND locked_at = ?", current.ID, "processing", lease).
+				Updates(map[string]any{"status": "completed", "locked_at": nil, "error": ""})
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected != 1 {
+				return gorm.ErrRecordNotFound
+			}
+			return nil
+		}
+
+		if metadataErr != nil && !errors.Is(metadataErr, gorm.ErrRecordNotFound) {
+			return metadataErr
+		}
+
+		if current.Attempts >= MaxMediaAttempts {
+			message := "media processing interrupted after maximum attempts"
+			if metadataErr != nil {
+				message = metadataErr.Error()
+			}
+			result := tx.Model(&models.MediaJob{}).
+				Where("id = ? AND status = ? AND locked_at = ?", current.ID, "processing", lease).
+				Updates(map[string]any{"status": "failed", "locked_at": nil, "error": message})
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected != 1 {
+				return gorm.ErrRecordNotFound
+			}
+			if metadataErr == nil {
+				if err := tx.Model(&models.MediaMetadata{}).Where("upload_id = ?", current.UploadID).Updates(map[string]any{
+					"status":           models.MediaStatusFailed,
+					"processing_error": message,
+				}).Error; err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+
+		result := tx.Model(&models.MediaJob{}).
+			Where("id = ? AND status = ? AND locked_at = ?", current.ID, "processing", lease).
+			Updates(map[string]any{"status": "pending", "locked_at": nil})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return gorm.ErrRecordNotFound
+		}
+		if metadataErr == nil {
+			if err := tx.Model(&models.MediaMetadata{}).Where("upload_id = ?", current.UploadID).Updates(map[string]any{
+				"status": models.MediaStatusProcessing,
+			}).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func processNextMediaJob(ctx context.Context, db *gorm.DB, processor *mediaservice.Processor) {
@@ -166,8 +161,6 @@ func processNextMediaJob(ctx context.Context, db *gorm.DB, processor *mediaservi
 		log.Printf("media worker upload lookup failed job=%d: %v", job.ID, err)
 		if failErr := FailMediaJob(db, job.ID, err, &lease); failErr != nil {
 			log.Printf("media worker job failure update failed job=%d: %v", job.ID, failErr)
-		} else {
-			synchronizeRetryMetadata(db, job.ID, job.UploadID)
 		}
 		return
 	}
@@ -177,8 +170,6 @@ func processNextMediaJob(ctx context.Context, db *gorm.DB, processor *mediaservi
 		log.Printf("media worker processing failed job=%d: %v", job.ID, err)
 		if failErr := FailMediaJob(db, job.ID, err, &lease); failErr != nil {
 			log.Printf("media worker job failure update failed job=%d: %v", job.ID, failErr)
-		} else {
-			synchronizeRetryMetadata(db, job.ID, job.UploadID)
 		}
 		return
 	}
