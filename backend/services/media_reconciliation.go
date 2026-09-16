@@ -13,7 +13,12 @@ import (
 // storage reconciler.
 func ReconcileMediaState(db *gorm.DB) {
 	var metadata []models.MediaMetadata
-	if err := db.Where("status IN ?", []string{"uploaded", "pending", "processing"}).Find(&metadata).Error; err != nil {
+	activeStatuses := []string{
+		models.MediaStatusPending,
+		"processing",
+		"uploaded",
+	}
+	if err := db.Where("status IN ?", activeStatuses).Find(&metadata).Error; err != nil {
 		log.Printf("media reconciliation lookup failed: %v", err)
 		return
 	}
@@ -22,6 +27,19 @@ func ReconcileMediaState(db *gorm.DB) {
 		var job models.MediaJob
 		err := db.Where("upload_id = ?", item.UploadID).First(&job).Error
 		if err == nil {
+			if job.Status == "failed" {
+				updates := map[string]any{
+					"status": models.MediaStatusFailed,
+				}
+				if job.Error != "" {
+					updates["processing_error"] = job.Error
+				}
+				if updateErr := db.Model(&models.MediaMetadata{}).
+					Where("upload_id = ?", item.UploadID).
+					Updates(updates).Error; updateErr != nil {
+					log.Printf("media reconciliation failed-job update failed upload=%d: %v", item.UploadID, updateErr)
+				}
+			}
 			continue
 		}
 		if err != gorm.ErrRecordNotFound {
@@ -30,9 +48,9 @@ func ReconcileMediaState(db *gorm.DB) {
 		}
 
 		if err := db.Model(&models.MediaMetadata{}).
-			Where("upload_id = ? AND status IN ?", item.UploadID, []string{"uploaded", "pending", "processing"}).
+			Where("upload_id = ? AND status IN ?", item.UploadID, activeStatuses).
 			Updates(map[string]any{
-				"status":           "failed",
+				"status":           models.MediaStatusFailed,
 				"processing_error": "media processing job is missing",
 			}).Error; err != nil {
 			log.Printf("media reconciliation failure update failed upload=%d: %v", item.UploadID, err)
