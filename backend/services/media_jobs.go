@@ -131,5 +131,17 @@ func FailMediaJob(db *gorm.DB, jobID uint, err error, expectedLockedAt *time.Tim
 	if result.RowsAffected != 1 {
 		return gorm.ErrRecordNotFound
 	}
+
+	metadataUpdates := map[string]any{"status": "processing"}
+	if status == "failed" {
+		metadataUpdates["status"] = "failed"
+	}
+	metadataUpdates["processing_error"] = err.Error()
+	if updateErr := db.Model(&models.MediaMetadata{}).
+		Where("upload_id = ?", job.UploadID).
+		Updates(metadataUpdates).Error; updateErr != nil {
+		return updateErr
+	}
+
 	return nil
 }
