@@ -1,5 +1,7 @@
 import API from "../../utils/api";
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export const postsAPI = {
   getFeed: async (page = 1, limit = 20, category = "all") => {
     const response = await API.get("/posts/feed", {
@@ -26,12 +28,25 @@ export const postsAPI = {
   },
 
   create: async (postData) => {
-    const response = await API.post("/posts", {
+    const payload = {
       contentType: postData.contentType,
       contentUrl: postData.contentUrl,
       caption: postData.caption,
-    });
-    return response.data;
+    };
+    const maxAttempts = 8;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        const response = await API.post("/posts", payload);
+        return response.data;
+      } catch (error) {
+        const status = error?.response?.status;
+        const message = String(error?.response?.data?.message || "").toLowerCase();
+        const mediaPreparing = status === 409 && (message.includes("media") || message.includes("processing") || message.includes("prepared"));
+        if (!mediaPreparing || attempt === maxAttempts) throw error;
+        await sleep(750);
+      }
+    }
+    throw new Error("Failed to create post");
   },
 
   delete: async (id) => {
