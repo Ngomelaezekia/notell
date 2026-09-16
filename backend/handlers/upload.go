@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -48,7 +49,27 @@ func randomFilename(ext string) (string, error) {
 	return hex.EncodeToString(buf) + ext, nil
 }
 
+// cleanupStoredUpload is best-effort at the request boundary, but it never
+// hides a storage deletion failure from the caller. A failed delete leaves the
+// object available for the storage reconciler instead of pretending rollback
+// completed.
+func (h *UploadHandler) cleanupStoredUpload(ctx context.Context, key, filePath string) error {
+	var cleanupErr error
+	if h.Storage != nil {
+		if err := h.Storage.Delete(ctx, key); err != nil {
+			cleanupErr = err
+		}
+	}
+	if err := os.Remove(filePath); err != nil && !errors.Is(err, os.ErrNotExist) && cleanupErr == nil {
+		cleanupErr = err
+	}
+	return cleanupErr
+}
+
 func (h *UploadHandler) cleanupUnclaimedUploads() {
+	if h.DB == nil || h.Storage == nil {
+		return
+	}
 	cutoff := time.Now().Add(-unclaimedUploadRetention)
 	var uploads []models.Upload
 	if err := h.DB.Select("id, path, filename").Where("post_id IS NULL AND created_at < ?", cutoff).Find(&uploads).Error; err != nil {
@@ -61,10 +82,8 @@ func (h *UploadHandler) cleanupUnclaimedUploads() {
 			continue
 		}
 		key := services.MediaObjectKey(claimed.Filename)
-		if h.Storage != nil {
-			if err := h.Storage.Delete(context.Background(), key); err != nil {
-				continue
-			}
+		if err := h.Storage.Delete(context.Background(), key); err != nil {
+			continue
 		}
 		deleteResult := h.DB.Where("id = ? AND post_id IS NULL AND created_at < ?", claimed.ID, cutoff).Delete(&models.Upload{})
 		if deleteResult.Error != nil || deleteResult.RowsAffected != 1 {
@@ -115,10 +134,6 @@ func (h *UploadHandler) UploadMedia(c *gin.Context) {
 		return
 	}
 
-	// Browser-side trimming produces WebM. The current post contract already
-	// accepts video/mp4 and video/quicktime only, so normalize the stored
-	// managed-media reference for trimmed WebM while preserving the real WebM
-	// MIME type when writing the object to storage.
 	storedMediaType := contentType
 	filenameExt := ext
 	if contentType == "video/webm" {
@@ -165,8 +180,14 @@ func (h *UploadHandler) UploadMedia(c *gin.Context) {
 		}
 		return services.CreateMediaJob(tx, upload.ID)
 	}); err != nil {
-		_ = h.Storage.Delete(context.Background(), key)
-		_ = os.Remove(filePath)
+		cleanupErr := h.cleanupStoredUpload(context.Background(), key, filePath)
+		if cleanupErr != nil {
+			// The database transaction is already rolled back. Returning a 500
+			// accurately signals failure; the reconciler will handle any object
+			// whose deletion could not be completed here.
+			c.JSON(http.StatusInternalServerError, gin.H{"message": "failed recording uploaded file; cleanup pending"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed recording uploaded file"})
 		return
 	}
