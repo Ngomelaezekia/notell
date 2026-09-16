@@ -144,3 +144,131 @@ func StartMediaReconciler(ctx context.Context, storage MediaStorage, db *gorm.DB
 		}
 	}()
 }
+
+func CleanupStoredMedia(ctx context.Context, storage MediaStorage, key string) error {
+	if strings.TrimSpace(key) == "" {
+		return errors.New("media object key is required")
+	}
+	if storage == nil {
+		return errors.New("media storage is not configured")
+	}
+	return storage.Delete(ctx, key)
+}
+
+func IsMediaObjectKeySafe(key string) bool {
+	key = strings.TrimSpace(key)
+	return key != "" && filepath.Base(key) == key && key != "." && !strings.ContainsAny(key, `/\\`) 
+}
+
+func MarkMediaJobFailed(db *gorm.DB, job *models.MediaJob, reason string) error {
+	if job == nil || db == nil {
+		return errors.New("media job and database are required")
+	}
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		reason = "media processing failed"
+	}
+	return db.Model(job).Updates(map[string]any{
+		"status":       "failed",
+		"error_message": reason,
+		"finished_at":  time.Now().UTC(),
+	}).Error
+}
+
+func CleanupStaleMediaJobs(db *gorm.DB, now time.Time) error {
+	if db == nil {
+		return errors.New("database is required")
+	}
+	cutoff := now.UTC().Add(-orphanMediaGracePeriod)
+	return db.Model(&models.MediaJob{}).
+		Where("status IN ? AND updated_at < ?", []string{"queued", "processing"}, cutoff).
+		Updates(map[string]any{
+			"status":        "failed",
+			"error_message": "stale media job recovered by reconciliation",
+			"finished_at":   now.UTC(),
+		}).Error
+}
+
+func ReconcileMediaState(db *gorm.DB) {
+	if db == nil {
+		return
+	}
+	_ = CleanupStaleMediaJobs(db, time.Now().UTC())
+}
+
+func ReconcileDatabaseMedia(ctx context.Context, storage MediaStorage, db *gorm.DB) error {
+	if storage == nil || db == nil {
+		return errors.New("media storage and database are required")
+	}
+	var uploads []models.Upload
+	if err := db.Where("created_at < ?", time.Now().UTC().Add(-orphanMediaGracePeriod)).Find(&uploads).Error; err != nil {
+		return err
+	}
+	for i := range uploads {
+		key := MediaObjectKey(uploads[i].Filename)
+		if !IsMediaObjectKeySafe(uploads[i].Filename) {
+			continue
+		}
+		exists, err := storage.Exists(ctx, key)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			_ = db.Delete(&uploads[i]).Error
+		}
+	}
+	return nil
+}
+
+func BeginMediaUpload(ctx context.Context, db *gorm.DB, storage MediaStorage, filename, contentType string, put func(context.Context) error) (*models.Upload, error) {
+	if db == nil || storage == nil || put == nil {
+		return nil, errors.New("database, storage, and upload operation are required")
+	}
+	filename = strings.TrimSpace(filename)
+	if !IsMediaObjectKeySafe(filename) {
+		return nil, errors.New("invalid media filename")
+	}
+	if err := put(ctx); err != nil {
+		return nil, fmt.Errorf("store media: %w", err)
+	}
+	upload := &models.Upload{Filename: filename, ContentType: contentType}
+	if err := db.Create(upload).Error; err != nil {
+		cleanupErr := CleanupStoredMedia(ctx, storage, MediaObjectKey(filename))
+		if cleanupErr != nil {
+			return nil, fmt.Errorf("create upload record: %w; cleanup stored media: %v", err, cleanupErr)
+		}
+		return nil, fmt.Errorf("create upload record: %w", err)
+	}
+	return upload, nil
+}
+
+func CommitUploadRecord(db *gorm.DB, upload *models.Upload) error {
+	if db == nil || upload == nil {
+		return errors.New("database and upload are required")
+	}
+	return db.Save(upload).Error
+}
+
+func RollbackUpload(ctx context.Context, db *gorm.DB, storage MediaStorage, upload *models.Upload) error {
+	if upload == nil {
+		return errors.New("upload is required")
+	}
+	var errs []string
+	if db != nil && upload.ID != 0 {
+		if err := db.Delete(upload).Error; err != nil {
+			errs = append(errs, "delete upload record: "+err.Error())
+		}
+	}
+	if storage != nil && IsMediaObjectKeySafe(upload.Filename) {
+		if err := CleanupStoredMedia(ctx, storage, MediaObjectKey(upload.Filename)); err != nil {
+			errs = append(errs, "delete stored media: "+err.Error())
+		}
+	}
+	if len(errs) > 0 {
+		return errors.New(strings.Join(errs, "; "))
+	}
+	return nil
+}
+
+var _ = strconv.IntSize
+var _ = os.ErrNotExist
