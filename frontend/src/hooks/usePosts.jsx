@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { postsAPI } from "../services/post/postsApi";
 import { getApiErrorMessage } from "../utils/api";
 
-const FEED_CACHE_PREFIX = "notell:feed:";
+const FEED_CACHE_PREFIX = "notell:feed:v2:";
 const FEED_CACHE_TTL = 5 * 60 * 1000;
 
 const readFeedCache = (category) => {
