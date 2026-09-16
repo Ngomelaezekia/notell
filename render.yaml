@@ -51,7 +51,6 @@ services:
         sync: false
       - key: B2_REGION
         sync: false
-
   - type: web
     name: music
     runtime: go
@@ -74,7 +73,6 @@ services:
         value: TZ
       - key: MUSIC_MAX_SEGMENT_SECONDS
         value: "60"
-
   - type: web
     name: channel
     runtime: go
@@ -97,7 +95,6 @@ services:
         sync: false
       - key: FRONTEND_URL
         value: https://notell-web.onrender.com
-
   - type: web
     name: message
     runtime: go
@@ -124,7 +121,6 @@ services:
         sync: false
       - key: LIVEKIT_API_SECRET
         sync: false
-
   - type: web
     name: live
     runtime: go
@@ -140,9 +136,7 @@ services:
       - key: PORT
         value: 10000
       - key: DATABASE_URL
-        fromDatabase:
-          name: notell-live-db
-          property: connectionString
+        fromDatabase: {name: notell-live-db, property: connectionString}
       - key: JWT_SECRET
         sync: false
       - key: FRONTEND_URL
@@ -161,7 +155,6 @@ services:
         sync: false
       - key: LIVEKIT_API_SECRET
         sync: false
-
   - type: web
     name: payment
     runtime: go
@@ -192,7 +185,6 @@ services:
         sync: false
       - key: SUBSCRIPTION_CANCEL_URL
         sync: false
-
   - type: static
     name: notell-web
     plan: free
@@ -207,6 +199,10 @@ services:
         value: https://music.onrender.com
       - key: VITE_MUSIC_COUNTRY
         value: TZ
+      - key: VITE_CHANNEL_SERVICE_URL
+        value: https://channel.onrender.com
+      - key: VITE_MESSAGE_SERVICE_URL
+        value: https://message.onrender.com
 
 databases:
   - name: notels05
