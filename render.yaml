@@ -35,6 +35,8 @@ services:
         value: https://notell-web.onrender.com
       - key: SERVER_URL
         value: https://notell.onrender.com
+      - key: MUSIC_SERVICE_URL
+        value: https://music.onrender.com
       - key: MEDIA_PUBLIC_URL
         sync: false
       - key: STORAGE_DRIVER
@@ -66,6 +68,12 @@ services:
         value: 10000
       - key: FRONTEND_URL
         value: https://notell-web.onrender.com
+      - key: MUSIC_PROVIDER
+        value: internal
+      - key: MUSIC_COUNTRY
+        value: TZ
+      - key: MUSIC_MAX_SEGMENT_SECONDS
+        value: "60"
 
   - type: web
     name: channel
@@ -195,6 +203,10 @@ services:
         value: https://notell.onrender.com
       - key: VITE_API_URL
         value: https://notell.onrender.com/api
+      - key: VITE_MUSIC_SERVICE_URL
+        value: https://music.onrender.com
+      - key: VITE_MUSIC_COUNTRY
+        value: TZ
 
 databases:
   - name: notels05

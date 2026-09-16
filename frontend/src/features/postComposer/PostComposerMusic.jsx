@@ -1,0 +1,123 @@
+import { useEffect, useRef, useState } from "react";
+import { ArrowLeft, Check, Image as ImageIcon, Loader2, Pencil, Plus, Sparkles, Video, X } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { usePostActions } from "../../hooks/usePosts";
+import { postsAPI } from "../../services/post/postsApi";
+import { uploadAPI } from "../../services/post/UploadApi";
+import MusicPicker from "./MusicPicker";
+
+const MAX_FILE_SIZE = 100 * 1024 * 1024;
+const ACCEPTED_MEDIA = "image/jpeg,image/png,image/webp,video/mp4,video/quicktime";
+const MAX_CAPTION_LENGTH = 2000;
+
+const fileKind = (file) => file?.type?.startsWith("video/") ? "video" : "image";
+const pressable = "transition-[transform,background-color,opacity] duration-150 ease-out active:scale-[0.97] disabled:opacity-50";
+
+export const PostComposerMusic = () => {
+  const navigate = useNavigate();
+  const inputRef = useRef(null);
+  const { createPost, loading, error } = usePostActions();
+  const [step, setStep] = useState("select");
+  const [file, setFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [kind, setKind] = useState(null);
+  const [caption, setCaption] = useState("");
+  const [music, setMusic] = useState(null);
+  const [localError, setLocalError] = useState("");
+  const [publishing, setPublishing] = useState(false);
+  const [accept, setAccept] = useState(ACCEPTED_MEDIA);
+
+  useEffect(() => () => { if (previewUrl?.startsWith("blob:")) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
+
+  const chooseFile = (nextFile) => {
+    if (!nextFile?.type?.startsWith("image/") && !nextFile?.type?.startsWith("video/")) { setLocalError("Choose an image or video file."); return; }
+    if (nextFile.size > MAX_FILE_SIZE) { setLocalError("File size must be below 100MB."); return; }
+    const nextUrl = URL.createObjectURL(nextFile);
+    setPreviewUrl((current) => { if (current?.startsWith("blob:")) URL.revokeObjectURL(current); return nextUrl; });
+    setFile(nextFile); setKind(fileKind(nextFile)); setMusic(null); setCaption(""); setLocalError(""); setStep("preview");
+  };
+
+  const reset = () => {
+    setPreviewUrl((current) => { if (current?.startsWith("blob:")) URL.revokeObjectURL(current); return ""; });
+    setFile(null); setKind(null); setMusic(null); setCaption(""); setLocalError(""); setStep("select");
+  };
+
+  const publish = async () => {
+    if (!file || publishing || loading) return;
+    setPublishing(true); setLocalError("");
+    let postId = null;
+    try {
+      const uploaded = await uploadAPI.uploadMedia(file);
+      if (!uploaded?.url) throw new Error("Media upload failed.");
+      const mediaUrl = uploaded.url.startsWith("http") ? uploaded.url : `${import.meta.env.VITE_SERVER_URL ?? "http://localhost:8080"}${uploaded.url}`;
+      const created = await createPost({ contentType: kind, contentUrl: mediaUrl, caption: caption.trim() });
+      postId = created?.data?.postId ?? created?.postId ?? null;
+      if (!postId) throw new Error("Post was created without an ID.");
+
+      if (music?.source === "local") {
+        const audio = await uploadAPI.uploadMedia(music.file);
+        if (!audio?.uploadId) throw new Error("Audio upload failed.");
+        await postsAPI.setMusic(postId, { source: "local", uploadId: audio.uploadId, startSec: music.startSec ?? 0, endSec: music.endSec ?? 0, volume: 1 });
+      } else if (music?.source === "cloud") {
+        await postsAPI.setMusic(postId, { source: "cloud", trackId: music.id, provider: music.provider, startSec: music.startSec, endSec: music.endSec, volume: 1 });
+      }
+      navigate("/");
+    } catch (publishError) {
+      setLocalError(postId ? "Your post was created, but its music could not be attached. You can add music later." : (publishError.message || "Failed to publish post."));
+    } finally { setPublishing(false); }
+  };
+
+  const displayError = localError || error;
+
+  if (step === "preview") return (
+    <main className="min-h-[calc(100vh-64px)] bg-slate-50/80 pb-10">
+      <section className="mx-auto w-full max-w-[760px] px-3 sm:px-5">
+        <header className="sticky top-0 z-20 -mx-3 flex h-16 items-center justify-between border-b border-slate-200/80 bg-white/90 px-4 backdrop-blur-xl sm:-mx-5 sm:px-6">
+          <button type="button" onClick={() => setStep("select")} disabled={publishing || loading} className={`flex h-10 items-center gap-1 rounded-full px-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 ${pressable}`}><ArrowLeft size={19} /> Change</button>
+          <div className="text-center"><h1 className="text-[17px] font-bold text-slate-950">Create post</h1><p className="hidden text-[11px] text-slate-400 sm:block">Add a sound before you share</p></div>
+          <button type="button" onClick={publish} disabled={publishing || loading} className={`flex h-9 items-center gap-1.5 rounded-full bg-blue-600 px-4 text-[14px] font-bold text-white shadow-sm hover:bg-blue-700 ${pressable}`}>{publishing || loading ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}{publishing ? "Sharing" : loading ? "Posting" : "Share"}</button>
+        </header>
+        {displayError && <div role="alert" className="mx-1 mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{displayError}</div>}
+        <div className="mt-4 overflow-hidden rounded-[28px] bg-neutral-950 shadow-xl">
+          <div className="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-black">
+            {kind === "video" ? <video src={previewUrl} controls playsInline className="h-full w-full object-contain" /> : <img src={previewUrl} alt="Post preview" className="h-full w-full object-contain" />}
+            <button type="button" onClick={reset} disabled={publishing || loading} className={`absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-black/65 text-white backdrop-blur ${pressable}`} aria-label="Remove media"><X size={18} /></button>
+            <span className="absolute bottom-4 left-4 flex items-center gap-1.5 rounded-full bg-black/60 px-3 py-2 text-[11px] font-bold text-white backdrop-blur">{kind === "video" ? <Video size={13} /> : <ImageIcon size={13} />}{kind === "video" ? "Video" : "Photo"}</span>
+          </div>
+          <div className="border-t border-white/10 bg-neutral-950 p-4">
+            <label htmlFor="post-caption" className="text-xs font-bold text-white/55">Caption</label>
+            <textarea id="post-caption" value={caption} onChange={(event) => setCaption(event.target.value)} maxLength={MAX_CAPTION_LENGTH} rows={3} placeholder="Tell your community what this moment is about..." className="mt-2 w-full resize-none bg-transparent text-sm leading-6 text-white outline-none placeholder:text-white/30" />
+            <div className="mb-4 text-right text-[10px] text-white/30">{caption.length}/{MAX_CAPTION_LENGTH}</div>
+            <MusicPicker value={music} onChange={setMusic} disabled={publishing || loading} />
+            <p className="mt-3 text-center text-[10px] leading-5 text-white/30">Notell music is selected from our cleared/licensed catalog. Device audio remains supported for your own content.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+
+  return (
+    <main className="min-h-[calc(100vh-64px)] bg-slate-50/80 pb-10">
+      <section className="mx-auto w-full max-w-[760px] px-3 sm:px-5">
+        <header className="sticky top-0 z-20 -mx-3 flex h-16 items-center justify-between border-b border-slate-200/80 bg-white/90 px-4 backdrop-blur-xl sm:-mx-5 sm:px-6">
+          <button type="button" onClick={() => navigate(-1)} className={`flex h-10 w-10 items-center justify-start rounded-full text-slate-900 hover:bg-slate-100 ${pressable}`} aria-label="Go back"><ArrowLeft size={21} /></button>
+          <div className="text-center"><h1 className="text-[17px] font-bold tracking-tight text-slate-950">Create post</h1><p className="hidden text-[11px] text-slate-400 sm:block">Choose media to get started</p></div><span className="w-10" />
+        </header>
+        {displayError && <div role="alert" className="mx-1 mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{displayError}</div>}
+        <input ref={inputRef} type="file" accept={accept} onChange={(event) => { chooseFile(event.target.files?.[0]); event.target.value = ""; }} className="hidden" />
+        <div className="relative mt-4 flex min-h-[500px] w-full flex-col items-center justify-center overflow-hidden rounded-[30px] border border-slate-200 bg-white px-6 text-center shadow-sm">
+          <div className="absolute left-5 top-5 flex items-center gap-2 rounded-full border border-slate-200 bg-white/90 px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm"><Sparkles size={14} className="text-blue-600" /> Media studio</div>
+          <div className="flex h-20 w-20 items-center justify-center rounded-[24px] bg-blue-50 text-blue-600 ring-8 ring-blue-50/60"><Plus size={38} strokeWidth={1.8} /></div>
+          <h2 className="mt-7 text-[21px] font-bold tracking-tight text-slate-950">Pick a photo or video</h2>
+          <p className="mt-2 max-w-sm text-sm leading-5 text-slate-500">After choosing your media, add a licensed Notell sound, choose the exact clip, or use audio from your device.</p>
+          <button type="button" onClick={() => { setAccept(ACCEPTED_MEDIA); inputRef.current?.click(); }} className={`mt-6 rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white shadow-sm hover:bg-slate-800 ${pressable}`}>Browse device</button>
+          <div className="mt-5 flex flex-wrap justify-center gap-2 text-[11px] font-medium text-slate-400"><span>JPG</span><span>•</span><span>PNG</span><span>•</span><span>WEBP</span><span>•</span><span>MP4</span><span>•</span><span>MOV</span><span>•</span><span>Up to 100MB</span></div>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <button type="button" onClick={() => { setAccept("image/*"); inputRef.current?.click(); }} className={`flex h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white text-sm font-bold text-slate-800 shadow-sm hover:bg-slate-50 ${pressable}`}><ImageIcon size={18} className="text-blue-600" /> Photo</button>
+          <button type="button" onClick={() => { setAccept("video/*"); inputRef.current?.click(); }} className={`flex h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white text-sm font-bold text-slate-800 shadow-sm hover:bg-slate-50 ${pressable}`}><Video size={18} className="text-blue-600" /> Video</button>
+        </div>
+      </section>
+    </main>
+  );
+};

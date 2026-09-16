@@ -1,3 +1,3 @@
-import { PostComposer } from "../features/postComposer/PostComposer";
+import { PostComposerMusic } from "../features/postComposer/PostComposerMusic";
 
-export const CreatePost = () => <PostComposer />;
+export const CreatePost = () => <PostComposerMusic />;
