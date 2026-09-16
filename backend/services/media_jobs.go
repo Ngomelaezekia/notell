@@ -99,7 +99,7 @@ func CompleteMediaJob(db *gorm.DB, jobID uint, expectedLockedAt *time.Time) erro
 }
 
 // FailMediaJob fails or requeues only the specific processing lease supplied
-// by the worker. This prevents a stale worker from overwriting a newer retry.
+// by the worker. The job and metadata transitions are committed atomically.
 func FailMediaJob(db *gorm.DB, jobID uint, err error, expectedLockedAt *time.Time) error {
 	if err == nil {
 		err = errors.New("unknown media processing failure")
@@ -108,40 +108,44 @@ func FailMediaJob(db *gorm.DB, jobID uint, err error, expectedLockedAt *time.Tim
 		return errors.New("media job lease is missing")
 	}
 
-	var job models.MediaJob
-	if findErr := db.Where("id = ? AND status = ? AND locked_at = ?", jobID, "processing", *expectedLockedAt).First(&job).Error; findErr != nil {
-		return findErr
-	}
+	return db.Transaction(func(tx *gorm.DB) error {
+		var job models.MediaJob
+		if findErr := tx.Where("id = ? AND status = ? AND locked_at = ?", jobID, "processing", *expectedLockedAt).First(&job).Error; findErr != nil {
+			return findErr
+		}
 
-	status := "pending"
-	if job.Attempts >= MaxMediaAttempts {
-		status = "failed"
-	}
+		status := "pending"
+		if job.Attempts >= MaxMediaAttempts {
+			status = "failed"
+		}
 
-	result := db.Model(&models.MediaJob{}).
-		Where("id = ? AND status = ? AND locked_at = ?", jobID, "processing", *expectedLockedAt).
-		Updates(map[string]any{
-			"status":    status,
-			"locked_at": nil,
-			"error":     err.Error(),
-		})
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected != 1 {
-		return gorm.ErrRecordNotFound
-	}
+		result := tx.Model(&models.MediaJob{}).
+			Where("id = ? AND status = ? AND locked_at = ?", jobID, "processing", *expectedLockedAt).
+			Updates(map[string]any{
+				"status":    status,
+				"locked_at": nil,
+				"error":     err.Error(),
+			})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return gorm.ErrRecordNotFound
+		}
 
-	metadataUpdates := map[string]any{"status": "processing"}
-	if status == "failed" {
-		metadataUpdates["status"] = "failed"
-	}
-	metadataUpdates["processing_error"] = err.Error()
-	if updateErr := db.Model(&models.MediaMetadata{}).
-		Where("upload_id = ?", job.UploadID).
-		Updates(metadataUpdates).Error; updateErr != nil {
-		return updateErr
-	}
+		metadataStatus := "processing"
+		if status == "failed" {
+			metadataStatus = models.MediaStatusFailed
+		}
+		if updateErr := tx.Model(&models.MediaMetadata{}).
+			Where("upload_id = ?", job.UploadID).
+			Updates(map[string]any{
+				"status":           metadataStatus,
+				"processing_error": err.Error(),
+			}).Error; updateErr != nil {
+			return updateErr
+		}
 
-	return nil
+		return nil
+	})
 }
