@@ -93,6 +93,10 @@ services:
         sync: false
       - key: CHANNEL_INTERNAL_SERVICE_KEY
         sync: false
+      - key: PAYMENT_SERVICE_URL
+        value: https://payment.onrender.com
+      - key: INTERNAL_SERVICE_KEY
+        sync: false
       - key: FRONTEND_URL
         value: https://notell-web.onrender.com
   - type: web
@@ -142,7 +146,7 @@ services:
       - key: FRONTEND_URL
         value: https://notell-web.onrender.com
       - key: PAYMENT_SERVICE_URL
-        sync: false
+        value: https://payment.onrender.com
       - key: INTERNAL_SERVICE_KEY
         sync: false
       - key: CHANNEL_SERVICE_URL
@@ -203,6 +207,8 @@ services:
         value: https://channel.onrender.com
       - key: VITE_MESSAGE_SERVICE_URL
         value: https://message.onrender.com
+      - key: VITE_LIVE_SERVICE_URL
+        value: https://live.onrender.com
 
 databases:
   - name: notels05
