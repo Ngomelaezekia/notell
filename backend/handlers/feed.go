@@ -32,19 +32,11 @@ func (h *PostHandler) GetCategorizedFeed(c *gin.Context) {
 	if page < 1 { page = 1 }
 	if limit < 1 || limit > 50 { limit = 20 }
 
+	// The default home feed is global: it starts from the posts table rather than
+	// restricting candidates to the current user's posts or accepted relationships.
+	// Visibility remains enforced so private posts are never exposed to other users.
 	query := h.DB.Model(&models.Post{}).Select(postEngagementSelect, userID)
-	// Private posts are visible only to their owner until the future
-	// subscription/channel authorization service is introduced.
 	query = query.Where("(COALESCE(posts.visibility, 'public') = ? OR posts.user_id = ?)", "public", userID)
-	// A post is publishable only while its durable media record is ready. The
-	// reconciler marks metadata failed when the physical object disappears.
-	query = query.Where(`EXISTS (
-		SELECT 1
-		FROM uploads feed_uploads
-		JOIN media_metadata feed_media ON feed_media.upload_id = feed_uploads.id
-		WHERE feed_uploads.post_id = posts.id
-		  AND LOWER(COALESCE(feed_media.status, '')) = 'ready'
-	)`)
 
 	switch category {
 	case "following":
@@ -70,7 +62,7 @@ func (h *PostHandler) GetCategorizedFeed(c *gin.Context) {
 	case "popular":
 		query = query.Joins("JOIN users feed_users ON feed_users.id = posts.user_id").Order(gorm.Expr(`((COALESCE((SELECT COUNT(*) FROM likes l WHERE l.post_id = posts.id), 0) * 3) + (COALESCE((SELECT COUNT(*) FROM comments cm WHERE cm.post_id = posts.id), 0) * 2) + (COALESCE(posts.view_count, 0) * 4) + (COALESCE((SELECT COUNT(*) FROM user_relationships r WHERE r.following_id = posts.user_id AND r.status = 'accepted'), 0) * 0.5)) / POWER((EXTRACT(EPOCH FROM (NOW() - posts.created_at)) / 3600.0) + 2, 0.5) DESC`))
 	case "all":
-		query = query.Joins("JOIN users feed_users ON feed_users.id = posts.user_id").Order(gorm.Expr(`((COALESCE((SELECT COUNT(*) FROM likes l WHERE l.post_id = posts.id), 0) * 3) + (COALESCE((SELECT COUNT(*) FROM comments cm WHERE cm.post_id = posts.id), 0) * 2) + (COALESCE(posts.view_count, 0) * 4) + (COALESCE((SELECT COUNT(*) FROM user_relationships r WHERE r.following_id = posts.user_id AND r.status = 'accepted'), 0) * 0.5) + CASE WHEN posts.user_id = ? THEN 4 ELSE 0 END) / POWER((EXTRACT(EPOCH FROM (NOW() - posts.created_at)) / 3600.0) + 2, 0.45) DESC`, userID))
+		query = query.Joins("JOIN users feed_users ON feed_users.id = posts.user_id").Order(gorm.Expr(`((COALESCE((SELECT COUNT(*) FROM likes l WHERE l.post_id = posts.id), 0) * 3) + (COALESCE((SELECT COUNT(*) FROM comments cm WHERE cm.post_id = posts.id), 0) * 2) + (COALESCE(posts.view_count, 0) * 4)) / POWER((EXTRACT(EPOCH FROM (NOW() - posts.created_at)) / 3600.0) + 2, 0.45) DESC`, userID))
 	}
 
 	var total int64
