@@ -1,0 +1,48 @@
+name: P0 WebM publication patch
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch WebM publication validation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('backend/handlers/post.go')
+          s = p.read_text()
+          old = 'upload.MediaType == "video/mp4" || upload.MediaType == "video/quicktime"'
+          new = old + ' || upload.MediaType == "video/webm"'
+          if old not in s:
+              raise SystemExit('expected video media-type validation not found')
+          s = s.replace(old, new, 1)
+          old_ref = 'if ext != ".mp4" && ext != ".mov" {'
+          new_ref = 'if ext != ".mp4" && ext != ".mov" && ext != ".webm" {'
+          if old_ref not in s:
+              raise SystemExit('expected video filename validation not found')
+          s = s.replace(old_ref, new_ref, 2)
+          p.write_text(s)
+          PY
+          git diff --check
+          git diff -- backend/handlers/post.go
+      - name: Commit patch
+        shell: bash
+        run: |
+          if git diff --quiet -- backend/handlers/post.go; then
+            echo 'No WebM publication changes required'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backend/handlers/post.go
+          git commit -m 'backend: allow WebM media publication'
+          git push
