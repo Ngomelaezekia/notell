@@ -22,8 +22,8 @@ func CreateMediaJob(db *gorm.DB, uploadID uint) error {
 	return db.Create(&job).Error
 }
 
-// ClaimPendingMediaJob atomically claims one pending job for processing.
-// The row lock prevents multiple workers from claiming the same job.
+// ClaimPendingMediaJob atomically claims one pending job for processing and
+// moves its metadata to processing in the same transaction.
 func ClaimPendingMediaJob(db *gorm.DB) (*models.MediaJob, error) {
 	var job models.MediaJob
 
@@ -62,6 +62,19 @@ func ClaimPendingMediaJob(db *gorm.DB) (*models.MediaJob, error) {
 			return result.Error
 		}
 		if result.RowsAffected != 1 {
+			return gorm.ErrRecordNotFound
+		}
+
+		metadataResult := tx.Model(&models.MediaMetadata{}).
+			Where("upload_id = ? AND status IN ?", job.UploadID, []string{"uploaded", models.MediaStatusPending}).
+			Updates(map[string]any{
+				"status":           models.MediaStatusProcessing,
+				"processing_error": "",
+			})
+		if metadataResult.Error != nil {
+			return metadataResult.Error
+		}
+		if metadataResult.RowsAffected != 1 {
 			return gorm.ErrRecordNotFound
 		}
 
