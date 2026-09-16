@@ -5,7 +5,6 @@ import (
  "encoding/hex"
  "errors"
  "log"
- "net/http"
  "os"
  "strconv"
  "strings"
