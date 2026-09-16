@@ -12,128 +12,15 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-type RelationshipHandler struct {
-	DB *gorm.DB
-}
-
-func NewRelationshipHandler(db *gorm.DB) *RelationshipHandler {
-	return &RelationshipHandler{DB: db}
-}
-
+type RelationshipHandler struct { DB *gorm.DB }
+func NewRelationshipHandler(db *gorm.DB) *RelationshipHandler { return &RelationshipHandler{DB: db} }
 const relationshipStatus = "accepted"
-
-func parsePageLimit(c *gin.Context, defaultLimit int) (int, int) {
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", strconv.Itoa(defaultLimit)))
-	if page < 1 { page = 1 }
-	if limit < 1 { limit = defaultLimit }
-	if limit > 50 { limit = 50 }
-	return page, limit
-}
-
-func (h *RelationshipHandler) FollowUser(c *gin.Context) {
-	followerID := c.MustGet("userId").(uint)
-	targetID, err := strconv.ParseUint(c.Param("id"), 10, 32)
-	if err != nil { c.JSON(http.StatusBadRequest, gin.H{"message":"invalid user ID"}); return }
-	followingID := uint(targetID)
-	if followerID == followingID { c.JSON(http.StatusBadRequest, gin.H{"message":"you cannot follow yourself"}); return }
-
-	var targetUser models.User
-	if err := h.DB.Select("id", "allow_followers").First(&targetUser, followingID).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) { c.JSON(http.StatusNotFound, gin.H{"message":"user not found"}); return }
-		c.JSON(http.StatusInternalServerError, gin.H{"message":"failed to find user"}); return
-	}
-	if !targetUser.AllowFollowers { c.JSON(http.StatusForbidden, gin.H{"message":"this user does not allow followers"}); return }
-
-	relationship := models.Relationship{FollowerID:followerID, FollowingID:followingID, Status:relationshipStatus}
-	result := h.DB.Clauses(clause.OnConflict{Columns: []clause.Column{{Name:"follower_id"},{Name:"following_id"}}, DoNothing:true}).Create(&relationship)
-	if result.Error != nil { c.JSON(http.StatusInternalServerError, gin.H{"message":"failed to follow user"}); return }
-	if result.RowsAffected == 0 { c.JSON(http.StatusConflict, gin.H{"message":"already following this user"}); return }
-	_ = CreateNotification(h.DB, followingID, followerID, "follow", nil, nil)
-
-	var followerCount int64
-	if err := h.DB.Model(&models.Relationship{}).Where("following_id = ? AND status = ?", followingID, relationshipStatus).Count(&followerCount).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"message":"failed to count followers"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"message":"successfully followed user", "data":gin.H{"following":true,"status":relationshipStatus,"followerCount":followerCount}})
-}
-
-func (h *RelationshipHandler) UnfollowUser(c *gin.Context) {
-	followerID := c.MustGet("userId").(uint)
-	targetID, err := strconv.ParseUint(c.Param("id"), 10, 32)
-	if err != nil { c.JSON(http.StatusBadRequest, gin.H{"message":"invalid user ID"}); return }
-	followingID := uint(targetID)
-	result := h.DB.Where("follower_id = ? AND following_id = ?", followerID, followingID).Delete(&models.Relationship{})
-	if result.Error != nil { c.JSON(http.StatusInternalServerError, gin.H{"message":"failed to unfollow user"}); return }
-	if result.RowsAffected == 0 { c.JSON(http.StatusNotFound, gin.H{"message":"not following this user"}); return }
-
-	var followerCount int64
-	if err := h.DB.Model(&models.Relationship{}).Where("following_id = ? AND status = ?", followingID, relationshipStatus).Count(&followerCount).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"message":"failed to count followers"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"message":"successfully unfollowed user", "data":gin.H{"following":false,"followerCount":followerCount}})
-}
-
-func (h *RelationshipHandler) GetRelationshipStatus(c *gin.Context) {
-	viewerID := c.MustGet("userId").(uint)
-	targetID, err := strconv.ParseUint(c.Param("id"), 10, 32)
-	if err != nil { c.JSON(http.StatusBadRequest, gin.H{"message":"invalid user ID"}); return }
-	id := uint(targetID)
-
-	var target models.User
-	if err := h.DB.Select("id", "allow_followers").First(&target, id).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) { c.JSON(http.StatusNotFound, gin.H{"message":"user not found"}); return }
-		c.JSON(http.StatusInternalServerError, gin.H{"message":"failed to find user"}); return
-	}
-
-	var followingCount, followerCount int64
-	if err := h.DB.Model(&models.Relationship{}).Where("following_id = ? AND status = ?", id, relationshipStatus).Count(&followerCount).Error; err != nil { c.JSON(http.StatusInternalServerError, gin.H{"message":"failed to count followers"}); return }
-	if err := h.DB.Model(&models.Relationship{}).Where("follower_id = ? AND status = ?", id, relationshipStatus).Count(&followingCount).Error; err != nil { c.JSON(http.StatusInternalServerError, gin.H{"message":"failed to count following"}); return }
-
-	following, follower := false, false
-	if viewerID != id {
-		var outgoing models.Relationship
-		err := h.DB.Where("follower_id = ? AND following_id = ? AND status = ?", viewerID, id, relationshipStatus).First(&outgoing).Error
-		if err == nil { following = true } else if !errors.Is(err, gorm.ErrRecordNotFound) { c.JSON(http.StatusInternalServerError, gin.H{"message":"failed to load relationship"}); return }
-
-		var incoming models.Relationship
-		err = h.DB.Where("follower_id = ? AND following_id = ? AND status = ?", id, viewerID, relationshipStatus).First(&incoming).Error
-		if err == nil { follower = true } else if !errors.Is(err, gorm.ErrRecordNotFound) { c.JSON(http.StatusInternalServerError, gin.H{"message":"failed to load relationship"}); return }
-	}
-
-	c.JSON(http.StatusOK, gin.H{"data":gin.H{"following":following,"follower":follower,"followerCount":followerCount,"followingCount":followingCount,"allowFollowers":target.AllowFollowers,"isSelf":viewerID == id}})
-}
-
-func (h *RelationshipHandler) listUsers(c *gin.Context, following bool) {
-	userID, err := strconv.ParseUint(c.Param("id"), 10, 32)
-	if err != nil { c.JSON(http.StatusBadRequest, gin.H{"message":"invalid user ID"}); return }
-	page, limit := parsePageLimit(c, 20)
-	offset := (page-1)*limit
-	base := h.DB.Table("users").Select("users.id, users.username, users.profile_picture, users.bio, users.country, users.city, users.status").Joins("JOIN user_relationships ON user_relationships." + map[bool]string{true:"following_id",false:"follower_id"}[following] + " = users.id").Where("user_relationships." + map[bool]string{true:"follower_id",false:"following_id"}[following] + " = ? AND user_relationships.status = ?", uint(userID), relationshipStatus)
-	var total int64
-	if err := base.Count(&total).Error; err != nil { c.JSON(http.StatusInternalServerError, gin.H{"message":"failed to count relationships"}); return }
-	var users []models.User
-	if err := base.Order("users.username ASC").Order("users.id ASC").Offset(offset).Limit(limit).Scan(&users).Error; err != nil { c.JSON(http.StatusInternalServerError, gin.H{"message":"failed to fetch relationships"}); return }
-	c.JSON(http.StatusOK, gin.H{"data":users,"pagination":gin.H{"page":page,"limit":limit,"total":total,"hasMore":int64(page*limit)<total}})
-}
-
-func (h *RelationshipHandler) GetFollowers(c *gin.Context) { h.listUsers(c, true) }
-func (h *RelationshipHandler) GetFollowing(c *gin.Context) { h.listUsers(c, false) }
-
-func (h *RelationshipHandler) RemoveFollower(c *gin.Context) {
-	myID := c.MustGet("userId").(uint)
-	followerID, err := strconv.ParseUint(c.Param("id"), 10, 32)
-	if err != nil { c.JSON(http.StatusBadRequest, gin.H{"message":"invalid user ID"}); return }
-	result := h.DB.Where("follower_id = ? AND following_id = ?", uint(followerID), myID).Delete(&models.Relationship{})
-	if result.Error != nil { c.JSON(http.StatusInternalServerError, gin.H{"message":"failed to remove follower"}); return }
-	if result.RowsAffected == 0 { c.JSON(http.StatusNotFound, gin.H{"message":"user is not following you"}); return }
-
-	var followerCount int64
-	if err := h.DB.Model(&models.Relationship{}).Where("following_id = ? AND status = ?", myID, relationshipStatus).Count(&followerCount).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"message":"follower removed, but failed to refresh follower count"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"message":"follower removed successfully", "data":gin.H{"following":false,"followerCount":followerCount}})
-}
+func parsePageLimit(c *gin.Context, defaultLimit int) (int, int) { page,_:=strconv.Atoi(c.DefaultQuery("page","1"));limit,_:=strconv.Atoi(c.DefaultQuery("limit",strconv.Itoa(defaultLimit)));if page<1{page=1};if limit<1{limit=defaultLimit};if limit>50{limit=50};return page,limit }
+func (h *RelationshipHandler) FollowUser(c *gin.Context) { followerID:=c.MustGet("userId").(uint);targetID,err:=strconv.ParseUint(c.Param("id"),10,32);if err!=nil{c.JSON(400,gin.H{"message":"invalid user ID"});return};followingID:=uint(targetID);if followerID==followingID{c.JSON(400,gin.H{"message":"you cannot follow yourself"});return};var target models.User;if err:=h.DB.Select("id","allow_followers").First(&target,followingID).Error;err!=nil{if errors.Is(err,gorm.ErrRecordNotFound){c.JSON(404,gin.H{"message":"user not found"});return};c.JSON(500,gin.H{"message":"failed to find user"});return};if !target.AllowFollowers{c.JSON(403,gin.H{"message":"this user does not allow followers"});return};relationship:=models.Relationship{FollowerID:followerID,FollowingID:followingID,Status:relationshipStatus};result:=h.DB.Clauses(clause.OnConflict{Columns:[]clause.Column{{Name:"follower_id"},{Name:"following_id"}},DoNothing:true}).Create(&relationship);if result.Error!=nil{c.JSON(500,gin.H{"message":"failed to follow user"});return};if result.RowsAffected==0{c.JSON(409,gin.H{"message":"already following this user"});return};_ = CreateNotification(h.DB,followingID,followerID,"follow",nil,nil);var followerCount int64;if err:=h.DB.Model(&models.Relationship{}).Where("following_id = ? AND status = ?",followingID,relationshipStatus).Count(&followerCount).Error;err!=nil{c.JSON(500,gin.H{"message":"failed to count followers"});return};c.JSON(200,gin.H{"message":"successfully followed user","data":gin.H{"following":true,"status":relationshipStatus,"followerCount":followerCount}}) }
+func (h *RelationshipHandler) UnfollowUser(c *gin.Context) { followerID:=c.MustGet("userId").(uint);targetID,err:=strconv.ParseUint(c.Param("id"),10,32);if err!=nil{c.JSON(400,gin.H{"message":"invalid user ID"});return};followingID:=uint(targetID);result:=h.DB.Where("follower_id = ? AND following_id = ?",followerID,followingID).Delete(&models.Relationship{});if result.Error!=nil{c.JSON(500,gin.H{"message":"failed to unfollow user"});return};if result.RowsAffected==0{c.JSON(404,gin.H{"message":"not following this user"});return};var followerCount int64;if err:=h.DB.Model(&models.Relationship{}).Where("following_id = ? AND status = ?",followingID,relationshipStatus).Count(&followerCount).Error;err!=nil{c.JSON(500,gin.H{"message":"failed to count followers"});return};c.JSON(200,gin.H{"message":"successfully unfollowed user","data":gin.H{"following":false,"followerCount":followerCount}}) }
+func (h *RelationshipHandler) GetRelationshipStatus(c *gin.Context) { viewerID:=c.MustGet("userId").(uint);targetID,err:=strconv.ParseUint(c.Param("id"),10,32);if err!=nil{c.JSON(400,gin.H{"message":"invalid user ID"});return};id:=uint(targetID);var target models.User;if err:=h.DB.Select("id","allow_followers").First(&target,id).Error;err!=nil{if errors.Is(err,gorm.ErrRecordNotFound){c.JSON(404,gin.H{"message":"user not found"});return};c.JSON(500,gin.H{"message":"failed to find user"});return};var followingCount,followerCount int64;if err:=h.DB.Model(&models.Relationship{}).Where("following_id = ? AND status = ?",id,relationshipStatus).Count(&followerCount).Error;err!=nil{c.JSON(500,gin.H{"message":"failed to count followers"});return};if err:=h.DB.Model(&models.Relationship{}).Where("follower_id = ? AND status = ?",id,relationshipStatus).Count(&followingCount).Error;err!=nil{c.JSON(500,gin.H{"message":"failed to count following"});return};following,follower:=false,false;if viewerID!=id{var outgoing models.Relationship;err=h.DB.Where("follower_id = ? AND following_id = ? AND status = ?",viewerID,id,relationshipStatus).First(&outgoing).Error;if err==nil{following=true}else if !errors.Is(err,gorm.ErrRecordNotFound){c.JSON(500,gin.H{"message":"failed to load relationship"});return};var incoming models.Relationship;err=h.DB.Where("follower_id = ? AND following_id = ? AND status = ?",id,viewerID,relationshipStatus).First(&incoming).Error;if err==nil{follower=true}else if !errors.Is(err,gorm.ErrRecordNotFound){c.JSON(500,gin.H{"message":"failed to load relationship"});return}};c.JSON(200,gin.H{"data":gin.H{"following":following,"follower":follower,"followerCount":followerCount,"followingCount":followingCount,"allowFollowers":target.AllowFollowers,"isSelf":viewerID==id}}) }
+func (h *RelationshipHandler) listUsers(c *gin.Context, following bool) { userID,err:=strconv.ParseUint(c.Param("id"),10,32);if err!=nil{c.JSON(400,gin.H{"message":"invalid user ID"});return};page,limit:=parsePageLimit(c,20);offset:=(page-1)*limit;base:=h.DB.Table("users").Select("users.id, users.username, users.profile_picture, users.bio, users.country, users.city, users.status").Joins("JOIN user_relationships ON user_relationships."+map[bool]string{true:"following_id",false:"follower_id"}[following]+" = users.id").Where("user_relationships."+map[bool]string{true:"follower_id",false:"following_id"}[following]+" = ? AND user_relationships.status = ?",uint(userID),relationshipStatus);var total int64;if err:=base.Count(&total).Error;err!=nil{c.JSON(500,gin.H{"message":"failed to count relationships"});return};var users []models.User;if err:=base.Order("users.username ASC").Order("users.id ASC").Offset(offset).Limit(limit).Scan(&users).Error;err!=nil{c.JSON(500,gin.H{"message":"failed to fetch relationships"});return};c.JSON(200,gin.H{"data":users,"pagination":gin.H{"page":page,"limit":limit,"total":total,"hasMore":int64(page*limit)<total}}) }
+func (h *RelationshipHandler) GetFollowers(c *gin.Context){h.listUsers(c,true)}
+func (h *RelationshipHandler) GetFollowing(c *gin.Context){h.listUsers(c,false)}
+func (h *RelationshipHandler) GetFriends(c *gin.Context){ viewerID:=c.MustGet("userId").(uint);page,limit:=parsePageLimit(c,50);offset:=(page-1)*limit;query:=h.DB.Table("users u").Select("u.id,u.username,u.profile_picture,u.bio,u.country,u.city,u.status").Joins("JOIN user_relationships r1 ON r1.following_id=u.id AND r1.follower_id=? AND r1.status=?",viewerID,relationshipStatus).Joins("JOIN user_relationships r2 ON r2.follower_id=u.id AND r2.following_id=? AND r2.status=?",viewerID,relationshipStatus);var total int64;if err:=query.Count(&total).Error;err!=nil{c.JSON(500,gin.H{"message":"failed to count friends"});return};var users []models.User;if err:=query.Order("u.username ASC").Order("u.id ASC").Offset(offset).Limit(limit).Scan(&users).Error;err!=nil{c.JSON(500,gin.H{"message":"failed to fetch friends"});return};c.JSON(200,gin.H{"data":users,"pagination":gin.H{"page":page,"limit":limit,"total":total,"hasMore":int64(page*limit)<total}}) }
+func (h *RelationshipHandler) RemoveFollower(c *gin.Context){myID:=c.MustGet("userId").(uint);followerID,err:=strconv.ParseUint(c.Param("id"),10,32);if err!=nil{c.JSON(400,gin.H{"message":"invalid user ID"});return};result:=h.DB.Where("follower_id = ? AND following_id = ?",uint(followerID),myID).Delete(&models.Relationship{});if result.Error!=nil{c.JSON(500,gin.H{"message":"failed to remove follower"});return};if result.RowsAffected==0{c.JSON(404,gin.H{"message":"user is not following you"});return};var followerCount int64;if err:=h.DB.Model(&models.Relationship{}).Where("following_id = ? AND status = ?",myID,relationshipStatus).Count(&followerCount).Error;err!=nil{c.JSON(500,gin.H{"message":"follower removed, but failed to refresh follower count"});return};c.JSON(200,gin.H{"message":"follower removed successfully","data":gin.H{"following":false,"followerCount":followerCount}})}
