@@ -66,7 +66,7 @@ func ClaimPendingMediaJob(db *gorm.DB) (*models.MediaJob, error) {
 		}
 
 		metadataResult := tx.Model(&models.MediaMetadata{}).
-			Where("upload_id = ? AND status IN ?", job.UploadID, []string{"uploaded", models.MediaStatusPending}).
+			Where("upload_id = ? AND status IN ?", job.UploadID, []string{"uploaded", "pending", models.MediaStatusProcessing}).
 			Updates(map[string]any{
 				"status":           models.MediaStatusProcessing,
 				"processing_error": "",
