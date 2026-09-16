@@ -103,7 +103,7 @@ func validateManagedMedia(path, contentType string) error {
 			return errors.New("media file type does not match image content type")
 		}
 	case "video":
-		if ext != ".mp4" && ext != ".mov" {
+		if ext != ".mp4" && ext != ".mov" && ext != ".webm" {
 			return errors.New("media file type does not match video content type")
 		}
 	default:
@@ -119,7 +119,7 @@ func validateManagedMediaReference(filename, contentType string) error {
 			return errors.New("media file type does not match image content type")
 		}
 	case "video":
-		if ext != ".mp4" && ext != ".mov" {
+		if ext != ".mp4" && ext != ".mov" && ext != ".webm" {
 			return errors.New("media file type does not match video content type")
 		}
 	default:
@@ -175,7 +175,7 @@ func (h *PostHandler) CreatePost(c *gin.Context) {
 	case "image":
 		contentTypeMatches = upload.MediaType == "image/jpeg" || upload.MediaType == "image/png" || upload.MediaType == "image/webp"
 	case "video":
-		contentTypeMatches = upload.MediaType == "video/mp4" || upload.MediaType == "video/quicktime"
+		contentTypeMatches = upload.MediaType == "video/mp4" || upload.MediaType == "video/quicktime" || upload.MediaType == "video/webm"
 	}
 	if !contentTypeMatches {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "uploaded media type does not match content type"})
