@@ -3,11 +3,12 @@ package models
 import "time"
 
 const (
-	MediaStatusPending   = "pending"
-	MediaStatusUploading = "uploading"
-	MediaStatusReady     = "ready"
-	MediaStatusFailed    = "failed"
-	MediaStatusDeleted   = "deleted"
+	MediaStatusPending    = "pending"
+	MediaStatusUploading  = "uploading"
+	MediaStatusProcessing = "processing"
+	MediaStatusReady      = "ready"
+	MediaStatusFailed     = "failed"
+	MediaStatusDeleted    = "deleted"
 )
 
 // MediaMetadata stores processing and playback information for uploaded media.
