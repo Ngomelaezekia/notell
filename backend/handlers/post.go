@@ -352,9 +352,6 @@ func (h *PostHandler) DeletePost(c *gin.Context) {
 			return err
 		}
 		contentURL = post.ContentURL
-
-		// Capture every upload attached to the post before deleting the rows.
-		// This includes the primary image/video and an optional PostMusic track.
 		var uploads []models.Upload
 		if err := tx.Select("id,path,filename").Where("post_id = ?", postIDUint).Find(&uploads).Error; err != nil {
 			return err
@@ -366,7 +363,6 @@ func (h *PostHandler) DeletePost(c *gin.Context) {
 				mediaPaths = append(mediaPaths, filepath.Join("uploads", upload.Filename))
 			}
 		}
-
 		if err := tx.Where("post_id = ?", postIDUint).Delete(&models.Upload{}).Error; err != nil {
 			return err
 		}
@@ -384,9 +380,8 @@ func (h *PostHandler) DeletePost(c *gin.Context) {
 		return
 	}
 
-	// Storage cleanup happens after the DB transaction so a storage failure can
-	// never roll back an otherwise successful post deletion. The reconciler can
-	// recover any remote object that is missed by this best-effort cleanup.
+	cleanupCtx, cleanupCancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cleanupCancel()
 	seenKeys := make(map[string]struct{}, len(mediaPaths)+1)
 	cleanup := func(path string) {
 		path = strings.TrimSpace(path)
@@ -400,7 +395,7 @@ func (h *PostHandler) DeletePost(c *gin.Context) {
 		key := services.MediaObjectKey(filename)
 		if _, exists := seenKeys[key]; !exists {
 			seenKeys[key] = struct{}{}
-			if err := services.DeleteMediaObject(context.Background(), key); err != nil {
+			if err := services.DeleteMediaObject(cleanupCtx, key); err != nil {
 				log.Printf("failed to remove deleted post media %q: %v", key, err)
 			}
 		}
