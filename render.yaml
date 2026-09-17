@@ -221,6 +221,8 @@ services:
         value: https://message-yinu.onrender.com
       - key: VITE_LIVE_SERVICE_URL
         value: https://live-m1qg.onrender.com
+      - key: VITE_PAYMENT_SERVICE_URL
+        value: https://payment-u3hq.onrender.com
 
 databases:
   - name: notels05
