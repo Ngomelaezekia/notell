@@ -18,7 +18,7 @@ type postgresMusicRightsStore struct { pool *pgxpool.Pool; mu sync.RWMutex; cach
 func newMusicRightsStore(ctx context.Context)(musicRightsStore,error){
 	dsn:=strings.TrimSpace(envOr("MUSIC_DATABASE_URL","")); if dsn==""{dsn=strings.TrimSpace(envOr("DATABASE_URL",""))}; if dsn==""{return nil,nil}; if ctx==nil{ctx=context.Background()}
 	cfg,err:=pgxpool.ParseConfig(dsn);if err!=nil{return nil,err};cfg.MaxConns=10;cfg.MinConns=1;cfg.MaxConnIdleTime=5*time.Minute
-	pool,err:=pgxpool.NewWithConfig(ctx,cfg);if err!=nil{return nil,err};pingCtx,cancel:=context.WithTimeout(ctx,5*time.Second);defer cancel();if err:=pool.Ping(pingCtx);err!=nil{pool.Close();return nil,err};if err:=ensureMusicRightsSchema(ctx,pool);err!=nil{pool.Close();return nil,err}
+	pool,err:=pgxpool.NewWithConfig(ctx,cfg);if err!=nil{return nil,err};pingCtx,cancel:=context.WithTimeout(ctx,5*time.Second);defer cancel();if err:=pool.Ping(pingCtx);err!=nil{pool.Close();return nil,err};if err:=ensureMusicRightsSchema(ctx,pool);err!=nil{pool.Close();return nil,err};if err:=ensureMusicRightsSyncRunsSchema(ctx,pool);err!=nil{pool.Close();return nil,err}
 	ttlMinutes:=positiveEnvInt("MUSIC_RIGHTS_CACHE_MINUTES",5);return &postgresMusicRightsStore{pool:pool,cache:make(map[string]cachedRights),ttl:time.Duration(ttlMinutes)*time.Minute},nil
 }
 func ensureMusicRightsSchema(ctx context.Context,pool *pgxpool.Pool)error{
