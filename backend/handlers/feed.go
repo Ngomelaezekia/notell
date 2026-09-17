@@ -76,7 +76,7 @@ func (h *PostHandler) GetCategorizedFeed(c *gin.Context) {
 
 	var total int64
 	if err := query.Count(&total).Error; err != nil { c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to count feed posts"}); return }
-	query = query.Order("posts.id DESC").Preload("User", func(db *gorm.DB) *gorm.DB { return db.Select("id", "username", "profile_picture", "city", "country") }).Preload("Upload.MediaMetadata").Offset((page-1)*limit).Limit(limit+1)
+	query = query.Order("posts.id DESC").Preload("User", func(db *gorm.DB) *gorm.DB { return db.Select("id", "username", "profile_picture", "city", "country") }).Preload("Upload.MediaMetadata").Preload("Music").Preload("Music.Upload.MediaMetadata").Offset((page-1)*limit).Limit(limit+1)
 
 	var posts []models.Post
 	if err := query.Find(&posts).Error; err != nil { c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to fetch feed"}); return }
