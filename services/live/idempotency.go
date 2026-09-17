@@ -30,7 +30,14 @@ func ensureIdempotencySchema(db *gorm.DB) error {
 func requestIDMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id := strings.TrimSpace(c.GetHeader("X-Request-ID"))
-		if id == "" || len(id) > 128 { id = randomKey() }
+		if id == "" || len(id) > 128 {
+			generated, err := randomKey()
+			if err != nil {
+				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"message":"failed generating request id"})
+				return
+			}
+			id = generated
+		}
 		c.Set("requestId", id)
 		c.Header("X-Request-ID", id)
 		c.Next()
