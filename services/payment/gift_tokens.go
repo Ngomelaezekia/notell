@@ -18,35 +18,35 @@ const (
 )
 
 type GiftToken struct {
-    ID                string     `gorm:"primaryKey" json:"id"`
-    Code              string     `gorm:"size:6;uniqueIndex;not null" json:"code"`
-    Type              string     `gorm:"size:32;not null;index" json:"type"`
-    DiscountPercent   int        `gorm:"not null" json:"discountPercent"`
-    MaxRedemptions    int        `gorm:"not null;default:1" json:"maxRedemptions"`
-    RedeemedCount     int        `gorm:"not null;default:0" json:"redeemedCount"`
-    CreatedByUserID   string     `gorm:"index" json:"createdByUserId,omitempty"`
-    ProviderCouponID  string     `gorm:"uniqueIndex" json:"-"`
-    Active            bool       `gorm:"not null;default:true;index" json:"active"`
-    ExpiresAt         *time.Time `json:"expiresAt,omitempty"`
-    CreatedAt         time.Time  `json:"createdAt"`
-    UpdatedAt         time.Time  `json:"updatedAt"`
+    ID               string     `gorm:"primaryKey" json:"id"`
+    Code             string     `gorm:"size:6;uniqueIndex;not null" json:"code"`
+    Type             string     `gorm:"size:32;not null;index" json:"type"`
+    DiscountPercent  int        `gorm:"not null" json:"discountPercent"`
+    MaxRedemptions   int        `gorm:"not null;default:1" json:"maxRedemptions"`
+    RedeemedCount    int        `gorm:"not null;default:0" json:"redeemedCount"`
+    CreatedByUserID  string     `gorm:"index" json:"createdByUserId,omitempty"`
+    ProviderCouponID *string    `gorm:"uniqueIndex" json:"-"`
+    Active           bool       `gorm:"not null;default:true;index" json:"active"`
+    ExpiresAt        *time.Time `json:"expiresAt,omitempty"`
+    CreatedAt        time.Time  `json:"createdAt"`
+    UpdatedAt        time.Time  `json:"updatedAt"`
 }
 
 type GiftClaim struct {
-    ID           string     `gorm:"primaryKey" json:"id"`
-    GiftTokenID  string     `gorm:"not null;index" json:"giftTokenId"`
-    UserID       string     `gorm:"not null;index" json:"userId"`
-    ClaimedAt    time.Time  `json:"claimedAt"`
-    UsedAt       *time.Time `json:"usedAt,omitempty"`
-    SubscriptionID string   `json:"subscriptionId,omitempty"`
+    ID             string     `gorm:"primaryKey" json:"id"`
+    GiftTokenID    string     `gorm:"not null;index" json:"giftTokenId"`
+    UserID         string     `gorm:"not null;index" json:"userId"`
+    ClaimedAt      time.Time  `json:"claimedAt"`
+    UsedAt         *time.Time `json:"usedAt,omitempty"`
+    SubscriptionID string     `json:"subscriptionId,omitempty"`
 }
 
 type GiftRedemption struct {
-    ID           string    `gorm:"primaryKey" json:"id"`
-    GiftTokenID  string    `gorm:"not null;index" json:"giftTokenId"`
-    UserID       string    `gorm:"not null;index" json:"userId"`
-    SubscriptionID string  `gorm:"not null;index" json:"subscriptionId"`
-    RedeemedAt   time.Time `json:"redeemedAt"`
+    ID             string    `gorm:"primaryKey" json:"id"`
+    GiftTokenID    string    `gorm:"not null;index" json:"giftTokenId"`
+    UserID         string    `gorm:"not null;index" json:"userId"`
+    SubscriptionID string    `gorm:"not null;index" json:"subscriptionId"`
+    RedeemedAt     time.Time `json:"redeemedAt"`
 }
 
 func giftDiscountPercent(tokenType string) (int, error) {
@@ -173,9 +173,6 @@ func redeemGiftToken(db *gorm.DB, tokenID, userID, subscriptionID string) error 
             return err
         }
         now := time.Now().UTC()
-        if err := tx.Model(&GiftClaim{}).Where("gift_token_id = ? AND user_id = ? AND used_at IS NULL", tokenID, userID).Updates(map[string]any{"used_at": now, "subscription_id": subscriptionID}).Error; err != nil {
-            return err
-        }
-        return nil
+        return tx.Model(&GiftClaim{}).Where("gift_token_id = ? AND user_id = ? AND used_at IS NULL", tokenID, userID).Updates(map[string]any{"used_at": now, "subscription_id": subscriptionID}).Error
     })
 }
