@@ -88,6 +88,16 @@ export const usePosts = (page = 1, limit = 20, category = "all") => {
   }, [category, currentPage, hasMore]);
 
   useEffect(() => {
+    hasContentRef.current = Boolean(cached?.posts?.length);
+    setPosts(cached?.posts || []);
+    setLoading(!cached?.posts?.length);
+    setLoadingMore(false);
+    setCurrentPage(cached?.pagination?.page ?? page);
+    setHasMore(cached?.pagination?.hasMore ?? true);
+    setError(null);
+  }, [category]);
+
+  useEffect(() => {
     fetchPosts();
   }, [fetchPosts]);
 
