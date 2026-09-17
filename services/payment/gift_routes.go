@@ -1,17 +1,16 @@
 package main
 
 import (
+    "crypto/subtle"
     "errors"
     "net/http"
     "net/url"
     "os"
-    "strconv"
     "strings"
     "time"
 
     "github.com/gin-gonic/gin"
     "gorm.io/gorm"
-    "gorm.io/gorm/clause"
 )
 
 type giftTokenResponse struct {
@@ -22,7 +21,7 @@ type giftTokenResponse struct {
 func giftAdminKeyAuthorized(c *gin.Context) bool {
     expected := strings.TrimSpace(os.Getenv("GIFT_ADMIN_KEY"))
     supplied := strings.TrimSpace(c.GetHeader("X-Gift-Admin-Key"))
-    return expected != "" && supplied != "" && supplied == expected
+    return expected != "" && supplied != "" && len(supplied) == len(expected) && subtle.ConstantTimeCompare([]byte(supplied), []byte(expected)) == 1
 }
 
 func giftShareURL(code string) string {
@@ -66,7 +65,8 @@ func createGiftToken(db *gorm.DB, tokenType, createdBy string, maxRedemptions in
         }
         token := GiftToken{ID: newID("gft"), Code: code, Type: tokenType, DiscountPercent: discount, MaxRedemptions: maxRedemptions, CreatedByUserID: createdBy, ExpiresAt: expiresAt, Active: true}
         if err := db.Create(&token).Error; err != nil {
-            if strings.Contains(strings.ToLower(err.Error()), "duplicate") || strings.Contains(strings.ToLower(err.Error()), "unique") {
+            lower := strings.ToLower(err.Error())
+            if strings.Contains(lower, "duplicate") || strings.Contains(lower, "unique") {
                 continue
             }
             return GiftToken{}, err
@@ -82,8 +82,8 @@ func registerGiftRoutes(r *gin.Engine, s *Server) {
 
     api.POST("/gift-tokens", func(c *gin.Context) {
         var in struct {
-            Type           string `json:"type" binding:"required"`
-            MaxRedemptions int    `json:"maxRedemptions"`
+            Type           string     `json:"type" binding:"required"`
+            MaxRedemptions int        `json:"maxRedemptions"`
             ExpiresAt      *time.Time `json:"expiresAt"`
         }
         if err := c.ShouldBindJSON(&in); err != nil {
@@ -117,7 +117,7 @@ func registerGiftRoutes(r *gin.Engine, s *Server) {
             c.JSON(500, gin.H{"error": "failed to inspect admin gift tokens"})
             return
         }
-        created := make([]giftTokenResponse, 0, 2-int(existing))
+        created := make([]giftTokenResponse, 0, maxInt(0, 2-int(existing)))
         for existing < 2 {
             token, err := createGiftToken(s.db, GiftAdminFull, "system", 1, nil)
             if err != nil {
@@ -165,7 +165,7 @@ func registerGiftRoutes(r *gin.Engine, s *Server) {
     r.GET("/v1/internal/gift-claims", func(c *gin.Context) {
         key := strings.TrimSpace(c.GetHeader("X-Internal-Service-Key"))
         expected := strings.TrimSpace(os.Getenv("INTERNAL_SERVICE_KEY"))
-        if key == "" || expected == "" || key != expected {
+        if key == "" || expected == "" || len(key) != len(expected) || subtle.ConstantTimeCompare([]byte(key), []byte(expected)) != 1 {
             c.JSON(401, gin.H{"error": "unauthorized"})
             return
         }
@@ -185,7 +185,11 @@ func registerGiftRoutes(r *gin.Engine, s *Server) {
         }
         c.JSON(200, gin.H{"claimed": true, "giftToken": token})
     })
+}
 
-    _ = strconv.Itoa
-    _ = clause.Locking{}
+func maxInt(a, b int64) int {
+    if a > b {
+        return int(a)
+    }
+    return int(b)
 }
