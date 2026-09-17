@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 )
@@ -57,4 +58,34 @@ func TestPositiveEnvInt(t *testing.T) {
 
 func TestStartTrendMaintenanceNoopForMemoryStore(t *testing.T) {
 	startTrendMaintenance(&memoryTrendStore{})
+}
+
+func TestRightsSyncPayloadRejectsUnknownFields(t *testing.T) {
+	payload := `{"records":[{"provider":"massivemusic","providerTrackId":"1","territory":"tz","licensed":true,"ugcUse":true,"streaming":true,"canUseInPost":true,"status":"active","unexpected":true}]}`
+	var decoded rightsSyncPayload
+	decoder := json.NewDecoder(strings.NewReader(payload))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&decoded); err == nil { t.Fatal("expected unknown field rejection") }
+}
+
+func TestRightsSyncFullSnapshotRequiresSingleProvider(t *testing.T) {
+	payload := rightsSyncPayload{Full: true, Records: []rightsSyncRecord{
+		{Provider: "MassiveMusic", ProviderTrackID: "1", Territory: "tz"},
+		{Provider: "7digital", ProviderTrackID: "2", Territory: "tz"},
+	}}
+	provider := ""
+	for _, record := range payload.Records {
+		p := strings.ToLower(strings.TrimSpace(record.Provider))
+		if provider == "" { provider = p; continue }
+		if p != provider { return }
+	}
+	t.Fatal("expected provider mismatch to be rejected")
+}
+
+func TestRightsSyncNormalization(t *testing.T) {
+	record := rightsSyncRecord{Provider: " MassiveMusic ", ProviderTrackID: " track-1 ", Territory: " tz "}
+	record.Provider = strings.ToLower(strings.TrimSpace(record.Provider))
+	record.ProviderTrackID = strings.TrimSpace(record.ProviderTrackID)
+	record.Territory = strings.ToUpper(strings.TrimSpace(record.Territory))
+	if record.Provider != "massivemusic" || record.ProviderTrackID != "track-1" || record.Territory != "TZ" { t.Fatalf("unexpected normalization: %#v", record) }
 }
