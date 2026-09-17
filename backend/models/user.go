@@ -17,6 +17,11 @@ type User struct {
 
 	AllowFollowers bool `gorm:"default:true" json:"allowFollowers"`
 	PostCount      int64 `gorm:"-" json:"postCount"`
+	FollowerCount  int64 `gorm:"-" json:"followerCount"`
+	FollowingCount int64 `gorm:"-" json:"followingCount"`
+	IsFollowing    bool  `gorm:"-" json:"isFollowing"`
+	IsFollowedBy   bool  `gorm:"-" json:"isFollowedBy"`
+	RelationshipStatus string `gorm:"-" json:"relationshipStatus,omitempty"`
 
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
