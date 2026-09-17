@@ -136,6 +136,23 @@ func registerStripeRoutes(r *gin.Engine, s *Server) {
 			c.JSON(409, gin.H{"error": "payment is not refundable"})
 			return
 		}
+		var refunded int64
+		if err := s.db.Model(&Refund{}).Where("payment_id = ?", p.ID).Select("COALESCE(SUM(amount),0)").Scan(&refunded).Error; err != nil {
+			c.JSON(500, gin.H{"error": "refund balance could not be checked"})
+			return
+		}
+		remaining := p.Amount - refunded
+		if remaining <= 0 {
+			c.JSON(409, gin.H{"error": "payment has no refundable balance"})
+			return
+		}
+		if in.Amount <= 0 {
+			in.Amount = remaining
+		}
+		if in.Amount > remaining {
+			c.JSON(400, gin.H{"error": "refund amount exceeds refundable balance"})
+			return
+		}
 		refundID, status, err := stripeFromEnv().RefundPayment(p, in.Amount, strings.TrimSpace(in.Reason))
 		if err != nil {
 			c.JSON(502, gin.H{"error": "stripe refund failed"})
