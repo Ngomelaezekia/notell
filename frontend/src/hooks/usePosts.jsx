@@ -28,6 +28,7 @@ const writeFeedCache = (category, posts, pagination) => {
 export const usePosts = (page = 1, limit = 20, category = "all") => {
   const cached = readFeedCache(category);
   const hasContentRef = useRef(Boolean(cached?.posts?.length));
+  const requestIdRef = useRef(0);
   const [posts, setPosts] = useState(cached?.posts || []);
   const [loading, setLoading] = useState(!cached?.posts?.length);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -36,10 +37,12 @@ export const usePosts = (page = 1, limit = 20, category = "all") => {
   const [error, setError] = useState(null);
 
   const fetchPosts = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
     setLoading(!hasContentRef.current);
     setError(null);
     try {
       const response = await postsAPI.getFeed(page, limit, category);
+      if (requestId !== requestIdRef.current) return;
       const nextPosts = Array.isArray(response.data) ? response.data : [];
       const pagination = response.pagination || {};
       setPosts(nextPosts);
@@ -48,20 +51,23 @@ export const usePosts = (page = 1, limit = 20, category = "all") => {
       setHasMore(pagination.hasMore ?? false);
       writeFeedCache(category, nextPosts, pagination);
     } catch (err) {
+      if (requestId !== requestIdRef.current) return;
       setError(getApiErrorMessage(err, "Failed to fetch posts"));
       if (!hasContentRef.current) setHasMore(false);
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) setLoading(false);
     }
   }, [category, limit, page]);
 
   const loadMore = useCallback(async () => {
     if (loading || loadingMore || !hasMore) return;
+    const requestId = requestIdRef.current;
     setLoadingMore(true);
     setError(null);
     const nextPage = currentPage + 1;
     try {
       const response = await postsAPI.getFeed(nextPage, limit, category);
+      if (requestId !== requestIdRef.current) return;
       const incomingPosts = Array.isArray(response.data) ? response.data : [];
       setPosts((current) => {
         const existingIds = new Set(current.map((post) => post.postId));
@@ -73,9 +79,10 @@ export const usePosts = (page = 1, limit = 20, category = "all") => {
       setCurrentPage(response.pagination?.page ?? nextPage);
       setHasMore(response.pagination?.hasMore ?? false);
     } catch (err) {
+      if (requestId !== requestIdRef.current) return;
       setError(getApiErrorMessage(err, "Failed to load more posts"));
     } finally {
-      setLoadingMore(false);
+      if (requestId === requestIdRef.current) setLoadingMore(false);
     }
   }, [category, currentPage, hasMore, limit, loading, loadingMore]);
 
@@ -88,6 +95,7 @@ export const usePosts = (page = 1, limit = 20, category = "all") => {
   }, [category, currentPage, hasMore]);
 
   useEffect(() => {
+    requestIdRef.current += 1;
     hasContentRef.current = Boolean(cached?.posts?.length);
     setPosts(cached?.posts || []);
     setLoading(!cached?.posts?.length);
