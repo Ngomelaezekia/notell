@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const baseURL = import.meta.env.VITE_MESSAGE_SERVICE_URL || "http://localhost:8083";
+const baseURL = import.meta.env.VITE_MESSAGE_SERVICE_URL || "http://localhost:8080";
 const messageClient = axios.create({ baseURL, withCredentials: true, headers: { "Content-Type": "application/json" } });
 
 export const messageAPI = {
