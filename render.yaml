@@ -94,7 +94,7 @@ services:
       - key: CHANNEL_INTERNAL_SERVICE_KEY
         sync: false
       - key: PAYMENT_SERVICE_URL
-        value: https://payment.onrender.com
+        value: https://payment-u3hq.onrender.com
       - key: INTERNAL_SERVICE_KEY
         sync: false
       - key: FRONTEND_URL
@@ -146,11 +146,11 @@ services:
       - key: FRONTEND_URL
         value: https://notell-web.onrender.com
       - key: PAYMENT_SERVICE_URL
-        value: https://payment.onrender.com
+        value: https://payment-u3hq.onrender.com
       - key: INTERNAL_SERVICE_KEY
         sync: false
       - key: CHANNEL_SERVICE_URL
-        value: https://channel.onrender.com
+        value: https://channel-g90c.onrender.com
       - key: CHANNEL_INTERNAL_SERVICE_KEY
         sync: false
       - key: LIVEKIT_URL
@@ -216,11 +216,11 @@ services:
       - key: VITE_MUSIC_COUNTRY
         value: TZ
       - key: VITE_CHANNEL_SERVICE_URL
-        value: https://channel.onrender.com
+        value: https://channel-g90c.onrender.com
       - key: VITE_MESSAGE_SERVICE_URL
-        value: https://message.onrender.com
+        value: https://message-yinu.onrender.com
       - key: VITE_LIVE_SERVICE_URL
-        value: https://live.onrender.com
+        value: https://live-m1qg.onrender.com
 
 databases:
   - name: notels05
