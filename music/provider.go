@@ -12,7 +12,7 @@ type MusicProvider interface {
 	Ready() bool
 	Search(context.Context, string, string, int, int) (SearchResult, error)
 	GetTrack(context.Context, string, string) (Track, error)
-	PlaybackURL(context.Context, Track, string, float64, float64) (string, time.Time, error)
+	PlaybackURL(context.Context, Track, string, string, float64, float64) (string, time.Time, error)
 }
 
 type SearchResult struct { Tracks []Track; HasMore bool }
@@ -30,6 +30,6 @@ func (internalProvider) Search(_ context.Context, q, _ string, limit, offset int
 	return SearchResult{Tracks:matched[offset:end],HasMore:end<len(matched)},nil
 }
 func (internalProvider) GetTrack(_ context.Context,id,_ string)(Track,error){for _,item:=range catalog{if item.ID==id{return item,nil}};return Track{},errors.New("track not found")}
-func (internalProvider) PlaybackURL(_ context.Context, _ Track, _ string, _ float64, _ float64) (string, time.Time, error) {
+func (internalProvider) PlaybackURL(_ context.Context, _ Track, _ string, _ string, _ float64, _ float64) (string, time.Time, error) {
 	return "", time.Time{}, errPlaybackUnavailable
 }
