@@ -33,6 +33,12 @@ func(s *postgresMusicRightsStore)Resolve(ctx context.Context,provider,providerTr
 	s.mu.Lock();s.cache[key]=cachedRights{rights:rights,found:found,expiresAt:now.Add(s.ttl)};s.mu.Unlock();return rights,found,nil
 }
 func(s *postgresMusicRightsStore)Close(){s.pool.Close()}
-var(musicRightsOnce sync.Once;musicRights musicRightsStore;musicRightsError error)
-func currentMusicRightsStore()(musicRightsStore,error){musicRightsOnce.Do(func(){musicRights,musicRightsError=newMusicRightsStore(context.Background())});return musicRights,musicRightsError}
+var(musicRightsMu sync.Mutex;musicRights musicRightsStore;musicRightsError error)
+func currentMusicRightsStore()(musicRightsStore,error){
+	musicRightsMu.Lock();defer musicRightsMu.Unlock()
+	if musicRights!=nil{return musicRights,nil}
+	store,err:=newMusicRightsStore(context.Background())
+	if err!=nil{musicRightsError=err;return nil,err}
+	musicRights=store;musicRightsError=nil;return musicRights,nil
+}
 func applyAuthoritativeRights(ctx context.Context,item Track,country string)(Track,error){store,err:=currentMusicRightsStore();if err!=nil{return item,err};if store==nil{if item.Provider=="internal"{return item,nil};item.CanUseInPost=false;item.Rights.Licensed=false;item.Rights.UGCUse=false;item.Rights.Streaming=false;item.Rights.Territories=nil;item.Rights.ProviderStatus="rights-store-unavailable";return item,nil};rights,found,err:=store.Resolve(ctx,item.Provider,item.ProviderTrackID,country);if err!=nil{return item,err};if !found{item.CanUseInPost=false;item.Rights.Licensed=false;item.Rights.UGCUse=false;item.Rights.Streaming=false;item.Rights.Territories=nil;item.Rights.ProviderStatus="not-cleared";return item,nil};item.Rights=rights;item.CanUseInPost=rights.Licensed&&rights.UGCUse&&rights.Streaming;return item,nil}
