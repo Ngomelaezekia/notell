@@ -16,6 +16,7 @@ func registerC6C8Hardened(db *gorm.DB, p *gin.RouterGroup) {
     p.POST("/channels/:id/revenue", func(c *gin.Context){c.JSON(403,gin.H{"message":"revenue events must be ingested by a trusted service"})})
     p.POST("/internal/channels/:id/revenue", internalRevenueIngest(db))
     p.GET("/internal/channels/:id/entitlements/:userId", internalEntitlementCheck(db))
+    p.GET("/internal/channels/:id/permissions/:userId/live", internalLivePermission(db))
 }
 
 func internalServiceAuthorized(c *gin.Context) bool { expected:=strings.TrimSpace(getenv("CHANNEL_INTERNAL_SERVICE_KEY","")); supplied:=strings.TrimSpace(c.GetHeader("X-Channel-Service-Key")); return expected!="" && supplied!="" && subtle.ConstantTimeCompare([]byte(supplied),[]byte(expected))==1 }
@@ -44,10 +45,27 @@ func hardenedPlaybackAuthorization(db *gorm.DB) gin.HandlerFunc { return func(c 
     c.JSON(200,gin.H{"allowed":true,"mediaId":x.MediaID,"access":"PUBLIC"})
 } }
 
+func internalLivePermission(db *gorm.DB) gin.HandlerFunc { return func(c *gin.Context) {
+    if !internalServiceAuthorized(c){c.JSON(401,gin.H{"message":"trusted service authentication required"});return}
+    channel:=channelID(c); var ch Channel
+    if db.First(&ch,channel).Error!=nil || ch.Status!=ChannelActive {c.JSON(404,gin.H{"message":"channel not found"});return}
+    target:=userIDValue(c.Param("userId"));if target==0{c.JSON(400,gin.H{"message":"invalid user id"});return}
+    allowed:=ch.OwnerID==target; role:=string(RoleOwner)
+    if !allowed {
+        var m ChannelTeamMember
+        if err:=db.Where("channel_id=? AND user_id=? AND status=?",channel,target,"ACTIVE").First(&m).Error;err!=nil {
+            if err!=gorm.ErrRecordNotFound {c.JSON(500,gin.H{"message":"failed to check channel permission"});return}
+            role=""
+        } else {role=string(m.Role);allowed=rolePermissions[m.Role]["live"]}
+    }
+    c.JSON(200,gin.H{"channelId":channel,"userId":target,"allowed":allowed,"active":true,"role":role,"permission":"live"})
+} }
+
 func hardenedChannelPermission(db *gorm.DB,c *gin.Context,permission string)(Channel,bool){id:=channelID(c);var ch Channel;if db.First(&ch,id).Error!=nil||ch.Status==ChannelDisabled{c.JSON(404,gin.H{"message":"channel not found"});return ch,false};if !hasPermission(db,c,id,permission){return ch,false};return ch,true}
 func hardenedCreateLive(db *gorm.DB)gin.HandlerFunc{return func(c *gin.Context){ch,ok:=hardenedChannelPermission(db,c,"live");if !ok{return};var in struct{Title string `json:"title"`;PlaybackRef string `json:"playbackRef"`};if c.ShouldBindJSON(&in)!=nil||strings.TrimSpace(in.Title)==""{c.JSON(400,gin.H{"message":"title is required"});return};x:=LiveSession{ChannelID:ch.ID,OwnerID:ch.OwnerID,Title:strings.TrimSpace(in.Title),State:LiveScheduled,PlaybackRef:strings.TrimSpace(in.PlaybackRef)};if err:=db.Create(&x).Error;err!=nil{c.JSON(500,gin.H{"message":"failed to create live session"});return};c.JSON(201,x)}}
 func hardenedUpdateLive(db *gorm.DB)gin.HandlerFunc{return func(c *gin.Context){ch,ok:=hardenedChannelPermission(db,c,"live");if !ok{return};var x LiveSession;if db.Where("id=? AND channel_id=?",c.Param("sessionId"),ch.ID).First(&x).Error!=nil{c.JSON(404,gin.H{"message":"live session not found"});return};if x.State!=LiveScheduled{c.JSON(409,gin.H{"message":"live session is no longer editable"});return};var in struct{Title string `json:"title"`;PlaybackRef string `json:"playbackRef"`};if c.ShouldBindJSON(&in)!=nil{c.JSON(400,gin.H{"message":"invalid request"});return};if strings.TrimSpace(in.Title)!=""{x.Title=strings.TrimSpace(in.Title)};if in.PlaybackRef!=""{x.PlaybackRef=strings.TrimSpace(in.PlaybackRef)};if err:=db.Save(&x).Error;err!=nil{c.JSON(500,gin.H{"message":"failed to update live session"});return};c.JSON(200,x)}}
-func hardenedTransitionLive(db *gorm.DB,target LiveState)gin.HandlerFunc{return func(c *gin.Context){ch,ok:=hardenedChannelPermission(db,c,"live");if !ok{return};var x LiveSession;if db.Where("id=? AND channel_id=?",c.Param("sessionId"),ch.ID).First(&x).Error!=nil{c.JSON(404,gin.H{"message":"live session not found"});return};now:=time.Now().UTC();switch target{case LiveLive:if x.State!=LiveScheduled{c.JSON(409,gin.H{"message":"only scheduled sessions can start"});return};x.State=LiveLive;x.StartedAt=&now;case LiveEnded:if x.State!=LiveLive{c.JSON(409,gin.H{"message":"only live sessions can end"});return};x.State=LiveEnded;x.EndedAt=&now;case LiveCancelled:if x.State!=LiveScheduled{c.JSON(409,gin.H{"message":"only scheduled sessions can be cancelled"});return};x.State=LiveCancelled;default:c.JSON(400,gin.H{"message":"invalid live transition"});return};if err:=db.Save(&x).Error;err!=nil{c.JSON(500,gin.H{"message":"failed to update live state"});return};c.JSON(200,x)}}
+func hardenedTransitionLive(db *gorm.DB,target LiveState)gin.HandlerFunc{return func(c *gin.Context){ch,ok:=hardenedChannelPermission(db,c,livePermission());if !ok{return};var x LiveSession;if db.Where("id=? AND channel_id=?",c.Param("sessionId"),ch.ID).First(&x).Error!=nil{c.JSON(404,gin.H{"message":"live session not found"});return};now:=time.Now().UTC();switch target{case LiveLive:if x.State!=LiveScheduled{c.JSON(409,gin.H{"message":"only scheduled sessions can start"});return};x.State=LiveLive;x.StartedAt=&now;case LiveEnded:if x.State!=LiveLive{c.JSON(409,gin.H{"message":"only live sessions can end"});return};x.State=LiveEnded;x.EndedAt=&now;case LiveCancelled:if x.State!=LiveScheduled{c.JSON(409,gin.H{"message":"only scheduled sessions can be cancelled"});return};x.State=LiveCancelled;default:c.JSON(400,gin.H{"message":"invalid live transition"});return};if err:=db.Save(&x).Error;err!=nil{c.JSON(500,gin.H{"message":"failed to update live state"});return};c.JSON(200,x)}}
+func livePermission()string{return "live"}
 func hardenedStartLive(db *gorm.DB)gin.HandlerFunc{return hardenedTransitionLive(db,LiveLive)}
 func hardenedEndLive(db *gorm.DB)gin.HandlerFunc{return hardenedTransitionLive(db,LiveEnded)}
 func hardenedCancelLive(db *gorm.DB)gin.HandlerFunc{return hardenedTransitionLive(db,LiveCancelled)}
