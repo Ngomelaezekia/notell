@@ -1,6 +1,7 @@
 package main
 
 import (
+    "crypto/subtle"
     "strings"
     "time"
     "github.com/gin-gonic/gin"
@@ -17,7 +18,7 @@ func registerC6C8Hardened(db *gorm.DB, p *gin.RouterGroup) {
     p.GET("/internal/channels/:id/entitlements/:userId", internalEntitlementCheck(db))
 }
 
-func internalServiceAuthorized(c *gin.Context) bool { expected:=strings.TrimSpace(getenv("CHANNEL_INTERNAL_SERVICE_KEY","")); supplied:=strings.TrimSpace(c.GetHeader("X-Channel-Service-Key")); return expected!="" && supplied!="" && supplied==expected }
+func internalServiceAuthorized(c *gin.Context) bool { expected:=strings.TrimSpace(getenv("CHANNEL_INTERNAL_SERVICE_KEY","")); supplied:=strings.TrimSpace(c.GetHeader("X-Channel-Service-Key")); return expected!="" && supplied!="" && subtle.ConstantTimeCompare([]byte(supplied),[]byte(expected))==1 }
 
 func internalEntitlementCheck(db *gorm.DB) gin.HandlerFunc { return func(c *gin.Context) {
     if !internalServiceAuthorized(c){c.JSON(401,gin.H{"message":"trusted service authentication required"});return}
