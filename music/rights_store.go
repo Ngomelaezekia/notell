@@ -66,7 +66,7 @@ func newMusicRightsStore(ctx context.Context) (musicRightsStore, error) {
 }
 
 func ensureMusicRightsSchema(ctx context.Context, pool *pgxpool.Pool) error {
-	_, err := pool.Exec(ctx, `
+	if _, err := pool.Exec(ctx, `
 CREATE TABLE IF NOT EXISTS music_rights_entitlements (
 	provider TEXT NOT NULL,
 	provider_track_id TEXT NOT NULL,
@@ -85,8 +85,21 @@ CREATE TABLE IF NOT EXISTS music_rights_entitlements (
 );
 CREATE INDEX IF NOT EXISTS idx_music_rights_lookup ON music_rights_entitlements(provider, provider_track_id, territory);
 CREATE INDEX IF NOT EXISTS idx_music_rights_expiry ON music_rights_entitlements(valid_until);
-`)
-	return err
+`); err != nil {
+		return err
+	}
+	for _, item := range catalog {
+		if item.Provider != "internal" || item.ProviderTrackID == "" {
+			continue
+		}
+		if _, err := pool.Exec(ctx, `
+INSERT INTO music_rights_entitlements(provider, provider_track_id, territory, licensed, ugc_use, streaming, can_use_in_post, attribution_required, status, source)
+VALUES($1,$2,'*',$3,$4,$5,$6,$7,$8,'catalog')
+ON CONFLICT(provider, provider_track_id, territory) DO NOTHING`, item.Provider, item.ProviderTrackID, item.Rights.Licensed, item.Rights.UGCUse, item.Rights.Streaming, item.CanUseInPost, item.Rights.Attribution, item.Rights.ProviderStatus); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *postgresMusicRightsStore) Resolve(ctx context.Context, provider, providerTrackID, territory string) (Rights, bool, error) {
@@ -121,7 +134,6 @@ LIMIT 1`, provider, providerTrackID, territory, now).Scan(
 	if found {
 		rights.Territories = []string{territory}
 		if !canUseInPost {
-			// A row can explicitly keep a licensed track out of post composition.
 			rights.Licensed = false
 		}
 	}
