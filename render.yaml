@@ -36,7 +36,7 @@ services:
       - key: SERVER_URL
         value: https://notell.onrender.com
       - key: MUSIC_SERVICE_URL
-        value: https://music.onrender.com
+        value: https://music-unnd.onrender.com
       - key: MEDIA_PUBLIC_URL
         sync: false
       - key: STORAGE_DRIVER
@@ -140,7 +140,7 @@ services:
       - key: PORT
         value: 10000
       - key: DATABASE_URL
-        fromDatabase: {name: notell-live-db, property: connectionString}
+        sync: false
       - key: JWT_SECRET
         sync: false
       - key: FRONTEND_URL
@@ -212,7 +212,7 @@ services:
       - key: VITE_API_URL
         value: https://notell.onrender.com/api
       - key: VITE_MUSIC_SERVICE_URL
-        value: https://music.onrender.com
+        value: https://music-unnd.onrender.com
       - key: VITE_MUSIC_COUNTRY
         value: TZ
       - key: VITE_CHANNEL_SERVICE_URL
@@ -229,9 +229,3 @@ databases:
     postgresMajorVersion: "18"
     databaseName: notelldb
     user: notellusers
-  - name: notell-live-db
-    plan: free
-    region: singapore
-    postgresMajorVersion: "18"
-    databaseName: notelllive
-    user: notelllive
