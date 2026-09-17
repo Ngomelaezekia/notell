@@ -7,7 +7,9 @@ import (
  "strconv"
  "strings"
  "time"
+
  "github.com/gin-gonic/gin"
+ "gorm.io/gorm"
 )
 
 type paymentEntitlementResponse struct {
@@ -25,16 +27,15 @@ func channelPlanCodeFromPackage(packageID string) string {
  }
 }
 
-func channelPlanActive(c *gin.Context) (bool, string) {
+func channelPlanActiveForUser(c *gin.Context, uid uint64) (bool, string) {
  if strings.TrimSpace(os.Getenv("APP_ENV")) != "production" && strings.TrimSpace(os.Getenv("PAYMENT_SERVICE_URL")) == "" { return true, "CREATOR" }
  base := strings.TrimRight(strings.TrimSpace(os.Getenv("PAYMENT_SERVICE_URL")), "/")
  key := strings.TrimSpace(os.Getenv("INTERNAL_SERVICE_KEY"))
  if base == "" || key == "" { return false, "" }
- uid := userID(c)
  req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodGet, base+"/v1/internal/entitlements/platform/channel", nil)
  if err != nil { return false, "" }
  req.Header.Set("X-Internal-Service-Key", key)
- req.Header.Set("X-User-ID", strconv.FormatUint(uid,10))
+ req.Header.Set("X-User-ID", strconv.FormatUint(uid, 10))
  client := &http.Client{Timeout:5*time.Second}
  resp, err := client.Do(req)
  if err != nil { return false, "" }
@@ -45,6 +46,17 @@ func channelPlanActive(c *gin.Context) (bool, string) {
  planCode := channelPlanCodeFromPackage(result.Subscription.PackageID)
  if planCode == "" { return false, "" }
  return true, planCode
+}
+
+func channelPlanActive(c *gin.Context) (bool, string) {
+ return channelPlanActiveForUser(c, userID(c))
+}
+
+func channelOwnerPlanActive(c *gin.Context, db *gorm.DB, channelID uint64) bool {
+ var ch Channel
+ if err := db.Select("id,owner_id,status").First(&ch, channelID).Error; err != nil || ch.Status != ChannelActive { return false }
+ active, _ := channelPlanActiveForUser(c, ch.OwnerID)
+ return active
 }
 
 func requireChannelPlan(next gin.HandlerFunc) gin.HandlerFunc {
