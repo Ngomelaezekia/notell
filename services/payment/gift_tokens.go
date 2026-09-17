@@ -103,6 +103,9 @@ func claimGiftToken(db *gorm.DB, userID, code string) (GiftToken, error) {
         if !giftTokenAvailable(token, time.Now().UTC()) {
             return errors.New("gift code is inactive, expired, or fully redeemed")
         }
+        if token.Type == GiftUserAffiliation && strings.TrimSpace(token.CreatedByUserID) != "" && strings.TrimSpace(token.CreatedByUserID) == strings.TrimSpace(userID) {
+            return errors.New("you cannot claim your own affiliation gift code")
+        }
         var redemption GiftRedemption
         if err := tx.Where("gift_token_id = ? AND user_id = ?", token.ID, userID).First(&redemption).Error; err == nil {
             return errors.New("gift code has already been redeemed by this user")
