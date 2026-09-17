@@ -29,6 +29,7 @@ export const usePosts = (page = 1, limit = 20, category = "all") => {
   const cached = readFeedCache(category);
   const hasContentRef = useRef(Boolean(cached?.posts?.length));
   const requestIdRef = useRef(0);
+  const feedAtRef = useRef(cached?.pagination?.feedAt || null);
   const [posts, setPosts] = useState(cached?.posts || []);
   const [loading, setLoading] = useState(!cached?.posts?.length);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -39,14 +40,16 @@ export const usePosts = (page = 1, limit = 20, category = "all") => {
 
   const fetchPosts = useCallback(async () => {
     const requestId = ++requestIdRef.current;
+    const feedAt = feedAtRef.current;
     setLoading(!hasContentRef.current);
     setError(null);
     setLoadMoreError(null);
     try {
-      const response = await postsAPI.getFeed(page, limit, category);
+      const response = await postsAPI.getFeed(page, limit, category, feedAt);
       if (requestId !== requestIdRef.current) return;
       const nextPosts = Array.isArray(response.data) ? response.data : [];
       const pagination = response.pagination || {};
+      feedAtRef.current = pagination.feedAt || feedAt;
       setPosts(nextPosts);
       hasContentRef.current = nextPosts.length > 0;
       setCurrentPage(pagination.page ?? page);
@@ -69,16 +72,17 @@ export const usePosts = (page = 1, limit = 20, category = "all") => {
     setError(null);
     const nextPage = currentPage + 1;
     try {
-      const response = await postsAPI.getFeed(nextPage, limit, category);
+      const response = await postsAPI.getFeed(nextPage, limit, category, feedAtRef.current);
       if (requestId !== requestIdRef.current) return;
       const incomingPosts = Array.isArray(response.data) ? response.data : [];
       setPosts((current) => {
         const existingIds = new Set(current.map((post) => post.postId));
         const uniquePosts = incomingPosts.filter((post) => !existingIds.has(post.postId));
         const merged = [...current, ...uniquePosts];
-        writeFeedCache(category, merged, response.pagination || { page: nextPage, hasMore: false });
+        writeFeedCache(category, merged, response.pagination || { page: nextPage, hasMore: false, feedAt: feedAtRef.current });
         return merged;
       });
+      feedAtRef.current = response.pagination?.feedAt || feedAtRef.current;
       setCurrentPage(response.pagination?.page ?? nextPage);
       setHasMore(response.pagination?.hasMore ?? false);
     } catch (err) {
@@ -92,7 +96,7 @@ export const usePosts = (page = 1, limit = 20, category = "all") => {
   const removePost = useCallback((postId) => {
     setPosts((current) => {
       const next = current.filter((post) => post.postId !== postId);
-      writeFeedCache(category, next, { page: currentPage, hasMore });
+      writeFeedCache(category, next, { page: currentPage, hasMore, feedAt: feedAtRef.current });
       return next;
     });
   }, [category, currentPage, hasMore]);
@@ -100,6 +104,7 @@ export const usePosts = (page = 1, limit = 20, category = "all") => {
   useEffect(() => {
     requestIdRef.current += 1;
     hasContentRef.current = Boolean(cached?.posts?.length);
+    feedAtRef.current = cached?.pagination?.feedAt || null;
     setPosts(cached?.posts || []);
     setLoading(!cached?.posts?.length);
     setLoadingMore(false);
