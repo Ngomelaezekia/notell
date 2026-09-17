@@ -15,6 +15,7 @@ type Claims struct {
 }
 
 const tokenLifetime = 72 * time.Hour
+const serviceTokenLifetime = 5 * time.Minute
 
 func GenerateToken(userID uint, email, secret string) (string, error) {
 	if userID == 0 {
@@ -43,6 +44,36 @@ func GenerateToken(userID uint, email, secret string) (string, error) {
 		return "", fmt.Errorf("failed to sign token: %w", err)
 	}
 	return tokenString, nil
+}
+
+func GenerateServiceToken(userID uint, email, secret string) (string, time.Time, error) {
+	if userID == 0 {
+		return "", time.Time{}, errors.New("invalid user ID")
+	}
+	if secret == "" {
+		return "", time.Time{}, errors.New("JWT secret is required")
+	}
+
+	now := time.Now()
+	expiresAt := now.Add(serviceTokenLifetime)
+	claims := Claims{
+		UserID: userID,
+		Email:  email,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expiresAt),
+			IssuedAt:  jwt.NewNumericDate(now),
+			NotBefore: jwt.NewNumericDate(now),
+			Issuer:    "notell-api",
+			Subject:   fmt.Sprintf("%d", userID),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString([]byte(secret))
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("failed to sign service token: %w", err)
+	}
+	return tokenString, expiresAt, nil
 }
 
 func ValidateToken(tokenString, secret string) (*Claims, error) {
