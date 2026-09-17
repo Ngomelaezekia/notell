@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"notell/models"
 
@@ -32,6 +33,14 @@ func (h *PostHandler) GetCategorizedFeed(c *gin.Context) {
 	if page < 1 { page = 1 }
 	if limit < 1 || limit > 50 { limit = 20 }
 
+	feedAt := time.Now().UTC()
+	if raw := strings.TrimSpace(c.Query("feedAt")); raw != "" {
+		if parsed, err := time.Parse(time.RFC3339Nano, raw); err == nil {
+			feedAt = parsed.UTC()
+		}
+	}
+	feedAtSQL := feedAt.Format(time.RFC3339Nano)
+
 	// The default home feed is global: it starts from the posts table rather than
 	// restricting candidates to the current user's posts or accepted relationships.
 	// Visibility remains enforced so private posts are never exposed to other users.
@@ -43,7 +52,7 @@ func (h *PostHandler) GetCategorizedFeed(c *gin.Context) {
 		query = query.
 			Joins(`LEFT JOIN user_relationships ON user_relationships.following_id = posts.user_id AND user_relationships.follower_id = ? AND user_relationships.status = ?`, userID, "accepted").
 			Where(`posts.user_id = ? OR user_relationships.follower_id IS NOT NULL`, userID).
-			Order(gorm.Expr(`((COALESCE((SELECT COUNT(*) FROM likes l WHERE l.post_id = posts.id), 0) * 3) + (COALESCE((SELECT COUNT(*) FROM comments cm WHERE cm.post_id = posts.id), 0) * 2) + COALESCE(posts.view_count, 0)) / POWER((EXTRACT(EPOCH FROM (NOW() - posts.created_at)) / 3600.0) + 2, 0.35) DESC`))
+			Order(gorm.Expr(`((COALESCE((SELECT COUNT(*) FROM likes l WHERE l.post_id = posts.id), 0) * 3) + (COALESCE((SELECT COUNT(*) FROM comments cm WHERE cm.post_id = posts.id), 0) * 2) + COALESCE(posts.view_count, 0)) / POWER((EXTRACT(EPOCH FROM (?::timestamptz - posts.created_at)) / 3600.0) + 2, 0.35) DESC`, feedAtSQL))
 	case "local":
 		var viewer models.User
 		if err := h.DB.Select("city", "country").First(&viewer, userID).Error; err != nil {
@@ -53,16 +62,16 @@ func (h *PostHandler) GetCategorizedFeed(c *gin.Context) {
 		city := strings.TrimSpace(stringValue(viewer.City))
 		country := strings.TrimSpace(stringValue(viewer.Country))
 		if city == "" && country == "" {
-			c.JSON(http.StatusOK, gin.H{"data": []models.Post{}, "category": category, "pagination": gin.H{"page": page, "limit": limit, "total": 0, "hasMore": false}})
+			c.JSON(http.StatusOK, gin.H{"data": []models.Post{}, "category": category, "pagination": gin.H{"page": page, "limit": limit, "total": 0, "hasMore": false, "feedAt": feedAt.Format(time.RFC3339Nano)}})
 			return
 		}
 		query = query.Joins("JOIN users feed_users ON feed_users.id = posts.user_id")
 		if city != "" { query = query.Where("LOWER(feed_users.city) = LOWER(?)", city) } else { query = query.Where("LOWER(feed_users.country) = LOWER(?)", country) }
-		query = query.Order(gorm.Expr(`((COALESCE((SELECT COUNT(*) FROM likes l WHERE l.post_id = posts.id), 0) * 3) + (COALESCE((SELECT COUNT(*) FROM comments cm WHERE cm.post_id = posts.id), 0) * 2) + COALESCE(posts.view_count, 0)) / POWER((EXTRACT(EPOCH FROM (NOW() - posts.created_at)) / 3600.0) + 2, 0.45) DESC`))
+		query = query.Order(gorm.Expr(`((COALESCE((SELECT COUNT(*) FROM likes l WHERE l.post_id = posts.id), 0) * 3) + (COALESCE((SELECT COUNT(*) FROM comments cm WHERE cm.post_id = posts.id), 0) * 2) + COALESCE(posts.view_count, 0)) / POWER((EXTRACT(EPOCH FROM (?::timestamptz - posts.created_at)) / 3600.0) + 2, 0.45) DESC`, feedAtSQL))
 	case "popular":
-		query = query.Joins("JOIN users feed_users ON feed_users.id = posts.user_id").Order(gorm.Expr(`((COALESCE((SELECT COUNT(*) FROM likes l WHERE l.post_id = posts.id), 0) * 3) + (COALESCE((SELECT COUNT(*) FROM comments cm WHERE cm.post_id = posts.id), 0) * 2) + (COALESCE(posts.view_count, 0) * 4) + (COALESCE((SELECT COUNT(*) FROM user_relationships r WHERE r.following_id = posts.user_id AND r.status = 'accepted'), 0) * 0.5)) / POWER((EXTRACT(EPOCH FROM (NOW() - posts.created_at)) / 3600.0) + 2, 0.5) DESC`))
+		query = query.Joins("JOIN users feed_users ON feed_users.id = posts.user_id").Order(gorm.Expr(`((COALESCE((SELECT COUNT(*) FROM likes l WHERE l.post_id = posts.id), 0) * 3) + (COALESCE((SELECT COUNT(*) FROM comments cm WHERE cm.post_id = posts.id), 0) * 2) + (COALESCE(posts.view_count, 0) * 4) + (COALESCE((SELECT COUNT(*) FROM user_relationships r WHERE r.following_id = posts.user_id AND r.status = 'accepted'), 0) * 0.5)) / POWER((EXTRACT(EPOCH FROM (?::timestamptz - posts.created_at)) / 3600.0) + 2, 0.5) DESC`, feedAtSQL))
 	case "all":
-		query = query.Joins("JOIN users feed_users ON feed_users.id = posts.user_id").Order(gorm.Expr(`((COALESCE((SELECT COUNT(*) FROM likes l WHERE l.post_id = posts.id), 0) * 3) + (COALESCE((SELECT COUNT(*) FROM comments cm WHERE cm.post_id = posts.id), 0) * 2) + (COALESCE(posts.view_count, 0) * 4)) / POWER((EXTRACT(EPOCH FROM (NOW() - posts.created_at)) / 3600.0) + 2, 0.45) DESC`, userID))
+		query = query.Joins("JOIN users feed_users ON feed_users.id = posts.user_id").Order(gorm.Expr(`((COALESCE((SELECT COUNT(*) FROM likes l WHERE l.post_id = posts.id), 0) * 3) + (COALESCE((SELECT COUNT(*) FROM comments cm WHERE cm.post_id = posts.id), 0) * 2) + (COALESCE(posts.view_count, 0) * 4)) / POWER((EXTRACT(EPOCH FROM (?::timestamptz - posts.created_at)) / 3600.0) + 2, 0.45) DESC`, feedAtSQL))
 	}
 
 	var total int64
@@ -73,7 +82,7 @@ func (h *PostHandler) GetCategorizedFeed(c *gin.Context) {
 	if err := query.Find(&posts).Error; err != nil { c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to fetch feed"}); return }
 	hasMore := len(posts) > limit
 	if hasMore { posts = posts[:limit] }
-	c.JSON(http.StatusOK, gin.H{"data": posts, "category": category, "pagination": gin.H{"page": page, "limit": limit, "total": total, "hasMore": hasMore}})
+	c.JSON(http.StatusOK, gin.H{"data": posts, "category": category, "pagination": gin.H{"page": page, "limit": limit, "total": total, "hasMore": hasMore, "feedAt": feedAt.Format(time.RFC3339Nano)}})
 }
 
 func stringValue(value *string) string { if value == nil { return "" }; return *value }
