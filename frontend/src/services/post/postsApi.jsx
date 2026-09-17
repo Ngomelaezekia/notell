@@ -1,7 +1,7 @@
 import API from "../../utils/api";
 
 export const postsAPI = {
-  getFeed: async (page = 1, limit = 20, category = "all") => { const response = await API.get("/posts/feed", { params: { page, limit, category } }); return response.data; },
+  getFeed: async (page = 1, limit = 20, category = "all", feedAt = null) => { const response = await API.get("/posts/feed", { params: { page, limit, category, ...(feedAt ? { feedAt } : {}) } }); return response.data; },
   getById: async (id) => { const response = await API.get(`/posts/${id}`); return response.data; },
   recordView: async (id) => { const response = await API.post(`/posts/${id}/view`); return response.data; },
   searchPosts: async (query, page = 1, limit = 20) => { const response = await API.get("/posts/search", { params: { q: query, page, limit } }); return response.data; },
