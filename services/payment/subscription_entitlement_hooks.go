@@ -1,6 +1,9 @@
 package main
 
-import "sync"
+import (
+	"strings"
+	"sync"
+)
 
 var stripeReconciliationOnce sync.Once
 
@@ -21,9 +24,7 @@ func applyStripeSubscriptionEventAndSync(s *Server, eventType string, object map
 		return err
 	}
 	if sub.Status == "active" && sub.GiftTokenID != nil && strings.TrimSpace(*sub.GiftTokenID) != "" {
-		if err := redeemGiftToken(s.db, *sub.GiftTokenID, sub.UserID, sub.ID); err != nil {
-			return err
-		}
+		return redeemGiftToken(s.db, *sub.GiftTokenID, sub.UserID, sub.ID)
 	}
 	return nil
 }
