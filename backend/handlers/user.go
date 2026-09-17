@@ -247,5 +247,36 @@ func (h *UserHandler) GetUserProfile(c *gin.Context) {
 		return
 	}
 	user.PostCount = postCount
+	var followerCount int64
+	if err := h.DB.Model(&models.Relationship{}).Where("following_id = ? AND status = ?", targetID, "accepted").Count(&followerCount).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to count followers"})
+		return
+	}
+	var followingCount int64
+	if err := h.DB.Model(&models.Relationship{}).Where("follower_id = ? AND status = ?", targetID, "accepted").Count(&followingCount).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to count following"})
+		return
+	}
+	user.FollowerCount = followerCount
+	user.FollowingCount = followingCount
+	if viewerID != 0 && viewerID != targetID {
+		var outgoing models.Relationship
+		outgoingErr := h.DB.Where("follower_id = ? AND following_id = ?", viewerID, targetID).First(&outgoing).Error
+		if outgoingErr == nil {
+			user.RelationshipStatus = outgoing.Status
+			user.IsFollowing = outgoing.Status == "accepted"
+		} else if !errors.Is(outgoingErr, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to load relationship"})
+			return
+		}
+		var incoming models.Relationship
+		incomingErr := h.DB.Where("follower_id = ? AND following_id = ?", targetID, viewerID).First(&incoming).Error
+		if incomingErr == nil {
+			user.IsFollowedBy = incoming.Status == "accepted"
+		} else if !errors.Is(incomingErr, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to load relationship"})
+			return
+		}
+	}
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{"user": user, "pagination": gin.H{"page": page, "limit": limit, "total": postCount, "hasMore": int64(page*limit) < postCount}}})
 }
