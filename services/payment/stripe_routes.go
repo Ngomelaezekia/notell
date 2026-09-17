@@ -175,7 +175,7 @@ func applyStripeEvent(s *Server, eventType string, object map[string]any) error 
 	default:
 		return nil
 	}
-	if p.Status == target || !validTransition(p.Status, target) {
+	if p.Status == target || !validProviderTransition(p.Status, target) {
 		return nil
 	}
 	p.Status = target
