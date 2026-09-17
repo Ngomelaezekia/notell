@@ -15,6 +15,30 @@ func stripeFromEnv() *StripeProvider {
 	return NewStripeProvider(strings.TrimSpace(getenv("STRIPE_SECRET_KEY", "")))
 }
 
+func ensureGiftCoupon(s *Server, sub Subscription) (string, error) {
+	if sub.GiftTokenID == nil || strings.TrimSpace(*sub.GiftTokenID) == "" || sub.GiftDiscountPercent <= 0 {
+		return "", nil
+	}
+	var token GiftToken
+	if err := s.db.Where("id = ?", strings.TrimSpace(*sub.GiftTokenID)).First(&token).Error; err != nil {
+		return "", err
+	}
+	if !giftTokenAvailable(token, time.Now().UTC()) {
+		return "", gorm.ErrInvalidData
+	}
+	if token.ProviderCouponID != nil && strings.TrimSpace(*token.ProviderCouponID) != "" {
+		return strings.TrimSpace(*token.ProviderCouponID), nil
+	}
+	couponID, err := stripeFromEnv().CreateCoupon(token.DiscountPercent, token.MaxRedemptions, "Notell "+token.Type+" "+token.Code, token.ID)
+	if err != nil {
+		return "", err
+	}
+	if err := s.db.Model(&GiftToken{}).Where("id = ? AND provider_coupon_id IS NULL", token.ID).Update("provider_coupon_id", couponID).Error; err != nil {
+		return "", err
+	}
+	return couponID, nil
+}
+
 func registerStripeRoutes(r *gin.Engine, s *Server) {
 	r.POST("/v1/webhooks/stripe", func(c *gin.Context) {
 		secret := strings.TrimSpace(getenv("STRIPE_WEBHOOK_SECRET", ""))
@@ -84,12 +108,17 @@ func registerStripeRoutes(r *gin.Engine, s *Server) {
 			c.JSON(500, gin.H{"error": "subscription checkout URLs are not configured"})
 			return
 		}
-		url, err := stripeFromEnv().CreateSubscriptionCheckout(sub, success, cancel)
+		couponID, err := ensureGiftCoupon(s, sub)
+		if err != nil {
+			c.JSON(502, gin.H{"error": "gift discount could not be prepared"})
+			return
+		}
+		url, err := stripeFromEnv().CreateSubscriptionCheckout(sub, success, cancel, couponID)
 		if err != nil {
 			c.JSON(502, gin.H{"error": "stripe checkout could not be created"})
 			return
 		}
-		c.JSON(200, gin.H{"url": url, "subscription": sub})
+		c.JSON(200, gin.H{"url": url, "subscription": sub, "giftDiscountPercent": sub.GiftDiscountPercent})
 	})
 
 	api.POST("/payments/:id/intent", func(c *gin.Context) {
@@ -169,46 +198,17 @@ func registerStripeRoutes(r *gin.Engine, s *Server) {
 
 func applyStripeEvent(s *Server, eventType string, object map[string]any) error {
 	providerPaymentID, _ := object["payment_intent"].(string)
-	if providerPaymentID == "" {
-		providerPaymentID, _ = object["id"].(string)
-	}
-	if providerPaymentID == "" {
-		return nil
-	}
+	if providerPaymentID == "" { providerPaymentID, _ = object["id"].(string) }
+	if providerPaymentID == "" { return nil }
 	var p Payment
-	if err := s.db.Where("provider = ? AND provider_payment_id = ?", "stripe", providerPaymentID).First(&p).Error; err != nil {
-		return nil
-	}
+	if err := s.db.Where("provider = ? AND provider_payment_id = ?", "stripe", providerPaymentID).First(&p).Error; err != nil { return nil }
 	target := ""
-	switch eventType {
-	case "payment_intent.processing":
-		target = PaymentProcessing
-	case "payment_intent.succeeded", "charge.succeeded":
-		target = PaymentSucceeded
-	case "payment_intent.payment_failed", "charge.failed":
-		target = PaymentFailed
-	case "payment_intent.canceled":
-		target = PaymentCanceled
-	default:
-		return nil
-	}
-	if p.Status == target || !validProviderTransition(p.Status, target) {
-		return nil
-	}
+	switch eventType { case "payment_intent.processing": target = PaymentProcessing; case "payment_intent.succeeded", "charge.succeeded": target = PaymentSucceeded; case "payment_intent.payment_failed", "charge.failed": target = PaymentFailed; case "payment_intent.canceled": target = PaymentCanceled; default: return nil }
+	if p.Status == target || !validProviderTransition(p.Status, target) { return nil }
 	p.Status = target
 	return s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Save(&p).Error; err != nil {
-			return err
-		}
-		if target == PaymentSucceeded {
-			var n int64
-			if err := tx.Model(&LedgerEntry{}).Where("payment_id = ? AND entry_type = ?", p.ID, "payment_captured").Count(&n).Error; err != nil {
-				return err
-			}
-			if n == 0 {
-				return tx.Create(&LedgerEntry{ID: newID("led"), PaymentID: p.ID, UserID: p.UserID, EntryType: "payment_captured", Amount: p.Amount, Currency: p.Currency, Reference: p.ID}).Error
-			}
-		}
+		if err := tx.Save(&p).Error; err != nil { return err }
+		if target == PaymentSucceeded { var n int64; if err := tx.Model(&LedgerEntry{}).Where("payment_id = ? AND entry_type = ?", p.ID, "payment_captured").Count(&n).Error; err != nil { return err }; if n == 0 { return tx.Create(&LedgerEntry{ID:newID("led"),PaymentID:p.ID,UserID:p.UserID,EntryType:"payment_captured",Amount:p.Amount,Currency:p.Currency,Reference:p.ID}).Error } }
 		return nil
 	})
 }
