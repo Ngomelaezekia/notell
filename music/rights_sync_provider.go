@@ -27,9 +27,16 @@ func syncConfiguredProviderRights(ctx context.Context) (int, error) {
 	if !ok || postgres == nil {
 		return 0, errors.New("postgres rights store is required for provider synchronization")
 	}
-	return syncer.SyncRights(ctx, func(record rightsSyncRecord) error {
+	count, err := syncer.SyncRights(ctx, func(record rightsSyncRecord) error {
 		return upsertRightsRecord(ctx, postgres, record)
 	})
+	if err != nil {
+		return count, err
+	}
+	postgres.mu.Lock()
+	postgres.cache = make(map[string]cachedRights)
+	postgres.mu.Unlock()
+	return count, nil
 }
 
 func upsertRightsRecord(ctx context.Context, store *postgresMusicRightsStore, record rightsSyncRecord) error {
