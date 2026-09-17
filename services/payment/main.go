@@ -28,7 +28,7 @@ type PaymentCustomer struct { ID string `gorm:"primaryKey"`; UserID string `gorm
 type PaymentProduct struct { ID string `gorm:"primaryKey"`; Name string; Description string; Active bool; Provider string; ProviderProductID string; CreatedAt time.Time; UpdatedAt time.Time }
 type PaymentPrice struct { ID string `gorm:"primaryKey"`; ProductID string `gorm:"index;not null"`; Currency string; UnitAmount int64; Interval string; Active bool; ProviderPriceID string; CreatedAt time.Time; UpdatedAt time.Time }
 type WebhookEvent struct { ID string `gorm:"primaryKey"`; Provider string; ProviderEventID string; EventType string; Payload string `gorm:"type:jsonb"`; Status string; ErrorMessage string; ProcessedAt *time.Time; CreatedAt time.Time }
-type Refund struct { ID string `gorm:"primaryKey"`; PaymentID string `gorm:"index;not null"`; Amount int64; Currency string; Status string; ProviderRefundID string; Reason string; CreatedAt time.Time; UpdatedAt time.Time }
+type Refund struct { ID string `primaryKey"`; PaymentID string `gorm:"index;not null"`; Amount int64; Currency string; Status string; ProviderRefundID string; Reason string; CreatedAt time.Time; UpdatedAt time.Time }
 type LedgerEntry struct { ID string `gorm:"primaryKey"`; PaymentID string `gorm:"index"`; UserID string `gorm:"index;not null"`; EntryType string; Amount int64; Currency string; Reference string; CreatedAt time.Time }
 type AuditEvent struct { ID string `gorm:"primaryKey"`; PaymentID string `gorm:"index"`; UserID string; EventType string; FromStatus string; ToStatus string; Metadata string `gorm:"type:jsonb"`; CreatedAt time.Time }
 type Server struct { cfg Config; db *gorm.DB }
