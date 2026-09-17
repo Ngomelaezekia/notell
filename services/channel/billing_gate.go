@@ -26,9 +26,7 @@ func channelPlanCodeFromPackage(packageID string) string {
 }
 
 func channelPlanActive(c *gin.Context) (bool, string) {
- if strings.TrimSpace(os.Getenv("APP_ENV")) != "production" && strings.TrimSpace(os.Getenv("PAYMENT_SERVICE_URL")) == "" {
-  return true, "CREATOR"
- }
+ if strings.TrimSpace(os.Getenv("APP_ENV")) != "production" && strings.TrimSpace(os.Getenv("PAYMENT_SERVICE_URL")) == "" { return true, "CREATOR" }
  base := strings.TrimRight(strings.TrimSpace(os.Getenv("PAYMENT_SERVICE_URL")), "/")
  key := strings.TrimSpace(os.Getenv("INTERNAL_SERVICE_KEY"))
  if base == "" || key == "" { return false, "" }
@@ -44,17 +42,15 @@ func channelPlanActive(c *gin.Context) (bool, string) {
  if resp.StatusCode != http.StatusOK { return false, "" }
  var result paymentEntitlementResponse
  if err := json.NewDecoder(resp.Body).Decode(&result); err != nil || !result.Active { return false, "" }
- return true, channelPlanCodeFromPackage(result.Subscription.PackageID)
+ planCode := channelPlanCodeFromPackage(result.Subscription.PackageID)
+ if planCode == "" { return false, "" }
+ return true, planCode
 }
 
 func requireChannelPlan(next gin.HandlerFunc) gin.HandlerFunc {
  return func(c *gin.Context) {
   active, planCode := channelPlanActive(c)
-  if !active {
-   c.JSON(http.StatusPaymentRequired, gin.H{"message":"active channel plan required","code":"CHANNEL_PLAN_REQUIRED"})
-   return
-  }
-  if planCode == "" { planCode = "CREATOR" }
+  if !active { c.JSON(http.StatusPaymentRequired, gin.H{"message":"active channel plan required","code":"CHANNEL_PLAN_REQUIRED"}); return }
   c.Set("channelPlanCode", planCode)
   next(c)
  }
