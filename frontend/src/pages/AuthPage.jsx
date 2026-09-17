@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLocation } from "react-router-dom";
-import { User, Eye, EyeOff, Mail, Globe, MapPin, AlertCircle, Loader2 } from "lucide-react";
+import { User, Eye, EyeOff, Mail, Globe, MapPin, AlertCircle, Loader2, Gift } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import GoogleButton from "../components/googleButton";
 
@@ -10,9 +10,11 @@ const initialForm = { username: "", email: "", password: "", country: "", city: 
 export default function AuthPage() {
   const { login, register, loginWithGoogle, error: authError } = useAuth();
   const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  const giftCode = (params.get("gift") || "").trim().toUpperCase().slice(0, 6);
   const returnTo = location.state?.from;
   const redirectTo = returnTo ? `${returnTo.pathname || "/"}${returnTo.search || ""}${returnTo.hash || ""}` : "/";
-  const [isLogin, setIsLogin] = useState(true);
+  const [isLogin, setIsLogin] = useState(!(params.get("mode") === "signup" || giftCode));
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [localError, setLocalError] = useState("");
@@ -25,7 +27,7 @@ export default function AuthPage() {
     e.preventDefault(); setLoading(true); setLocalError("");
     try {
       if (isLogin) await login({ email: formData.email, password: formData.password }, redirectTo);
-      else await register({ username: formData.username, email: formData.email, password: formData.password, country: formData.country || null, city: formData.city || null }, redirectTo);
+      else await register({ username: formData.username, email: formData.email, password: formData.password, country: formData.country || null, city: formData.city || null, giftCode: giftCode || undefined }, redirectTo);
     } catch (err) { setLocalError(err.message || "Authentication failed"); }
     finally { setLoading(false); }
   };
@@ -38,6 +40,7 @@ export default function AuthPage() {
       <section className="relative z-10 w-full max-w-md">
         <div className="rounded-[32px] border border-white/30 bg-white/10 backdrop-blur-xl shadow-2xl p-6 text-white">
           <header className="mb-6"><h1 className="text-3xl font-bold">{isLogin ? "Welcome Back" : "Create Account"}</h1><p className="text-sm text-white/70 mt-1">{isLogin ? "Login to continue" : "Join the community"}</p></header>
+          {!isLogin && giftCode && <div className="mb-4 flex items-center gap-2 rounded-xl border border-lime-300/20 bg-lime-400/10 p-3 text-sm text-lime-100"><Gift size={16}/><span>Referral gift <strong className="tracking-widest">{giftCode}</strong> will be applied to your first channel plan.</span></div>}
           {error && <div className="mb-4 flex gap-2 items-center rounded-xl bg-red-500/20 border border-red-400/30 p-3 text-sm text-red-200"><AlertCircle size={16} />{error}</div>}
           <AnimatePresence mode="wait">
             <motion.form key={isLogin} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -15 }} transition={{ duration: 0.2 }} onSubmit={handleSubmit} className="space-y-3">
