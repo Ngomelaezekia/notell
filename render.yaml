@@ -179,9 +179,21 @@ services:
         sync: false
       - key: FRONTEND_URL
         value: https://notell-web.onrender.com
+      - key: PUBLIC_APP_URL
+        value: https://notell-web.onrender.com
+      - key: GIFT_ADMIN_KEY
+        sync: false
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRICE_PKG_STARTER
+        sync: false
+      - key: STRIPE_PRICE_PKG_CREATOR
+        sync: false
+      - key: STRIPE_PRICE_PKG_PRO
+        sync: false
+      - key: STRIPE_PRICE_PKG_247
         sync: false
       - key: INTERNAL_SERVICE_KEY
         sync: false
