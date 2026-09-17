@@ -117,7 +117,11 @@ func registerGiftRoutes(r *gin.Engine, s *Server) {
             c.JSON(500, gin.H{"error": "failed to inspect admin gift tokens"})
             return
         }
-        created := make([]giftTokenResponse, 0, maxInt(0, 2-int(existing)))
+        capacity := int64(0)
+        if existing < 2 {
+            capacity = 2 - existing
+        }
+        created := make([]giftTokenResponse, 0, int(capacity))
         for existing < 2 {
             token, err := createGiftToken(s.db, GiftAdminFull, "system", 1, nil)
             if err != nil {
@@ -185,11 +189,4 @@ func registerGiftRoutes(r *gin.Engine, s *Server) {
         }
         c.JSON(200, gin.H{"claimed": true, "giftToken": token})
     })
-}
-
-func maxInt(a, b int64) int {
-    if a > b {
-        return int(a)
-    }
-    return int(b)
 }
