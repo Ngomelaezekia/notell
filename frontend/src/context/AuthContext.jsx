@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import API, { API_BASE_URL, getApiErrorMessage } from "../utils/api";
 
 const AuthContext = createContext(null);
+const FEED_CACHE_PREFIX = "notell:feed:v2:";
+const clearFeedCache = () => { try { for (let index = sessionStorage.length - 1; index >= 0; index -= 1) { const key = sessionStorage.key(index); if (key?.startsWith(FEED_CACHE_PREFIX)) sessionStorage.removeItem(key); } } catch {} };
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -17,13 +19,13 @@ export function AuthProvider({ children }) {
       if (!currentUser?.id) throw new Error("Invalid current-user response");
       setUser(currentUser); setError(null); return currentUser;
     } catch (err) {
-      if (err?.response?.status === 401) { setUser(null); return null; }
+      if (err?.response?.status === 401) { clearFeedCache(); setUser(null); return null; }
       setError(getApiErrorMessage(err, "Unable to verify your session.")); return null;
     } finally { setLoading(false); }
   }, []);
 
   useEffect(() => {
-    const handleSessionExpired = () => { setUser(null); setError("Your session has expired. Please sign in again."); navigate("/auth", { replace: true }); };
+    const handleSessionExpired = () => { clearFeedCache(); setUser(null); setError("Your session has expired. Please sign in again."); navigate("/auth", { replace: true }); };
     window.addEventListener("notell:session-expired", handleSessionExpired);
     return () => window.removeEventListener("notell:session-expired", handleSessionExpired);
   }, [navigate]);
@@ -63,7 +65,7 @@ export function AuthProvider({ children }) {
     catch (err) { const message = getApiErrorMessage(err, "Registration failed"); setError(message); throw new Error(message, { cause: err }); }
   };
 
-  const logout = async () => { try { await API.post("/auth/logout"); } catch (err) { setError(getApiErrorMessage(err, "Logout failed")); } finally { setUser(null); navigate("/auth", { replace: true }); } };
+  const logout = async () => { try { await API.post("/auth/logout"); } catch (err) { setError(getApiErrorMessage(err, "Logout failed")); } finally { clearFeedCache(); setUser(null); navigate("/auth", { replace: true }); } };
   const updateUser = useCallback((updatedFields) => setUser((prev) => prev ? { ...prev, ...updatedFields } : null), []);
 
   return <AuthContext.Provider value={{ user, authenticated: Boolean(user), loading, error, setError, login, register, loginWithGoogle, logout, fetchCurrentUser, updateUser }}>{children}</AuthContext.Provider>;
