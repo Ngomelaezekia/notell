@@ -103,6 +103,7 @@ func (s *postgresMusicRightsStore) Resolve(ctx context.Context, provider, provid
 	}
 
 	var rights Rights
+	var canUseInPost bool
 	err := s.pool.QueryRow(ctx, `
 SELECT licensed, ugc_use, streaming, can_use_in_post, attribution_required, status
 FROM music_rights_entitlements
@@ -111,8 +112,7 @@ WHERE provider=$1 AND provider_track_id=$2 AND territory IN ($3, '*')
   AND (valid_until IS NULL OR valid_until > $4)
 ORDER BY CASE WHEN territory=$3 THEN 0 ELSE 1 END
 LIMIT 1`, provider, providerTrackID, territory, now).Scan(
-		&rights.Licensed, &rights.UGCUse, &rights.Streaming, &rights.ProviderStatus,
-		&rights.Attribution,
+		&rights.Licensed, &rights.UGCUse, &rights.Streaming, &canUseInPost, &rights.Attribution, &rights.ProviderStatus,
 	)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return Rights{}, false, err
@@ -120,6 +120,10 @@ LIMIT 1`, provider, providerTrackID, territory, now).Scan(
 	found := err == nil
 	if found {
 		rights.Territories = []string{territory}
+		if !canUseInPost {
+			// A row can explicitly keep a licensed track out of post composition.
+			rights.Licensed = false
+		}
 	}
 	s.mu.Lock()
 	s.cache[key] = cachedRights{rights: rights, found: found, expiresAt: now.Add(s.ttl)}
