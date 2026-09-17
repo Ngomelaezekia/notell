@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -17,24 +18,44 @@ import (
 func (h *PostHandler) RecordPostView(c *gin.Context) {
 	userID := c.MustGet("userId").(uint)
 	postID, err := strconv.ParseUint(c.Param("id"), 10, 32)
-	if err != nil { c.JSON(http.StatusBadRequest, gin.H{"message": "invalid post ID"}); return }
-
-	var post models.Post
-	if err := h.DB.Select("id, user_id, visibility").First(&post, uint(postID)).Error; err != nil {
-		if err == gorm.ErrRecordNotFound { c.JSON(http.StatusNotFound, gin.H{"message": "post not found"}); return }
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to validate post"}); return
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid post ID"})
+		return
 	}
-	if post.Visibility == "private" && post.UserID != userID {
+	postIDUint := uint(postID)
+
+	viewed := false
+	err = h.DB.Transaction(func(tx *gorm.DB) error {
+		var post models.Post
+		if err := tx.Select("id, user_id, visibility").First(&post, postIDUint).Error; err != nil {
+			return err
+		}
+		if post.Visibility == "private" && post.UserID != userID {
+			return gorm.ErrRecordNotFound
+		}
+
+		result := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "post_id"}, {Name: "user_id"}},
+			DoNothing: true,
+		}).Create(&models.PostView{PostID: postIDUint, UserID: userID})
+		if result.Error != nil {
+			return result.Error
+		}
+		viewed = true
+		if result.RowsAffected == 1 {
+			if err := tx.Model(&models.Post{}).Where("id = ?", postIDUint).UpdateColumn("view_count", gorm.Expr("view_count + 1")).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		c.JSON(http.StatusNotFound, gin.H{"message": "post not found"})
 		return
 	}
-
-	result := h.DB.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "post_id"}, {Name: "user_id"}}, DoNothing: true}).Create(&models.PostView{PostID: uint(postID), UserID: userID})
-	if result.Error != nil { c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to record post view"}); return }
-	if result.RowsAffected == 1 {
-		if err := h.DB.Model(&models.Post{}).Where("id = ?", uint(postID)).UpdateColumn("view_count", gorm.Expr("view_count + 1")).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to update post view count"}); return
-		}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to record post view"})
+		return
 	}
-	c.JSON(http.StatusOK, gin.H{"viewed": true})
+	c.JSON(http.StatusOK, gin.H{"viewed": viewed})
 }
