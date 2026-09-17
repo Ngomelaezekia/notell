@@ -8,7 +8,7 @@ export const paymentAPI = {
   subscribe: async (id) => (await paymentClient.post(`/v1/packages/${id}/subscribe`)).data,
   checkout: async (subscriptionId) => (await paymentClient.post(`/v1/subscriptions/${subscriptionId}/checkout`)).data,
   subscriptions: async () => (await paymentClient.get("/v1/subscriptions")).data,
-  entitlement: async (resourceType, resourceId) => (await paymentClient.get(`/v1/entitlements/${resourceType}/${resourceId}`)).data,
+  entitlement: async (resourceType, resourceId) => (await paymentClient.get(`/v1/entitlements/check/${resourceType}/${resourceId}`)).data,
 };
 
 export default paymentAPI;
