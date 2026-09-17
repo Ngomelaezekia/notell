@@ -35,11 +35,13 @@ export const usePosts = (page = 1, limit = 20, category = "all") => {
   const [currentPage, setCurrentPage] = useState(cached?.pagination?.page ?? page);
   const [hasMore, setHasMore] = useState(cached?.pagination?.hasMore ?? true);
   const [error, setError] = useState(null);
+  const [loadMoreError, setLoadMoreError] = useState(null);
 
   const fetchPosts = useCallback(async () => {
     const requestId = ++requestIdRef.current;
     setLoading(!hasContentRef.current);
     setError(null);
+    setLoadMoreError(null);
     try {
       const response = await postsAPI.getFeed(page, limit, category);
       if (requestId !== requestIdRef.current) return;
@@ -63,6 +65,7 @@ export const usePosts = (page = 1, limit = 20, category = "all") => {
     if (loading || loadingMore || !hasMore) return;
     const requestId = requestIdRef.current;
     setLoadingMore(true);
+    setLoadMoreError(null);
     setError(null);
     const nextPage = currentPage + 1;
     try {
@@ -80,7 +83,7 @@ export const usePosts = (page = 1, limit = 20, category = "all") => {
       setHasMore(response.pagination?.hasMore ?? false);
     } catch (err) {
       if (requestId !== requestIdRef.current) return;
-      setError(getApiErrorMessage(err, "Failed to load more posts"));
+      setLoadMoreError(getApiErrorMessage(err, "Failed to load more posts"));
     } finally {
       if (requestId === requestIdRef.current) setLoadingMore(false);
     }
@@ -103,13 +106,14 @@ export const usePosts = (page = 1, limit = 20, category = "all") => {
     setCurrentPage(cached?.pagination?.page ?? page);
     setHasMore(cached?.pagination?.hasMore ?? true);
     setError(null);
+    setLoadMoreError(null);
   }, [category]);
 
   useEffect(() => {
     fetchPosts();
   }, [fetchPosts]);
 
-  return { posts, loading, loadingMore, hasMore, error, refetch: fetchPosts, loadMore, removePost };
+  return { posts, loading, loadingMore, hasMore, error, loadMoreError, refetch: fetchPosts, loadMore, removePost };
 };
 
 export const usePostActions = () => {
