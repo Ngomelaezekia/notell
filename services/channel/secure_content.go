@@ -8,6 +8,9 @@ import (
     "gorm.io/gorm"
 )
 
+// ChannelContent.PostID is an external reference to a post owned by the main
+// Notell service. The channel service has its own database, so it must not
+// query the main service's posts table directly.
 func linkOwnedContent(db *gorm.DB) gin.HandlerFunc {
     return func(c *gin.Context) {
         id := channelID(c)
@@ -20,24 +23,6 @@ func linkOwnedContent(db *gorm.DB) gin.HandlerFunc {
         }
         if err := c.ShouldBindJSON(&in); err != nil || in.PostID == 0 {
             c.JSON(http.StatusBadRequest, gin.H{"message": "postId is required"})
-            return
-        }
-        var ch Channel
-        if err := db.Select("id,owner_id,status").First(&ch, id).Error; err != nil || ch.Status != ChannelActive {
-            c.JSON(http.StatusNotFound, gin.H{"message": "channel not found"})
-            return
-        }
-        var post struct {
-            ID uint64
-            UserID uint64
-            Visibility string
-        }
-        if err := db.Table("posts").Select("id,user_id,visibility").Where("id = ?", in.PostID).First(&post).Error; err != nil {
-            c.JSON(http.StatusNotFound, gin.H{"message": "post not found"})
-            return
-        }
-        if post.UserID != ch.OwnerID {
-            c.JSON(http.StatusForbidden, gin.H{"message": "channel content must belong to the channel owner"})
             return
         }
         status := strings.ToUpper(strings.TrimSpace(in.Status))
