@@ -103,45 +103,28 @@ func (s *postgresMusicRightsStore) Resolve(ctx context.Context, provider, provid
 	}
 
 	var rights Rights
-	var canUseInPost bool
-	var validFrom, validUntil *time.Time
 	err := s.pool.QueryRow(ctx, `
-SELECT licensed, ugc_use, streaming, can_use_in_post, attribution_required, status, valid_from, valid_until
+SELECT licensed, ugc_use, streaming, can_use_in_post, attribution_required, status
 FROM music_rights_entitlements
 WHERE provider=$1 AND provider_track_id=$2 AND territory IN ($3, '*')
   AND (valid_from IS NULL OR valid_from <= $4)
   AND (valid_until IS NULL OR valid_until > $4)
 ORDER BY CASE WHEN territory=$3 THEN 0 ELSE 1 END
 LIMIT 1`, provider, providerTrackID, territory, now).Scan(
-		&rights.Licensed, &rights.UGCUse, &rights.Streaming, &canUseInPost,
-		&rights.Attribution, &rights.ProviderStatus, &validFrom, &validUntil,
+		&rights.Licensed, &rights.UGCUse, &rights.Streaming, &rights.ProviderStatus,
+		&rights.Attribution,
 	)
-	found := err == nil
-	if errors.Is(err, pgx.ErrNoRows) {
-		err = nil
-	}
-	if err != nil {
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return Rights{}, false, err
 	}
+	found := err == nil
 	if found {
 		rights.Territories = []string{territory}
-		if validUntil != nil && validUntil.Before(now) {
-			found = false
-		}
-	}
-	if found && validFrom != nil && validFrom.After(now) {
-		found = false
-	}
-	if found && !canUseInPost {
-		rights.Licensed = false
 	}
 	s.mu.Lock()
 	s.cache[key] = cachedRights{rights: rights, found: found, expiresAt: now.Add(s.ttl)}
 	s.mu.Unlock()
-	if !found {
-		return Rights{}, false, nil
-	}
-	return rights, true, nil
+	return rights, found, nil
 }
 
 func (s *postgresMusicRightsStore) Close() { s.pool.Close() }
@@ -190,6 +173,6 @@ func applyAuthoritativeRights(ctx context.Context, item Track, country string) (
 		return item, nil
 	}
 	item.Rights = rights
-	item.CanUseInPost = item.CanUseInPost && rights.Licensed && rights.UGCUse && rights.Streaming
+	item.CanUseInPost = rights.Licensed && rights.UGCUse && rights.Streaming
 	return item, nil
 }
