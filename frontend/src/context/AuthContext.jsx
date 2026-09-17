@@ -1,10 +1,12 @@
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import API, { API_BASE_URL, getApiErrorMessage } from "../utils/api";
+import { paymentAPI } from "../services/payment/paymentApi";
 
 const AuthContext = createContext(null);
 const FEED_CACHE_PREFIX = "notell:feed:v2:";
 const clearFeedCache = () => { try { for (let index = sessionStorage.length - 1; index >= 0; index -= 1) { const key = sessionStorage.key(index); if (key?.startsWith(FEED_CACHE_PREFIX)) sessionStorage.removeItem(key); } } catch {} };
+const pendingGiftCode = () => { try { const code = new URLSearchParams(window.location.search).get("gift"); return code ? code.trim().toUpperCase().slice(0, 6) : ""; } catch { return ""; } };
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -22,6 +24,12 @@ export function AuthProvider({ children }) {
       if (err?.response?.status === 401) { clearFeedCache(); setUser(null); return null; }
       setError(getApiErrorMessage(err, "Unable to verify your session.")); return null;
     } finally { setLoading(false); }
+  }, []);
+
+  const claimReferralGift = useCallback(async (code) => {
+    const normalized = String(code || "").trim().toUpperCase();
+    if (!normalized) return false;
+    try { await paymentAPI.claimGift(normalized); return true; } catch { return false; }
   }, []);
 
   useEffect(() => {
@@ -43,14 +51,22 @@ export function AuthProvider({ children }) {
         setError(messages[oauthError] || `OAuth Error: ${oauthError}`);
         window.history.replaceState({}, document.title, window.location.pathname);
       }
-      await fetchCurrentUser();
+      const currentUser = await fetchCurrentUser();
+      const gift = pendingGiftCode();
+      if (currentUser && gift) {
+        await claimReferralGift(gift);
+        const cleanPath = `${window.location.pathname}${window.location.hash || ""}`;
+        window.history.replaceState({}, document.title, cleanPath || "/");
+      }
     };
     void init();
-  }, [fetchCurrentUser]);
+  }, [claimReferralGift, fetchCurrentUser]);
 
   const loginWithGoogle = (mode = "login") => {
     const selectedMode = mode === "signup" ? "signup" : "login";
-    window.location.href = `${API_BASE_URL}/auth/google?mode=${selectedMode}`;
+    const gift = pendingGiftCode();
+    const suffix = gift ? `&gift=${encodeURIComponent(gift)}` : "";
+    window.location.href = `${API_BASE_URL}/auth/google?mode=${selectedMode}${suffix}`;
   };
 
   const login = async (credentials, redirectTo = "/") => {
@@ -61,7 +77,7 @@ export function AuthProvider({ children }) {
 
   const register = async (formData, redirectTo = "/") => {
     setError(null);
-    try { const response = await API.post("/auth/register", formData); const currentUser = await fetchCurrentUser(); if (!currentUser) throw new Error("Registration succeeded, but the session could not be verified."); navigate(redirectTo || "/", { replace: true }); return response.data; }
+    try { const response = await API.post("/auth/register", formData); const currentUser = await fetchCurrentUser(); if (!currentUser) throw new Error("Registration succeeded, but the session could not be verified."); await claimReferralGift(formData?.giftCode || pendingGiftCode()); navigate(redirectTo || "/", { replace: true }); return response.data; }
     catch (err) { const message = getApiErrorMessage(err, "Registration failed"); setError(message); throw new Error(message, { cause: err }); }
   };
 
