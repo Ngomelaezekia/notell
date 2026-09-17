@@ -48,7 +48,7 @@ const FeedCategories = ({ category, onChange }) => (
 
 const Posts = () => {
   const [category, setCategory] = useState("all");
-  const { posts, loading, loadingMore, hasMore, error, refetch, loadMore, removePost } = usePosts(1, 20, category);
+  const { posts, loading, loadingMore, hasMore, error, loadMoreError, refetch, loadMore, removePost } = usePosts(1, 20, category);
   const scrollContainerRef = useRef(null);
   const loadMoreRef = useRef(null);
 
@@ -74,7 +74,8 @@ const Posts = () => {
             {!loading && error && posts.length === 0 && <div className="mx-3 my-5 flex min-h-56 flex-col items-center justify-center rounded-2xl border border-neutral-900 bg-neutral-950/70 px-5 text-center sm:mx-5"><p className="max-w-sm text-sm leading-6 text-red-400">{error}</p><button type="button" onClick={() => void refetch()} className="mt-4 rounded-full bg-neutral-800 px-5 py-2 text-sm font-medium text-neutral-200 transition hover:bg-neutral-700 active:scale-[0.98]">Try again</button></div>}
             {!loading && !error && posts.length === 0 && <EmptyFeed category={category} />}
             {posts.length > 0 && <div className="space-y-5 px-2.5 pb-8 pt-2 sm:space-y-6 sm:px-4 sm:pb-10 sm:pt-3 lg:px-6">{posts.map((post, index) => <PostCard key={post.postId} post={post} priority={index < 3} onPostDeleted={removePost} />)}</div>}
-            {error && posts.length > 0 && <div className="mx-2.5 my-3 flex items-center justify-center gap-3 rounded-xl border border-red-950/60 bg-red-950/10 px-3 py-3 text-xs text-red-400 sm:mx-4 lg:mx-6"><span>{error}</span><button type="button" onClick={() => void loadMore()} className="shrink-0 rounded-full bg-neutral-800 px-3 py-1.5 font-medium text-neutral-200 transition hover:bg-neutral-700">Retry</button></div>}
+            {error && posts.length > 0 && <div className="mx-2.5 my-3 flex items-center justify-center gap-3 rounded-xl border border-red-950/60 bg-red-950/10 px-3 py-3 text-xs text-red-400 sm:mx-4 lg:mx-6"><span>{error}</span><button type="button" onClick={() => void refetch()} className="shrink-0 rounded-full bg-neutral-800 px-3 py-1.5 font-medium text-neutral-200 transition hover:bg-neutral-700">Retry</button></div>}
+            {loadMoreError && posts.length > 0 && <div className="mx-2.5 my-3 flex items-center justify-center gap-3 rounded-xl border border-red-950/60 bg-red-950/10 px-3 py-3 text-xs text-red-400 sm:mx-4 lg:mx-6"><span>{loadMoreError}</span><button type="button" onClick={() => void loadMore()} className="shrink-0 rounded-full bg-neutral-800 px-3 py-1.5 font-medium text-neutral-200 transition hover:bg-neutral-700">Retry</button></div>}
             <div ref={loadMoreRef} className="flex min-h-24 items-center justify-center px-4 py-7">{loadingMore && <div className="flex items-center gap-2 rounded-full border border-neutral-900 bg-neutral-950 px-4 py-2 text-xs text-neutral-500"><Loader2 size={14} className="animate-spin" /> Loading more posts...</div>}{!loadingMore && !hasMore && posts.length > 0 && <div className="flex items-center gap-2 text-[11px] text-neutral-700"><span className="h-px w-8 bg-neutral-900" /> You&apos;re all caught up. <span className="h-px w-8 bg-neutral-900" /></div>}</div>
           </div>
         </section>
