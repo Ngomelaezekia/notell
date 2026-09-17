@@ -15,6 +15,30 @@ func entitlementIsActive(row Entitlement, now time.Time) bool {
  return strings.EqualFold(strings.TrimSpace(row.Status), "active") && (row.EndsAt == nil || row.EndsAt.After(now))
 }
 
+func repairEntitlementFromSubscription(s *Server, userID, resourceType, resourceID string) bool {
+ var sub Subscription
+ if err := s.db.Where(
+  "user_id = ? AND resource_type = ? AND resource_id = ?",
+  userID, resourceType, resourceID,
+ ).Order("updated_at DESC").First(&sub).Error; err != nil {
+  return false
+ }
+ if entitlementStatusForSubscription(sub.Status, sub.CurrentPeriodEnd) != "active" {
+  return false
+ }
+ return syncSubscriptionEntitlementState(s, sub) == nil
+}
+
+func findActiveEntitlement(s *Server, userID, resourceType, resourceID string) (Entitlement, bool) {
+ var entitlement Entitlement
+ now := time.Now().UTC()
+ err := s.db.Table("entitlements").Where(
+  "user_id = ? AND resource_type = ? AND resource_id = ? AND status = ? AND (ends_at IS NULL OR ends_at > ?)",
+  userID, resourceType, resourceID, "active", now,
+ ).First(&entitlement).Error
+ return entitlement, err == nil && entitlementIsActive(entitlement, now)
+}
+
 func registerEntitlementRoutes(r *gin.Engine, s *Server) {
  api := r.Group("/v1")
  api.Use(s.auth)
@@ -34,13 +58,13 @@ func registerEntitlementRoutes(r *gin.Engine, s *Server) {
   resource := strings.TrimSpace(c.Param("resource"))
   resourceID := strings.TrimSpace(c.Param("id"))
 
-  var entitlement Entitlement
-  err := s.db.Table("entitlements").Where(
-   "user_id = ? AND resource_type = ? AND resource_id = ? AND status = ? AND (ends_at IS NULL OR ends_at > ?)",
-   userID, resource, resourceID, "active", time.Now().UTC(),
-  ).First(&entitlement).Error
-
-  if err != nil || !entitlementIsActive(entitlement, time.Now().UTC()) {
+  entitlement, ok := findActiveEntitlement(s, userID, resource, resourceID)
+  if !ok {
+   if repairEntitlementFromSubscription(s, userID, resource, resourceID) {
+    entitlement, ok = findActiveEntitlement(s, userID, resource, resourceID)
+   }
+  }
+  if !ok {
    c.JSON(http.StatusOK, gin.H{"allowed": false})
    return
   }
