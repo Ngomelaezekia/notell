@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowLeft, Bell, ChevronRight, CircleHelp, Database, Download, FileText, History, Info, LogOut, Mail, Megaphone, PlaySquare, ShieldCheck, SlidersHorizontal, UserRound, Wifi, X } from "lucide-react";
+import { ArrowLeft, Bell, ChevronRight, CircleHelp, Database, Download, FileText, History, Info, LogOut, Mail, Megaphone, PlaySquare, Radio, ShieldCheck, SlidersHorizontal, Sparkles, UserRound, Wifi, X } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { paymentAPI } from "../services/payment/paymentApi";
 
 const Section = ({ title, children }) => <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><div className="border-b border-slate-100 px-4 py-3 sm:px-5"><h2 className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">{title}</h2></div><div className="divide-y divide-slate-100">{children}</div></section>;
 const Row = ({ icon: Icon, title, description, to }) => <Link to={to} className="flex items-center gap-3 px-4 py-3.5 transition hover:bg-slate-50 sm:px-5"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700"><Icon size={18}/></span><span className="min-w-0 flex-1 text-left"><span className="block text-sm font-semibold text-slate-900">{title}</span><span className="mt-0.5 block text-xs leading-5 text-slate-500">{description}</span></span><ChevronRight size={18} className="shrink-0 text-slate-300"/></Link>;
@@ -9,14 +10,17 @@ const Toggle = ({ icon: Icon, title, description, checked, onChange }) => <label
 
 export default function SettingsPage() {
   const { logout } = useAuth(); const navigate = useNavigate();
+  const [creatorAccess,setCreatorAccess]=useState(false); const [billingLoading,setBillingLoading]=useState(true);
   const [dataSaver,setDataSaver] = useState(() => localStorage.getItem("notell:dataSaver") === "true");
   const [autoplay,setAutoplay] = useState(() => localStorage.getItem("notell:autoplay") !== "false");
   const [confirmLogout,setConfirmLogout] = useState(false);
+  useEffect(()=>{paymentAPI.entitlement("platform","channel").then((r)=>setCreatorAccess(Boolean(r?.active||r?.allowed))).catch(()=>setCreatorAccess(false)).finally(()=>setBillingLoading(false))},[]);
   const save = (key,value,setter) => { setter(value); localStorage.setItem(key,String(value)); };
   const doLogout = async () => { try { await logout(); } finally { navigate("/auth",{replace:true}); } };
   return <div className="min-h-screen bg-slate-50 pb-10">
     <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl"><div className="mx-auto flex h-14 max-w-3xl items-center gap-3 px-3 sm:px-6"><button type="button" onClick={() => navigate(-1)} aria-label="Back" className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-700 hover:bg-slate-100"><ArrowLeft size={20}/></button><div><h1 className="text-base font-bold text-slate-950">Settings</h1><p className="text-[10px] text-slate-500">Manage your Notell experience</p></div></div></header>
-    <main className="mx-auto max-w-3xl space-y-4 px-3 pt-5 sm:px-6 sm:pt-7"><div><h2 className="text-xl font-bold text-slate-950">Notell settings</h2><p className="mt-1 text-sm text-slate-500">Manage your account, activity, data, privacy and website preferences.</p></div>
+    <main className="mx-auto max-w-3xl space-y-4 px-3 pt-5 sm:px-6 sm:pt-7"><div><h2 className="text-xl font-bold text-slate-950">Notell settings</h2><p className="mt-1 text-sm text-slate-500">Manage your account, activity, data, privacy, creator services and website preferences.</p></div>
+      <Section title="Creator services"><Row icon={Sparkles} title="Channel & Live plans" description={billingLoading?"Checking your creator access…":creatorAccess?"Creator access is active.":"Subscribe to unlock channel creation and live broadcasting."} to="/channels/plans"/><Row icon={Radio} title="Channel management" description="Manage channels, programs, schedules, audience, settings and live studio." to="/channels/manage"/></Section>
       <Section title="Account"><Row icon={UserRound} title="Edit profile" description="Profile picture, name, bio and profile details" to="/profile"/><Row icon={ShieldCheck} title="Manage and privacy" description="Privacy, followers and account controls" to="/settings/privacy"/></Section>
       <Section title="Activities"><Row icon={PlaySquare} title="Contents" description="Control what you see and how content is shown" to="/settings/content"/><Row icon={Bell} title="Notifications" description="Choose which notifications you receive" to="/settings/notifications"/><Row icon={Megaphone} title="Ads" description="Manage ad preferences and personalization" to="/settings/ads"/><Row icon={History} title="History" description="View and clear your activity history" to="/settings/history"/></Section>
       <Section title="Data"><Row icon={Download} title="Media downloads" description="Control automatic and manual media downloads" to="/settings/downloads"/><Row icon={Database} title="Cache and storage" description="Manage cached media and local storage" to="/settings/storage"/><Row icon={SlidersHorizontal} title="Storage settings" description="Choose how Notell uses device storage" to="/settings/storage"/><Toggle icon={Wifi} title="Data saver" description="Reduce media loading and bandwidth usage" checked={dataSaver} onChange={v => save("notell:dataSaver",v,setDataSaver)}/></Section>
