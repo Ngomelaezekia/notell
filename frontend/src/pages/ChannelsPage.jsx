@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Plus, Radio, Search, Users, Loader2 } from "lucide-react";
-import { useAuth } from "../context/AuthContext";
 import { channelAPI } from "../services/channel/channelApi";
 import { getApiErrorMessage, getFileUrl } from "../utils/api";
 const CATEGORIES=["All","Comedy","Music","News","Politics","Sports","Education","Gaming","Lifestyle","Faith","Technology"];
