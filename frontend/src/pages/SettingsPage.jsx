@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, Bell, ChevronRight, CircleHelp, Database, Download, FileText, History, Info, LogOut, Mail, Megaphone, PlaySquare, Radio, ShieldCheck, SlidersHorizontal, Sparkles, UserRound, Wifi, X } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
