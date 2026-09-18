@@ -186,7 +186,9 @@ export default function MessagesPage() {
       });
       room.on(sdk.RoomEvent.Disconnected, () => {
         if (callRoomRef.current === room) callRoomRef.current = null;
-        setCallState("idle");\n        setCall(null);\n      });
+        setCallState("idle");
+        setCall(null);
+      });
 
       await room.connect(access.wsUrl, access.token, { autoSubscribe: true });
       const localTracks = await sdk.createLocalTracks({ audio: true, video: true });
