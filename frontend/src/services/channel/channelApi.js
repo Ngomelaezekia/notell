@@ -18,6 +18,19 @@ export const channelAPI = {
   unsubscribe: async (id) => (await channelClient.delete(`/v1/channels/${id}/subscribe`)).data,
   studioPrograms: async (id) => (await channelClient.get(`/v1/channels/${id}/studio/programs`)).data,
   createProgram: async (id, payload) => (await channelClient.post(`/v1/channels/${id}/studio/programs`, payload)).data,
+  updateProgram: async (id, programId, payload) => (await channelClient.patch(`/v1/channels/${id}/studio/programs/${programId}`, payload)).data,
+  removeProgram: async (id, programId) => (await channelClient.delete(`/v1/channels/${id}/studio/programs/${programId}`)).data,
+  studioSchedule: async (id) => (await channelClient.get(`/v1/channels/${id}/studio/schedule`)).data,
+  createSchedule: async (id, payload) => (await channelClient.post(`/v1/channels/${id}/studio/schedule`, payload)).data,
+  updateSchedule: async (id, scheduleId, payload) => (await channelClient.patch(`/v1/channels/${id}/studio/schedule/${scheduleId}`, payload)).data,
+  removeSchedule: async (id, scheduleId) => (await channelClient.delete(`/v1/channels/${id}/studio/schedule/${scheduleId}`)).data,
+  studioContent: async (id) => (await channelClient.get(`/v1/channels/${id}/studio/content`)).data,
+  linkContent: async (id, payload) => (await channelClient.post(`/v1/channels/${id}/studio/content`, payload)).data,
+  updateContent: async (id, contentId, payload) => (await channelClient.patch(`/v1/channels/${id}/studio/content/${contentId}`, payload)).data,
+  unlinkContent: async (id, contentId) => (await channelClient.delete(`/v1/channels/${id}/studio/content/${contentId}`)).data,
+  audience: async (id) => (await channelClient.get(`/v1/channels/${id}/studio/audience`)).data,
+  studioSettings: async (id) => (await channelClient.get(`/v1/channels/${id}/studio/settings`)).data,
+  setStudioSetting: async (id, key, value) => (await channelClient.put(`/v1/channels/${id}/studio/settings/${encodeURIComponent(key)}`, { value })).data,
 };
 
 export default channelAPI;
