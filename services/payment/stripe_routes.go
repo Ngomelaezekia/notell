@@ -151,6 +151,8 @@ func registerStripeRoutes(r *gin.Engine, s *Server) {
 	})
 
 	api.POST("/payments/:id/refund", func(c *gin.Context) {
+		refundKey := strings.TrimSpace(c.GetHeader("Idempotency-Key"))
+		if refundKey == "" || len(refundKey) > 128 { c.JSON(400, gin.H{"error": "Idempotency-Key is required"}); return }
 		uid := c.GetString("user_id")
 		var in struct {
 			Amount int64  `json:"amount"`
@@ -186,7 +188,7 @@ func registerStripeRoutes(r *gin.Engine, s *Server) {
 			c.JSON(400, gin.H{"error": "refund amount exceeds refundable balance"})
 			return
 		}
-		refundID, status, err := stripeFromEnv().RefundPayment(p, in.Amount, strings.TrimSpace(in.Reason))
+		refundID, status, err := stripeFromEnv().RefundPayment(p, in.Amount, strings.TrimSpace(in.Reason), refundKey)
 		if err != nil {
 			c.JSON(502, gin.H{"error": "stripe refund failed"})
 			return
