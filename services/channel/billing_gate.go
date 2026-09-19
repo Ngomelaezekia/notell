@@ -67,3 +67,13 @@ func requireChannelPlan(next gin.HandlerFunc) gin.HandlerFunc {
   next(c)
  }
 }
+
+func requireChannelOwnerPlan(db *gorm.DB) gin.HandlerFunc {
+ return func(c *gin.Context) {
+  id, err := strconv.ParseUint(strings.TrimSpace(c.Param("id")), 10, 64)
+  if err != nil || id == 0 { c.JSON(http.StatusBadRequest, gin.H{"message":"invalid channel id"}); return }
+  if !channelOwnerPlanActive(c, db, id) { c.JSON(http.StatusPaymentRequired, gin.H{"message":"active channel plan required","code":"CHANNEL_PLAN_REQUIRED"}); return }
+  c.Set("channelPlanEnforced", true)
+  c.Next()
+ }
+}
