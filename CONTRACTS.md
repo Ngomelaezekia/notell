@@ -56,7 +56,7 @@ The independent Live service owns stream lifecycle state and live-stream credent
 - `POST /v1/channels/:channelId/streams` creates a draft stream and returns a one-time ingest credential.
 - `POST /v1/streams/:id/start` and `/end` control lifecycle and require stream ownership.
 - `GET /v1/channels/:channelId/live` discovers the current live stream.
-- `POST /v1/streams/:id/playback-token` issues a five-minute signed playback token.
+- `POST /v1/streams/:id/playback-token` issues a ten-minute signed playback token.
 - Live service persistence is isolated in its own PostgreSQL database.
 - Channel/payment entitlement checks are an explicit integration boundary and must be enforced before production stream start is enabled.
 
