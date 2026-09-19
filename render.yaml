@@ -77,6 +77,8 @@ services:
         value: postgres
       - key: MUSIC_RIGHTS_SYNC_ENABLED
         value: "true"
+      - key: MUSIC_EVENT_INGEST_KEY
+        sync: false
       - key: MUSIC_MASSIVE_CONSUMER_KEY
         sync: false
       - key: MUSIC_MASSIVE_CONSUMER_SECRET
