@@ -99,3 +99,5 @@ CREATE TABLE IF NOT EXISTS audit_events (
     created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_audit_events_payment_id_created_at ON audit_events(payment_id, created_at DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_refunds_provider_refund_id ON refunds(provider_refund_id) WHERE provider_refund_id IS NOT NULL AND provider_refund_id <> '';
