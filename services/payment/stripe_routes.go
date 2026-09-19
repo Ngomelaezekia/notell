@@ -193,8 +193,27 @@ func registerStripeRoutes(r *gin.Engine, s *Server) {
 			c.JSON(502, gin.H{"error": "stripe refund failed"})
 			return
 		}
-		refund := Refund{ID: newID("ref"), PaymentID: p.ID, Amount: in.Amount, Currency: p.Currency, Status: status, ProviderRefundID: refundID, Reason: in.Reason}
-		if err := s.db.Create(&refund).Error; err != nil {
+		var refund Refund
+		if err := s.db.Where("provider_refund_id = ?", refundID).First(&refund).Error; err == nil {
+			c.JSON(200, gin.H{"refund": refund, "idempotent": true})
+			return
+		} else if err != gorm.ErrRecordNotFound {
+			c.JSON(500, gin.H{"error": "refund record could not be checked"})
+			return
+		}
+		refund = Refund{ID: newID("ref"), PaymentID: p.ID, Amount: in.Amount, Currency: p.Currency, Status: status, ProviderRefundID: refundID, Reason: in.Reason}
+		if err := s.db.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Create(&refund).Error; err != nil { return err }
+			if err := tx.Create(&AuditEvent{ID:newID("aud"),PaymentID:p.ID,UserID:p.UserID,EventType:"refund_created",ToStatus:status,Metadata:"{}"}).Error; err != nil { return err }
+			if status == "succeeded" {
+				var n int64
+				if err := tx.Model(&LedgerEntry{}).Where("payment_id = ? AND entry_type = ? AND reference = ?", p.ID, "payment_refunded", refundID).Count(&n).Error; err != nil { return err }
+				if n == 0 {
+					if err := tx.Create(&LedgerEntry{ID:newID("led"),PaymentID:p.ID,UserID:p.UserID,EntryType:"payment_refunded",Amount:-in.Amount,Currency:p.Currency,Reference:refundID}).Error; err != nil { return err }
+				}
+			}
+			return nil
+		}); err != nil {
 			c.JSON(500, gin.H{"error": "refund record could not be saved"})
 			return
 		}
@@ -216,15 +235,34 @@ func applyStripeEvent(s *Server, eventType string, object map[string]any) error 
 		amount := int64(0)
 		switch v := object["amount"].(type) { case float64: amount = int64(v); case int64: amount = v }
 		currency, _ := object["currency"].(string)
-		var refund Refund
-		err := s.db.Where("provider_refund_id = ?", refundID).First(&refund).Error
-		if err == nil {
-			return s.db.Model(&refund).Updates(map[string]any{"status": status, "amount": amount, "currency": strings.ToLower(currency)}).Error
-		}
-		if err != gorm.ErrRecordNotFound { return err }
-		return s.db.Create(&Refund{ID:newID("ref"), PaymentID:p.ID, Amount:amount, Currency:strings.ToLower(currency), Status:status, ProviderRefundID:refundID}).Error
+		return s.db.Transaction(func(tx *gorm.DB) error {
+			var refund Refund
+			err := tx.Where("provider_refund_id = ?", refundID).First(&refund).Error
+			if err == gorm.ErrRecordNotFound {
+				refund = Refund{ID:newID("ref"),PaymentID:p.ID,Amount:amount,Currency:strings.ToLower(currency),Status:status,ProviderRefundID:refundID}
+				if err := tx.Create(&refund).Error; err != nil { return err }
+				if err := tx.Create(&AuditEvent{ID:newID("aud"),PaymentID:p.ID,UserID:p.UserID,EventType:"refund_created",ToStatus:status,Metadata:"{}"}).Error; err != nil { return err }
+			} else if err != nil {
+				return err
+			} else {
+				if refund.Status != status {
+					if err := tx.Create(&AuditEvent{ID:newID("aud"),PaymentID:p.ID,UserID:p.UserID,EventType:"refund_status_changed",FromStatus:refund.Status,ToStatus:status,Metadata:"{}"}).Error; err != nil { return err }
+				}
+				refund.Status = status
+				if amount > 0 { refund.Amount = amount }
+				if strings.TrimSpace(currency) != "" { refund.Currency = strings.ToLower(currency) }
+				if err := tx.Save(&refund).Error; err != nil { return err }
+			}
+			if status == "succeeded" {
+				var n int64
+				if err := tx.Model(&LedgerEntry{}).Where("payment_id = ? AND entry_type = ? AND reference = ?", p.ID, "payment_refunded", refundID).Count(&n).Error; err != nil { return err }
+				if n == 0 {
+					return tx.Create(&LedgerEntry{ID:newID("led"),PaymentID:p.ID,UserID:p.UserID,EntryType:"payment_refunded",Amount:-refund.Amount,Currency:refund.Currency,Reference:refundID}).Error
+				}
+			}
+			return nil
+		})
 	}
-
 	providerPaymentID, _ := object["payment_intent"].(string)
 	if providerPaymentID == "" { providerPaymentID, _ = object["id"].(string) }
 	if providerPaymentID == "" { return nil }
@@ -233,10 +271,16 @@ func applyStripeEvent(s *Server, eventType string, object map[string]any) error 
 	target := ""
 	switch eventType { case "payment_intent.processing": target = PaymentProcessing; case "payment_intent.succeeded", "charge.succeeded": target = PaymentSucceeded; case "payment_intent.payment_failed", "charge.failed": target = PaymentFailed; case "payment_intent.canceled": target = PaymentCanceled; default: return nil }
 	if p.Status == target || !validProviderTransition(p.Status, target) { return nil }
+	from := p.Status
 	p.Status = target
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Save(&p).Error; err != nil { return err }
-		if target == PaymentSucceeded { var n int64; if err := tx.Model(&LedgerEntry{}).Where("payment_id = ? AND entry_type = ?", p.ID, "payment_captured").Count(&n).Error; err != nil { return err }; if n == 0 { return tx.Create(&LedgerEntry{ID:newID("led"),PaymentID:p.ID,UserID:p.UserID,EntryType:"payment_captured",Amount:p.Amount,Currency:p.Currency,Reference:p.ID}).Error } }
+		if err := tx.Create(&AuditEvent{ID:newID("aud"),PaymentID:p.ID,UserID:p.UserID,EventType:"payment_status_changed",FromStatus:from,ToStatus:target,Metadata:"{}"}).Error; err != nil { return err }
+		if target == PaymentSucceeded {
+			var n int64
+			if err := tx.Model(&LedgerEntry{}).Where("payment_id = ? AND entry_type = ?", p.ID, "payment_captured").Count(&n).Error; err != nil { return err }
+			if n == 0 { return tx.Create(&LedgerEntry{ID:newID("led"),PaymentID:p.ID,UserID:p.UserID,EntryType:"payment_captured",Amount:p.Amount,Currency:p.Currency,Reference:p.ID}).Error }
+		}
 		return nil
 	})
 }
