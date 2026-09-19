@@ -69,8 +69,10 @@ services:
         value: https://notell-web.onrender.com
       - key: MUSIC_PROVIDER
         value: 7digital
+      # External PostgreSQL (Neon free tier). Keep the service architecture unchanged.
+      # Set this secret in Render to the Neon pooled connection string.
       - key: MUSIC_DATABASE_URL
-        fromDatabase: {name: notellmusic, property: connectionString}
+        sync: false
       - key: MUSIC_TRENDS_STORE
         value: postgres
       - key: MUSIC_RIGHTS_SYNC_ENABLED
@@ -243,12 +245,6 @@ services:
         value: https://payment-u3hq.onrender.com
 
 databases:
-  - name: notellmusic
-    plan: free
-    region: singapore
-    postgresMajorVersion: "18"
-    databaseName: musicdb
-    user: musicuser
   - name: notels05
     plan: free
     region: singapore
