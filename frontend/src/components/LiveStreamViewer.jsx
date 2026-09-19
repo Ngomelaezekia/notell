@@ -84,7 +84,7 @@ export default function LiveStreamViewer({ channelId }) {
         if (cancelled) return;
         disconnect();
         if (err?.response?.status === 403 || err?.response?.status === 402) {
-          setError(getApiErrorMessage(err, "An active channel plan is required to watch this live stream."));
+          setError(getApiErrorMessage(err, "You need an active channel subscription to watch this private live stream."));
           setStatus("denied");
           return;
         }
