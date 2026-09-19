@@ -64,8 +64,12 @@ func registerStripeRoutes(r *gin.Engine, s *Server) {
 		}
 		var existing WebhookEvent
 		if err := s.db.Where("provider = ? AND provider_event_id = ?", "stripe", event.ID).First(&existing).Error; err == nil {
-			c.JSON(200, gin.H{"received": true, "duplicate": true})
-			return
+			if existing.Status == "processed" {
+				c.JSON(200, gin.H{"received": true, "duplicate": true})
+				return
+			}
+			// A previously received/failed event is retried instead of being
+			// permanently treated as a duplicate after a transient failure.
 		}
 		wh := WebhookEvent{ID: newID("wh"), Provider: "stripe", ProviderEventID: event.ID, EventType: event.Type, Payload: string(payload), Status: "received"}
 		if err := s.db.Create(&wh).Error; err != nil {
