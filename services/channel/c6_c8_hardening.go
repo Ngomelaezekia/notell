@@ -48,10 +48,13 @@ func hardenedPlaybackAuthorization(db *gorm.DB) gin.HandlerFunc { return func(c 
     var x MediaReference
     if db.Where("channel_id=? AND media_id=? AND status=?",c.Param("id"),c.Param("mediaId"),"ACTIVE").First(&x).Error!=nil {c.JSON(404,gin.H{"message":"media not found"});return}
     if x.Access=="PRIVATE" {
-        var m ChannelMember
-        err:=db.Where("channel_id=? AND user_id=? AND membership_type=? AND status=?",x.ChannelID,userID(c),MembershipSubscriber,"ACTIVE").First(&m).Error
-        if err==nil {c.JSON(200,gin.H{"allowed":true,"mediaId":x.MediaID,"access":"PRIVATE","entitlement":"subscriber"});return}
-        if err!=gorm.ErrRecordNotFound {c.JSON(500,gin.H{"message":"failed to verify playback entitlement"});return}
+        uid:=userID(c);base:=strings.TrimRight(strings.TrimSpace(os.Getenv("PAYMENT_SERVICE_URL")),"/");key:=strings.TrimSpace(os.Getenv("INTERNAL_SERVICE_KEY"))
+        if base==""||key=="" {c.JSON(503,gin.H{"message":"payment entitlement service is not configured"});return}
+        req,err:=http.NewRequestWithContext(c.Request.Context(),http.MethodGet,base+"/v1/internal/entitlements/channel/"+strconv.FormatUint(x.ChannelID,10),nil);if err!=nil {c.JSON(503,gin.H{"message":"failed to create entitlement request"});return}
+        req.Header.Set("X-Internal-Service-Key",key);req.Header.Set("X-User-ID",strconv.FormatUint(uid,10));resp,err:=http.DefaultClient.Do(req);if err!=nil {c.JSON(503,gin.H{"message":"payment entitlement service unavailable"});return};defer resp.Body.Close()
+        if resp.StatusCode!=http.StatusOK {c.JSON(503,gin.H{"message":"payment entitlement service unavailable"});return}
+        var result struct{Active bool `json:"active"`};if err:=json.NewDecoder(resp.Body).Decode(&result);err!=nil {c.JSON(503,gin.H{"message":"invalid payment entitlement response"});return}
+        if result.Active {c.JSON(200,gin.H{"allowed":true,"mediaId":x.MediaID,"access":"PRIVATE","entitlement":"payment"});return}
         c.JSON(200,gin.H{"allowed":false,"reason":"subscriber_entitlement_required","mediaId":x.MediaID});return
     }
     c.JSON(200,gin.H{"allowed":true,"mediaId":x.MediaID,"access":"PUBLIC"})
