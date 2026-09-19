@@ -8,9 +8,9 @@ func entitlementStatusForSubscription(status string, periodEnd time.Time) string
 		return "revoked"
 	}
 	switch status {
-	case PaymentSucceeded, "active", "trialing", "past_due", "canceled":
+	case PaymentSucceeded, "active", "trialing", "past_due":
 		return "active"
-	case "expired":
+	case "canceled", "expired":
 		return "revoked"
 	default:
 		return "pending"
