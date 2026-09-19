@@ -172,7 +172,7 @@ func registerStripeRoutes(r *gin.Engine, s *Server) {
 			return
 		}
 		var refunded int64
-		if err := s.db.Model(&Refund{}).Where("payment_id = ?", p.ID).Select("COALESCE(SUM(amount),0)").Scan(&refunded).Error; err != nil {
+		if err := s.db.Model(&Refund{}).Where("payment_id = ? AND status IN ?", p.ID, []string{"pending", "succeeded"}).Select("COALESCE(SUM(amount),0)").Scan(&refunded).Error; err != nil {
 			c.JSON(500, gin.H{"error": "refund balance could not be checked"})
 			return
 		}
@@ -203,6 +203,28 @@ func registerStripeRoutes(r *gin.Engine, s *Server) {
 }
 
 func applyStripeEvent(s *Server, eventType string, object map[string]any) error {
+	if strings.HasPrefix(eventType, "refund.") {
+		refundID, _ := object["id"].(string)
+		paymentID, _ := object["payment_intent"].(string)
+		if refundID == "" || paymentID == "" { return nil }
+		var p Payment
+		if err := s.db.Where("provider = ? AND provider_payment_id = ?", "stripe", paymentID).First(&p).Error; err != nil { return nil }
+		status, _ := object["status"].(string)
+		if status == "" {
+			switch eventType { case "refund.created": status = "pending"; case "refund.failed": status = "failed"; case "refund.canceled": status = "canceled" }
+		}
+		amount := int64(0)
+		switch v := object["amount"].(type) { case float64: amount = int64(v); case int64: amount = v }
+		currency, _ := object["currency"].(string)
+		var refund Refund
+		err := s.db.Where("provider_refund_id = ?", refundID).First(&refund).Error
+		if err == nil {
+			return s.db.Model(&refund).Updates(map[string]any{"status": status, "amount": amount, "currency": strings.ToLower(currency)}).Error
+		}
+		if err != gorm.ErrRecordNotFound { return err }
+		return s.db.Create(&Refund{ID:newID("ref"), PaymentID:p.ID, Amount:amount, Currency:strings.ToLower(currency), Status:status, ProviderRefundID:refundID}).Error
+	}
+
 	providerPaymentID, _ := object["payment_intent"].(string)
 	if providerPaymentID == "" { providerPaymentID, _ = object["id"].(string) }
 	if providerPaymentID == "" { return nil }
