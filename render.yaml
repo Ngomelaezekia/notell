@@ -68,7 +68,25 @@ services:
       - key: FRONTEND_URL
         value: https://notell-web.onrender.com
       - key: MUSIC_PROVIDER
-        value: internal
+        value: 7digital
+      - key: MUSIC_DATABASE_URL
+        fromDatabase: {name: notellmusic, property: connectionString}
+      - key: MUSIC_TRENDS_STORE
+        value: postgres
+      - key: MUSIC_RIGHTS_SYNC_ENABLED
+        value: "true"
+      - key: MUSIC_MASSIVE_CONSUMER_KEY
+        sync: false
+      - key: MUSIC_MASSIVE_CONSUMER_SECRET
+        sync: false
+      - key: MUSIC_MASSIVE_ACCESS_TOKEN
+        sync: false
+      - key: MUSIC_MASSIVE_ACCESS_TOKEN_SECRET
+        sync: false
+      - key: MUSIC_MASSIVE_FORMAT_ID
+        sync: false
+      - key: MUSIC_RIGHTS_SYNC_KEY
+        sync: false
       - key: MUSIC_COUNTRY
         value: TZ
       - key: MUSIC_MAX_SEGMENT_SECONDS
@@ -225,6 +243,12 @@ services:
         value: https://payment-u3hq.onrender.com
 
 databases:
+  - name: notellmusic
+    plan: free
+    region: singapore
+    postgresMajorVersion: "18"
+    databaseName: musicdb
+    user: musicuser
   - name: notels05
     plan: free
     region: singapore
