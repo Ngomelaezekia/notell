@@ -62,18 +62,30 @@ func registerStripeRoutes(r *gin.Engine, s *Server) {
 			c.JSON(400, gin.H{"error": "invalid Stripe event"})
 			return
 		}
-		var existing WebhookEvent
-		if err := s.db.Where("provider = ? AND provider_event_id = ?", "stripe", event.ID).First(&existing).Error; err == nil {
-			if existing.Status == "processed" {
+		var wh WebhookEvent
+		err = s.db.Where("provider = ? AND provider_event_id = ?", "stripe", event.ID).First(&wh).Error
+		if err == nil {
+			if wh.Status == "processed" {
 				c.JSON(200, gin.H{"received": true, "duplicate": true})
 				return
 			}
-			// A previously received/failed event is retried instead of being
-			// permanently treated as a duplicate after a transient failure.
-		}
-		wh := WebhookEvent{ID: newID("wh"), Provider: "stripe", ProviderEventID: event.ID, EventType: event.Type, Payload: string(payload), Status: "received"}
-		if err := s.db.Create(&wh).Error; err != nil {
-			c.JSON(409, gin.H{"error": "webhook already recorded"})
+			// Reuse the existing received/failed record so Stripe retries can
+			// actually reprocess the event instead of colliding with the unique key.
+			if err := s.db.Model(&wh).Updates(map[string]any{
+				"status": "received", "error_message": "", "processed_at": nil,
+				"payload": string(payload), "event_type": event.Type,
+			}).Error; err != nil {
+				c.JSON(500, gin.H{"error": "webhook retry could not be recorded"})
+				return
+			}
+		} else if err == gorm.ErrRecordNotFound {
+			wh = WebhookEvent{ID: newID("wh"), Provider: "stripe", ProviderEventID: event.ID, EventType: event.Type, Payload: string(payload), Status: "received"}
+			if err := s.db.Create(&wh).Error; err != nil {
+				c.JSON(409, gin.H{"error": "webhook already recorded"})
+				return
+			}
+		} else {
+			c.JSON(500, gin.H{"error": "webhook lookup failed"})
 			return
 		}
 		if err := applyStripeEvent(s, event.Type, event.Data.Object); err != nil {
