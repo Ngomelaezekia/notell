@@ -13,16 +13,8 @@ services:
         value: production
       - key: PORT
         value: 10000
-      - key: DB_HOST
-        fromDatabase: {name: notels05, property: host}
-      - key: DB_PORT
-        fromDatabase: {name: notels05, property: port}
-      - key: DB_USER
-        fromDatabase: {name: notels05, property: user}
-      - key: DB_PASSWORD
-        fromDatabase: {name: notels05, property: password}
-      - key: DB_NAME
-        fromDatabase: {name: notels05, property: database}
+      - key: DATABASE_URL
+        sync: false
       - key: JWT_SECRET
         sync: false
       - key: GOOGLE_CLIENT_ID
@@ -246,10 +238,3 @@ services:
       - key: VITE_PAYMENT_SERVICE_URL
         value: https://payment-u3hq.onrender.com
 
-databases:
-  - name: notels05
-    plan: free
-    region: singapore
-    postgresMajorVersion: "18"
-    databaseName: notelldb
-    user: notellusers
