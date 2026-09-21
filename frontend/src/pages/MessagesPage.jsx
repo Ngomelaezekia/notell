@@ -316,8 +316,10 @@ export default function MessagesPage() {
 
   const endCall = async () => {
     const callId = call?.callId || call?.call?.id || call?.id;
+    const creatorId = call?.from || call?.call?.createdBy || call?.createdBy;
+    const isOwner = creatorId == null || String(creatorId) === String(user?.id);
     try {
-      if (callId) await messageAPI.endCall(callId);
+      if (callId && isOwner) await messageAPI.endCall(callId);
     } catch (e) {
       setError(getApiErrorMessage(e, "Could not end video call."));
     } finally {
@@ -382,7 +384,7 @@ export default function MessagesPage() {
         <div className="relative aspect-video bg-black">
           <div ref={remoteContainerRef} className="grid h-full w-full grid-cols-1 gap-2 p-2 sm:grid-cols-2"/>
           <video ref={localVideoRef} autoPlay muted playsInline className="absolute bottom-3 right-3 h-32 w-48 rounded-2xl border border-white/20 bg-neutral-900 object-cover shadow-2xl"/>
-          <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-2"><button type="button" onClick={toggleMute} className="rounded-full bg-black/75 p-3 text-white" aria-label={callMuted ? "Unmute microphone" : "Mute microphone"}>{callMuted?<MicOff size={17}/>:<Mic size={17}/>}</button><button type="button" onClick={toggleCamera} className="rounded-full bg-black/75 p-3 text-white" aria-label={cameraOff ? "Enable camera" : "Disable camera"}>{cameraOff?<VideoOff size={17}/>:<Video size={17}/>}</button><button type="button" onClick={() => void endCall()} className="rounded-full bg-red-600 p-3 text-white" aria-label="End call"><PhoneOff size={17}/></button></div>
+          <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-2"><button type="button" onClick={toggleMute} className="rounded-full bg-black/75 p-3 text-white" aria-label={callMuted ? "Unmute microphone" : "Mute microphone"}>{callMuted?<MicOff size={17}/>:<Mic size={17}/>}</button><button type="button" onClick={toggleCamera} className="rounded-full bg-black/75 p-3 text-white" aria-label={cameraOff ? "Enable camera" : "Disable camera"}>{cameraOff?<VideoOff size={17}/>:<Video size={17}/>}</button><button type="button" onClick={() => void endCall()} className="rounded-full bg-red-600 p-3 text-white" aria-label={String(call?.from || call?.call?.createdBy || call?.createdBy) === String(user?.id) ? "End call" : "Leave call"}><PhoneOff size={17}/></button></div>
         </div>
       </div>
     </div>}
