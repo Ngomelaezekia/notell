@@ -1,11 +1,7 @@
-import axios from "axios";
+import createServiceClient from "../utils/serviceClient";
 
 const baseURL = import.meta.env.VITE_LIVE_SERVICE_URL || "http://localhost:8083";
-const liveClient = axios.create({
-  baseURL,
-  withCredentials: true,
-  headers: { "Content-Type": "application/json" },
-});
+const liveClient = createServiceClient(baseURL);
 
 export const liveAPI = {
   current: async (channelId) => (await liveClient.get(`/v1/channels/${channelId}/live`)).data,
