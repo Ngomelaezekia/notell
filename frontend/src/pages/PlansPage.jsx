@@ -3,12 +3,14 @@ import { Link } from "react-router-dom";
 import { ArrowLeft, Check, Copy, Loader2, Radio, RefreshCw, Share2, Sparkles } from "lucide-react";
 import { paymentAPI } from "../services/payment/paymentApi";
 
+const ACTIVE_SUBSCRIPTION_STATUSES = new Set(["active", "trialing", "past_due"]);
+
 export default function PlansPage(){
  const searchParams = new URLSearchParams(window.location.search);
  const checkoutStatus = searchParams.get("checkout");
  const initialGiftCode = (searchParams.get("gift")||"").trim().toUpperCase();
  const [packages,setPackages]=useState([]); const [active,setActive]=useState(null); const [entitled,setEntitled]=useState(false); const [loading,setLoading]=useState(true); const [busy,setBusy]=useState(""); const [refreshing,setRefreshing]=useState(false); const [error,setError]=useState(""); const [notice,setNotice]=useState(checkoutStatus==="success"?"Payment returned successfully. Confirming your creator access…":checkoutStatus==="cancel"?"Checkout was cancelled. Your account was not changed.":""); const [giftCode,setGiftCode]=useState(initialGiftCode); const [affiliate,setAffiliate]=useState(null); const [affiliateBusy,setAffiliateBusy]=useState(false); const [copied,setCopied]=useState(false);
- const refresh=useCallback(async(showSpinner=true)=>{if(showSpinner)setRefreshing(true);try{const[p,s,e]=await Promise.all([paymentAPI.packages(),paymentAPI.subscriptions(),paymentAPI.entitlement("platform","channel")]);setPackages(p.packages||[]);const rows=s.subscriptions||[];setActive(rows.find(x=>["active","trialing","past_due","canceled"].includes(x.status)&&new Date(x.currentPeriodEnd)>new Date())||null);setEntitled(Boolean(e?.active||e?.allowed))}catch(e){setError(e?.response?.data?.error||"Unable to load billing information.")}finally{setLoading(false);setRefreshing(false)}} ,[]);
+ const refresh=useCallback(async(showSpinner=true)=>{if(showSpinner)setRefreshing(true);try{const[p,s,e]=await Promise.all([paymentAPI.packages(),paymentAPI.subscriptions(),paymentAPI.entitlement("platform","channel")]);setPackages(p.packages||[]);const rows=s.subscriptions||[];setActive(rows.find(x=>ACTIVE_SUBSCRIPTION_STATUSES.has(x.status)&&new Date(x.currentPeriodEnd)>new Date())||null);setEntitled(Boolean(e?.active||e?.allowed))}catch(e){setError(e?.response?.data?.error||"Unable to load billing information.")}finally{setLoading(false);setRefreshing(false)}} ,[]);
  useEffect(()=>{void refresh()},[refresh]);
  useEffect(()=>{if(!checkoutStatus)return;const clean=new URL(window.location.href);clean.searchParams.delete("checkout");window.history.replaceState({},document.title,clean.toString())},[checkoutStatus]);
  const choose=async id=>{setBusy(id);setError("");try{const sub=await paymentAPI.subscribe(id,giftCode);const row=sub.subscription;if(sub.payment_required===false){setActive(row);setEntitled(true);setNotice("Creator access is active.");return}const checkout=await paymentAPI.checkout(row.id);if(!checkout?.url)throw new Error("Checkout URL was not returned.");window.location.assign(checkout.url)}catch(e){setError(e?.response?.data?.error||"Unable to start subscription checkout.")}finally{setBusy("")}};
