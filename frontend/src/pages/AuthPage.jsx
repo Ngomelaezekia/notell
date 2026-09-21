@@ -8,7 +8,7 @@ import GoogleButton from "../components/googleButton";
 const initialForm = { username: "", email: "", password: "", country: "", city: "" };
 
 export default function AuthPage() {
-  const { login, register, loginWithGoogle, error: authError } = useAuth();
+  const { login, register, loginWithGoogle, googleLoading, error: authError } = useAuth();
   const location = useLocation();
   const params = new URLSearchParams(location.search);
   const giftCode = (params.get("gift") || "").trim().toUpperCase().slice(0, 6);
@@ -50,7 +50,7 @@ export default function AuthPage() {
               <div className="relative"><input name="password" type={showPassword ? "text" : "password"} placeholder="Password" value={formData.password} onChange={handleChange} required className="w-full h-11 rounded-xl bg-white/10 border border-white/30 px-4 pr-12 text-sm placeholder:text-white/60 outline-none focus:border-white" /><button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-white/70">{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></div>
               <button disabled={loading} className="mt-2 w-full h-11 rounded-xl bg-gradient-to-r from-lime-400 to-green-600 text-black font-semibold flex justify-center items-center gap-2 disabled:opacity-50">{loading ? <Loader2 size={18} className="animate-spin" /> : isLogin ? "Login" : "Create Account"}</button>
               <div className="flex items-center gap-3 py-3"><span className="flex-1 h-px bg-white/20" /><span className="text-xs text-white/60">OR</span><span className="flex-1 h-px bg-white/20" /></div>
-              <GoogleButton onClick={() => loginWithGoogle(isLogin ? "login" : "signup")} text={isLogin ? "Login with Google" : "Sign up with Google"} />
+              <GoogleButton onClick={() => loginWithGoogle(isLogin ? "login" : "signup", redirectTo)} loading={googleLoading} disabled={loading} text={isLogin ? "Login with Google" : "Sign up with Google"} />
             </motion.form>
           </AnimatePresence>
           <p className="mt-6 text-center text-sm text-white/80">{isLogin ? "Don't have an account?" : "Already registered?"}<button type="button" onClick={switchMode} className="ml-2 font-semibold underline">{isLogin ? "Sign Up" : "Login"}</button></p>
