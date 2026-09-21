@@ -44,6 +44,9 @@ export default function MessagesPage() {
   const [cameraOff, setCameraOff] = useState(false);
   const [creating, setCreating] = useState(false);
   const wsRef = useRef(null);
+  const callRef = useRef(null);
+  const reconnectTimerRef = useRef(null);
+  const reconnectAttemptRef = useRef(0);
   const bottomRef = useRef(null);
   const callRoomRef = useRef(null);
   const callSdkRef = useRef(null);
@@ -94,7 +97,7 @@ export default function MessagesPage() {
     setCall(null);
   };
 
-  useEffect(() => () => cleanupCall(), []);
+  useEffect(() => { callRef.current = call; }, [call]);\n\n  useEffect(() => () => cleanupCall(), []);
 
   useEffect(() => {
     if (!selected) return;
@@ -312,4 +315,82 @@ export default function MessagesPage() {
       </div>
     </div>}
   </section>;
-}
+}  useEffect(() => {
+    if (!selected) return;
+    let cancelled = false;
+    let reconnectTimer;
+
+    const mergeMessages = (incoming) => {
+      setMessages((current) => {
+        const byId = new Map(current.map((m) => [m.id, m]));
+        incoming.forEach((m) => byId.set(m.id, m));
+        return [...byId.values()].sort((a, b) => {
+          const time = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+          return time || String(a.id).localeCompare(String(b.id));
+        });
+      });
+    };
+
+    const syncHistory = async () => {
+      const r = await messageAPI.history(selected.id);
+      if (cancelled) return;
+      const history = Array.isArray(r) ? r : (r?.messages || []);
+      mergeMessages(history);
+      setHasMore(Boolean(r?.hasMore));
+      const lastIncoming = [...history].reverse().find((m) => String(m.senderId) !== String(user?.id));
+      if (lastIncoming) {
+        try {
+          await messageAPI.markRead(selected.id, lastIncoming.id);
+          setConversations((current) => current.map((item) => item.id === selected.id ? { ...item, unreadCount: 0 } : item));
+        } catch {}
+      }
+    };
+
+    const connect = () => {
+      if (cancelled) return;
+      const ws = new WebSocket(messageAPI.socketURL(selected.id));
+      wsRef.current = ws;
+      ws.onopen = () => { reconnectAttemptRef.current = 0; setError(""); };
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === "message" && data.message) {
+            mergeMessages([data.message]);
+            if (String(data.message.senderId) !== String(user?.id)) {
+              setConversations((current) => current.map((item) => item.id === selected.id ? { ...item, updatedAt: data.message.createdAt, unreadCount: (item.unreadCount || 0) + 1 } : item));
+            }
+          }
+          if (data.type === "read") {
+            setMessages((current) => current.map((m) => m.id === data.messageId ? { ...m, readAt: data.readAt, readBy: data.userId } : m));
+            if (String(data.userId) === String(user?.id)) setConversations((current) => current.map((item) => item.id === selected.id ? { ...item, unreadCount: 0 } : item));
+          }
+          if (data.type === "call_invite") setCall(data);
+          if (data.type === "call_ended" && data.callId === callRef.current?.callId) cleanupCall();
+        } catch {}
+      };
+      ws.onerror = () => setError("Message connection failed. Reconnecting…");
+      ws.onclose = () => {
+        if (cancelled) return;
+        if (wsRef.current === ws) wsRef.current = null;
+        const attempt = reconnectAttemptRef.current++;
+        const delay = Math.min(30000, 1000 * (2 ** Math.min(attempt, 5)));
+        reconnectTimer = setTimeout(async () => {
+          try { await syncHistory(); } catch {}
+          connect();
+        }, delay);
+        reconnectTimerRef.current = reconnectTimer;
+      };
+    };
+
+    syncHistory().catch((e) => { if (!cancelled) setError(getApiErrorMessage(e, "Unable to load conversation.")); });
+    connect();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(reconnectTimer);
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+      wsRef.current?.close();
+      wsRef.current = null;
+    };
+  }, [selected, user?.id]);
