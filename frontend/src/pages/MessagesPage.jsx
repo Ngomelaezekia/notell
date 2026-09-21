@@ -47,7 +47,8 @@ export default function MessagesPage() {
   const callRef = useRef(null);
   const reconnectTimerRef = useRef(null);
   const reconnectAttemptRef = useRef(0);
-  const bottomRef = useRef(null);
+  const messagesContainerRef = useRef(null);
+  const preserveScrollRef = useRef(null);
   const callRoomRef = useRef(null);
   const callSdkRef = useRef(null);
   const localTracksRef = useRef([]);
@@ -102,30 +103,87 @@ export default function MessagesPage() {
   useEffect(() => {
     if (!selected) return;
     let cancelled = false;
-    messageAPI.history(selected.id)
-      .then(async (r) => { if (cancelled) return; const history = Array.isArray(r) ? r : (r?.messages || []); setMessages(history); setHasMore(Boolean(r?.hasMore)); const lastIncoming = [...history].reverse().find((m) => String(m.senderId) !== String(user?.id)); if (lastIncoming) { try { await messageAPI.markRead(selected.id, lastIncoming.id); setConversations((current) => current.map((item) => item.id === selected.id ? { ...item, unreadCount: 0 } : item)); } catch {} } })
-      .catch((e) => { if (!cancelled) setError(getApiErrorMessage(e, "Unable to load conversation.")); });
+    let reconnectTimer;
 
-    const ws = new WebSocket(messageAPI.socketURL(selected.id));
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === "message" && data.message) { setMessages((current) => current.some((m) => m.id === data.message.id) ? current : [...current, data.message]); if (String(data.message.senderId) !== String(user?.id)) setConversations((current) => current.map((item) => item.id === selected.id ? { ...item, updatedAt: data.message.createdAt, unreadCount: (item.unreadCount || 0) + 1 } : item)); }
-        if (data.type === "read") { setMessages((current) => current.map((m) => m.id === data.messageId ? { ...m, readAt: data.readAt, readBy: data.userId } : m)); if (String(data.userId) === String(user?.id)) setConversations((current) => current.map((item) => item.id === selected.id ? { ...item, unreadCount: 0 } : item)); }
-        if (data.type === "call_invite") setCall(data);
-        if (data.type === "call_ended" && data.callId === call?.callId) cleanupCall();
-      } catch {}
+    const mergeMessages = (incoming) => {
+      setMessages((current) => {
+        const byId = new Map(current.map((m) => [m.id, m]));
+        incoming.forEach((m) => byId.set(m.id, m));
+        return [...byId.values()].sort((a, b) => {
+          const time = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+          return time || String(a.id).localeCompare(String(b.id));
+        });
+      });
     };
-    ws.onerror = () => setError("Message connection failed.");
-    wsRef.current = ws;
+
+    const syncHistory = async () => {
+      const r = await messageAPI.history(selected.id);
+      if (cancelled) return;
+      const history = Array.isArray(r) ? r : (r?.messages || []);
+      mergeMessages(history);
+      setHasMore(Boolean(r?.hasMore));
+      const lastIncoming = [...history].reverse().find((m) => String(m.senderId) !== String(user?.id));
+      if (lastIncoming) {
+        try {
+          await messageAPI.markReadThrough(selected.id, lastIncoming.id);
+          setConversations((current) => current.map((item) => item.id === selected.id ? { ...item, unreadCount: 0 } : item));
+        } catch {}
+      }
+    };
+
+    const connect = () => {
+      if (cancelled) return;
+      const ws = new WebSocket(messageAPI.socketURL(selected.id));
+      wsRef.current = ws;
+      ws.onopen = () => { reconnectAttemptRef.current = 0; setError(""); };
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === "message" && data.message) {
+            mergeMessages([data.message]);
+            if (String(data.message.senderId) !== String(user?.id)) {
+              void messageAPI.markReadThrough(selected.id, data.message.id).catch(() => {});
+              setConversations((current) => current.map((item) => item.id === selected.id ? { ...item, updatedAt: data.message.createdAt, unreadCount: 0 } : item));
+            }
+          }
+          if (data.type === "read" || data.type === "read_through") {
+            if (data.type === "read" && data.messageId) {
+              setMessages((current) => current.map((m) => m.id === data.messageId ? { ...m, readAt: data.readAt, readBy: data.userId } : m));
+            }
+            if (String(data.userId) === String(user?.id)) {
+              setConversations((current) => current.map((item) => item.id === selected.id ? { ...item, unreadCount: 0 } : item));
+            }
+          }
+          if (data.type === "call_invite") setCall(data);
+          if (data.type === "call_ended" && data.callId === callRef.current?.callId) cleanupCall();
+        } catch {}
+      };
+      ws.onerror = () => setError("Message connection failed. Reconnecting…");
+      ws.onclose = () => {
+        if (cancelled) return;
+        if (wsRef.current === ws) wsRef.current = null;
+        const attempt = reconnectAttemptRef.current++;
+        const delay = Math.min(30000, 1000 * (2 ** Math.min(attempt, 5)));
+        reconnectTimer = setTimeout(async () => {
+          try { await syncHistory(); } catch {}
+          connect();
+        }, delay);
+        reconnectTimerRef.current = reconnectTimer;
+      };
+    };
+
+    syncHistory().catch((e) => { if (!cancelled) setError(getApiErrorMessage(e, "Unable to load conversation.")); });
+    connect();
+
     return () => {
       cancelled = true;
-      ws.close();
+      clearTimeout(reconnectTimer);
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+      wsRef.current?.close();
       wsRef.current = null;
     };
   }, [selected, user?.id]);
-
-  useEffect(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), [messages]);
 
   const openContact = async (contact) => {
     setError("");
@@ -145,15 +203,29 @@ export default function MessagesPage() {
 
   const loadOlder = async () => {
     if (!selected || loadingMore || !hasMore || !messages.length) return;
+    const container = messagesContainerRef.current;
+    const previousHeight = container?.scrollHeight || 0;
+    const previousTop = container?.scrollTop || 0;
     setLoadingMore(true);
     try {
       const r = await messageAPI.history(selected.id, 50, messages[0].id);
       const older = r?.messages || [];
+      preserveScrollRef.current = { previousHeight, previousTop };
       setMessages((current) => [...older, ...current.filter((m) => !older.some((x) => x.id === m.id))]);
       setHasMore(Boolean(r?.hasMore));
     } catch (e) { setError(getApiErrorMessage(e, "Unable to load older messages.")); }
     finally { setLoadingMore(false); }
   };
+
+  useEffect(() => {
+    const position = preserveScrollRef.current;
+    const container = messagesContainerRef.current;
+    if (!position || !container) return;
+    requestAnimationFrame(() => {
+      container.scrollTop = container.scrollHeight - position.previousHeight + position.previousTop;
+      preserveScrollRef.current = null;
+    });
+  }, [messages]);
 
   const send = () => {
     const text = body.trim();
@@ -287,7 +359,7 @@ export default function MessagesPage() {
           <div className="flex items-center gap-3"><button type="button" onClick={() => setSelected(null)} className="text-neutral-500 md:hidden">←</button><div><h2 className="font-black">{selected.title || "Conversation"}</h2><p className="text-[10px] text-neutral-600">{selected.type === "GROUP" ? "Group chat" : "Direct message"}{selected.unreadCount > 0 ? ` · ${selected.unreadCount} unread` : ""}</p></div></div>
           <button type="button" onClick={() => void startCall()} className="rounded-xl border border-neutral-800 p-2 text-neutral-400 hover:text-white" title="Start video call"><Video size={18}/></button>
         </header>
-        <div className="flex-1 overflow-y-auto p-4">{hasMore && <button type="button" onClick={() => void loadOlder()} disabled={loadingMore} className="mx-auto mb-3 block rounded-xl border border-neutral-800 px-3 py-2 text-[10px] font-bold text-neutral-500 disabled:opacity-40">{loadingMore ? "Loading…" : "Load older messages"}</button>}<div className="mx-auto max-w-2xl space-y-2">{messages.map((m) => <div key={m.id} className={`flex ${String(m.senderId) === String(user?.id) ? "justify-end" : "justify-start"}`}><div className={`max-w-[78%] rounded-2xl px-3.5 py-2.5 text-sm ${String(m.senderId) === String(user?.id) ? "bg-neutral-100 text-neutral-950" : "bg-neutral-900 text-neutral-200"}`}>{m.body}</div></div>)}<div ref={bottomRef}/></div></div>
+        <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4">{hasMore && <button type="button" onClick={() => void loadOlder()} disabled={loadingMore} className="mx-auto mb-3 block rounded-xl border border-neutral-800 px-3 py-2 text-[10px] font-bold text-neutral-500 disabled:opacity-40">{loadingMore ? "Loading…" : "Load older messages"}</button>}<div className="mx-auto max-w-2xl space-y-2">{messages.map((m) => <div key={m.id} className={`flex ${String(m.senderId) === String(user?.id) ? "justify-end" : "justify-start"}`}><div className={`max-w-[78%] rounded-2xl px-3.5 py-2.5 text-sm ${String(m.senderId) === String(user?.id) ? "bg-neutral-100 text-neutral-950" : "bg-neutral-900 text-neutral-200"}`}>{m.body}</div></div>)}</div></div>
         <form onSubmit={(e) => { e.preventDefault(); send(); }} className="border-t border-neutral-800 p-3"><div className="mx-auto flex max-w-2xl items-center gap-2"><input value={body} onChange={(e) => setBody(e.target.value)} placeholder="Message your connection…" className="min-w-0 flex-1 rounded-2xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-sm outline-none placeholder:text-neutral-600 focus:border-neutral-600"/><button type="submit" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-neutral-100 text-neutral-950 hover:bg-white"><Send size={17}/></button></div></form>
         </> : <div className="hidden flex-1 flex-col items-center justify-center text-center md:flex"><MessageCircle size={42} className="text-neutral-700"/><h2 className="mt-4 text-lg font-black">Your messages</h2><p className="mt-1 max-w-sm text-xs leading-5 text-neutral-600">Choose someone you follow or who follows you to chat, create a group, or start a video meeting.</p></div>}
       </main>
@@ -315,82 +387,4 @@ export default function MessagesPage() {
       </div>
     </div>}
   </section>;
-}  useEffect(() => {
-    if (!selected) return;
-    let cancelled = false;
-    let reconnectTimer;
-
-    const mergeMessages = (incoming) => {
-      setMessages((current) => {
-        const byId = new Map(current.map((m) => [m.id, m]));
-        incoming.forEach((m) => byId.set(m.id, m));
-        return [...byId.values()].sort((a, b) => {
-          const time = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-          return time || String(a.id).localeCompare(String(b.id));
-        });
-      });
-    };
-
-    const syncHistory = async () => {
-      const r = await messageAPI.history(selected.id);
-      if (cancelled) return;
-      const history = Array.isArray(r) ? r : (r?.messages || []);
-      mergeMessages(history);
-      setHasMore(Boolean(r?.hasMore));
-      const lastIncoming = [...history].reverse().find((m) => String(m.senderId) !== String(user?.id));
-      if (lastIncoming) {
-        try {
-          await messageAPI.markRead(selected.id, lastIncoming.id);
-          setConversations((current) => current.map((item) => item.id === selected.id ? { ...item, unreadCount: 0 } : item));
-        } catch {}
-      }
-    };
-
-    const connect = () => {
-      if (cancelled) return;
-      const ws = new WebSocket(messageAPI.socketURL(selected.id));
-      wsRef.current = ws;
-      ws.onopen = () => { reconnectAttemptRef.current = 0; setError(""); };
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.type === "message" && data.message) {
-            mergeMessages([data.message]);
-            if (String(data.message.senderId) !== String(user?.id)) {
-              setConversations((current) => current.map((item) => item.id === selected.id ? { ...item, updatedAt: data.message.createdAt, unreadCount: (item.unreadCount || 0) + 1 } : item));
-            }
-          }
-          if (data.type === "read") {
-            setMessages((current) => current.map((m) => m.id === data.messageId ? { ...m, readAt: data.readAt, readBy: data.userId } : m));
-            if (String(data.userId) === String(user?.id)) setConversations((current) => current.map((item) => item.id === selected.id ? { ...item, unreadCount: 0 } : item));
-          }
-          if (data.type === "call_invite") setCall(data);
-          if (data.type === "call_ended" && data.callId === callRef.current?.callId) cleanupCall();
-        } catch {}
-      };
-      ws.onerror = () => setError("Message connection failed. Reconnecting…");
-      ws.onclose = () => {
-        if (cancelled) return;
-        if (wsRef.current === ws) wsRef.current = null;
-        const attempt = reconnectAttemptRef.current++;
-        const delay = Math.min(30000, 1000 * (2 ** Math.min(attempt, 5)));
-        reconnectTimer = setTimeout(async () => {
-          try { await syncHistory(); } catch {}
-          connect();
-        }, delay);
-        reconnectTimerRef.current = reconnectTimer;
-      };
-    };
-
-    syncHistory().catch((e) => { if (!cancelled) setError(getApiErrorMessage(e, "Unable to load conversation.")); });
-    connect();
-
-    return () => {
-      cancelled = true;
-      clearTimeout(reconnectTimer);
-      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-      reconnectTimerRef.current = null;
-      wsRef.current?.close();
-      wsRef.current = null;
-    };
-  }, [selected, user?.id]);
+}
