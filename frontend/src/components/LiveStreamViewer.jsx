@@ -30,6 +30,10 @@ export default function LiveStreamViewer({ channelId }) {
   const tracksRef = useRef(new Set());
 
   useEffect(() => {
+    if (videoRef.current) videoRef.current.muted = muted;
+  }, [muted]);
+
+  useEffect(() => {
     let cancelled = false;
     let reconnectTimer;
 
@@ -127,7 +131,7 @@ export default function LiveStreamViewer({ channelId }) {
       window.clearTimeout(reconnectTimer);
       disconnect();
     };
-  }, [channelId, muted]);
+  }, [channelId]);
 
   return (
     <section className="mt-8 overflow-hidden rounded-3xl border border-neutral-800 bg-black shadow-2xl">
