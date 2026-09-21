@@ -1,7 +1,7 @@
-import axios from "axios";
+import createServiceClient from "../../utils/serviceClient";
 
 const baseURL = import.meta.env.VITE_CHANNEL_SERVICE_URL || "http://localhost:8082";
-const channelClient = axios.create({ baseURL, withCredentials: true, headers: { "Content-Type": "application/json" } });
+const channelClient = createServiceClient(baseURL);
 
 export const channelAPI = {
   list: async (params = {}) => (await channelClient.get("/v1/channels", { params })).data,
