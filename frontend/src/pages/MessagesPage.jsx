@@ -98,14 +98,15 @@ export default function MessagesPage() {
     if (!selected) return;
     let cancelled = false;
     messageAPI.history(selected.id)
-      .then((r) => { if (!cancelled) setMessages(r || []); })
+      .then(async (r) => { if (cancelled) return; const history = Array.isArray(r) ? r : []; setMessages(history); const lastIncoming = [...history].reverse().find((m) => String(m.senderId) !== String(user?.id)); if (lastIncoming) { try { await messageAPI.markRead(selected.id, lastIncoming.id); } catch {} } })
       .catch((e) => { if (!cancelled) setError(getApiErrorMessage(e, "Unable to load conversation.")); });
 
     const ws = new WebSocket(messageAPI.socketURL(selected.id));
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        if (data.type === "message" && data.message) setMessages((current) => [...current, data.message]);
+        if (data.type === "message" && data.message) setMessages((current) => current.some((m) => m.id === data.message.id) ? current : [...current, data.message]);
+        if (data.type === "read") setMessages((current) => current.map((m) => m.id === data.messageId ? { ...m, readAt: data.readAt, readBy: data.userId } : m));
         if (data.type === "call_invite") setCall(data);
         if (data.type === "call_ended" && call?.callId === data.callId) cleanupCall();
       } catch {}
@@ -117,14 +118,14 @@ export default function MessagesPage() {
       ws.close();
       wsRef.current = null;
     };
-  }, [selected]);
+  }, [selected, user?.id]);
 
   useEffect(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), [messages]);
 
   const openContact = async (contact) => {
     setError("");
     try {
-      const existing = conversations.find((c) => c.type === "DIRECT" && c.memberIds?.includes?.(String(contact.id)));
+      const existing = conversations.find((c) => c.type === "DIRECT" && Array.isArray(c.memberIds) && c.memberIds.some((id) => String(id) === String(contact.id)));
       if (existing) {
         setSelected(existing);
         return;
