@@ -12,6 +12,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const navigate = useNavigate();
 
   const fetchCurrentUser = useCallback(async () => {
@@ -46,7 +47,13 @@ export function AuthProvider({ children }) {
         const messages = {
           google_account_not_registered: "No Notell account is linked to this Google account. Use Sign Up with Google first.",
           google_account_already_registered: "This Google account is already registered. Use Login with Google instead.",
-          invalid_state: "Google authentication expired. Please try again.",
+          invalid_state: "Google authentication expired or could not be verified. Please try again.",
+          no_code: "Google did not return an authorization code. Please try again.",
+          exchange_failed: "Google sign-in could not be completed. Please try again.",
+          user_fetch_failed: "We could not read your Google account details. Please try again.",
+          google_login_failed: "We could not sign you in with Google. Please try again.",
+          google_signup_failed: "We could not create your Notell account with Google. Please try again.",
+          session_failed: "Google sign-in completed, but your Notell session could not be created. Please try again.",
         };
         setError(messages[oauthError] || `OAuth Error: ${oauthError}`);
         window.history.replaceState({}, document.title, window.location.pathname);
@@ -62,11 +69,14 @@ export function AuthProvider({ children }) {
     void init();
   }, [claimReferralGift, fetchCurrentUser]);
 
-  const loginWithGoogle = (mode = "login") => {
+  const loginWithGoogle = (mode = "login", redirectTo = "/") => {
     const selectedMode = mode === "signup" ? "signup" : "login";
     const gift = pendingGiftCode();
-    const suffix = gift ? `&gift=${encodeURIComponent(gift)}` : "";
-    window.location.href = `${API_BASE_URL}/auth/google?mode=${selectedMode}${suffix}`;
+    const params = new URLSearchParams({ mode: selectedMode, returnTo: redirectTo || "/" });
+    if (gift) params.set("gift", gift);
+    setError(null);
+    setGoogleLoading(true);
+    window.location.assign(API_BASE_URL + "/auth/google?" + params.toString());
   };
 
   const login = async (credentials, redirectTo = "/") => {
@@ -84,7 +94,7 @@ export function AuthProvider({ children }) {
   const logout = async () => { try { await API.post("/auth/logout"); } catch (err) { setError(getApiErrorMessage(err, "Logout failed")); } finally { clearFeedCache(); setUser(null); navigate("/auth", { replace: true }); } };
   const updateUser = useCallback((updatedFields) => setUser((prev) => prev ? { ...prev, ...updatedFields } : null), []);
 
-  return <AuthContext.Provider value={{ user, authenticated: Boolean(user), loading, error, setError, login, register, loginWithGoogle, logout, fetchCurrentUser, updateUser }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ user, authenticated: Boolean(user), loading, error, setError, login, register, loginWithGoogle, googleLoading, logout, fetchCurrentUser, updateUser }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() { const context = useContext(AuthContext); if (!context) throw new Error("useAuth must be used inside AuthProvider"); return context; }
