@@ -100,15 +100,15 @@ export default function MessagesPage() {
     if (!selected) return;
     let cancelled = false;
     messageAPI.history(selected.id)
-      .then(async (r) => { if (cancelled) return; const history = Array.isArray(r) ? r : (r?.messages || []); setMessages(history); setHasMore(Boolean(r?.hasMore)); const lastIncoming = [...history].reverse().find((m) => String(m.senderId) !== String(user?.id)); if (lastIncoming) { try { await messageAPI.markRead(selected.id, lastIncoming.id); } catch {} } })
+      .then(async (r) => { if (cancelled) return; const history = Array.isArray(r) ? r : (r?.messages || []); setMessages(history); setHasMore(Boolean(r?.hasMore)); const lastIncoming = [...history].reverse().find((m) => String(m.senderId) !== String(user?.id)); if (lastIncoming) { try { await messageAPI.markRead(selected.id, lastIncoming.id); setConversations((current) => current.map((item) => item.id === selected.id ? { ...item, unreadCount: 0 } : item)); } catch {} } })
       .catch((e) => { if (!cancelled) setError(getApiErrorMessage(e, "Unable to load conversation.")); });
 
     const ws = new WebSocket(messageAPI.socketURL(selected.id));
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        if (data.type === "message" && data.message) setMessages((current) => current.some((m) => m.id === data.message.id) ? current : [...current, data.message]);
-        if (data.type === "read") setMessages((current) => current.map((m) => m.id === data.messageId ? { ...m, readAt: data.readAt, readBy: data.userId } : m));
+        if (data.type === "message" && data.message) { setMessages((current) => current.some((m) => m.id === data.message.id) ? current : [...current, data.message]); if (String(data.message.senderId) !== String(user?.id)) setConversations((current) => current.map((item) => item.id === selected.id ? { ...item, updatedAt: data.message.createdAt, unreadCount: (item.unreadCount || 0) + 1 } : item)); }
+        if (data.type === "read") { setMessages((current) => current.map((m) => m.id === data.messageId ? { ...m, readAt: data.readAt, readBy: data.userId } : m)); if (String(data.userId) === String(user?.id)) setConversations((current) => current.map((item) => item.id === selected.id ? { ...item, unreadCount: 0 } : item)); }
         if (data.type === "call_invite") setCall(data);
         if (data.type === "call_ended" && data.callId === call?.callId) cleanupCall();
       } catch {}
