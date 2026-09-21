@@ -98,7 +98,9 @@ export default function MessagesPage() {
     setCall(null);
   };
 
-  useEffect(() => { callRef.current = call; }, [call]);\n\n  useEffect(() => () => cleanupCall(), []);
+  useEffect(() => { callRef.current = call; }, [call]);
+
+  useEffect(() => () => cleanupCall(), []);
 
   useEffect(() => {
     if (!selected) return;
