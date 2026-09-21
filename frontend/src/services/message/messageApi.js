@@ -8,6 +8,7 @@ export const messageAPI = {
   createConversation: async (payload) => (await messageClient.post("/v1/conversations", payload)).data,
   history: async (id, limit = 50, before = "") => (await messageClient.get(`/v1/conversations/${id}/messages`, { params: { limit, ...(before ? { before } : {}) } })).data,
   markRead: async (id, messageId) => (await messageClient.post(`/v1/conversations/${id}/read`, { messageId })).data,
+  markReadThrough: async (id, messageId) => (await messageClient.post(`/v1/conversations/${id}/read-through`, { messageId })).data,
   unread: async (id) => (await messageClient.get(`/v1/conversations/${id}/unread`)).data,
   createCall: async (id) => (await messageClient.post(`/v1/conversations/${id}/calls`)).data,
   callToken: async (id) => (await messageClient.post(`/v1/calls/${id}/token`)).data,
