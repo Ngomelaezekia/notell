@@ -33,6 +33,8 @@ export default function MessagesPage() {
   const [conversations, setConversations] = useState([]);
   const [selected, setSelected] = useState(null);
   const [messages, setMessages] = useState([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [body, setBody] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -98,7 +100,7 @@ export default function MessagesPage() {
     if (!selected) return;
     let cancelled = false;
     messageAPI.history(selected.id)
-      .then(async (r) => { if (cancelled) return; const history = Array.isArray(r) ? r : []; setMessages(history); const lastIncoming = [...history].reverse().find((m) => String(m.senderId) !== String(user?.id)); if (lastIncoming) { try { await messageAPI.markRead(selected.id, lastIncoming.id); } catch {} } })
+      .then(async (r) => { if (cancelled) return; const history = Array.isArray(r) ? r : (r?.messages || []); setMessages(history); setHasMore(Boolean(r?.hasMore)); const lastIncoming = [...history].reverse().find((m) => String(m.senderId) !== String(user?.id)); if (lastIncoming) { try { await messageAPI.markRead(selected.id, lastIncoming.id); } catch {} } })
       .catch((e) => { if (!cancelled) setError(getApiErrorMessage(e, "Unable to load conversation.")); });
 
     const ws = new WebSocket(messageAPI.socketURL(selected.id));
@@ -108,7 +110,7 @@ export default function MessagesPage() {
         if (data.type === "message" && data.message) setMessages((current) => current.some((m) => m.id === data.message.id) ? current : [...current, data.message]);
         if (data.type === "read") setMessages((current) => current.map((m) => m.id === data.messageId ? { ...m, readAt: data.readAt, readBy: data.userId } : m));
         if (data.type === "call_invite") setCall(data);
-        if (data.type === "call_ended" && call?.callId === data.callId) cleanupCall();
+        if (data.type === "call_ended" && data.callId === call?.callId) cleanupCall();
       } catch {}
     };
     ws.onerror = () => setError("Message connection failed.");
@@ -136,6 +138,18 @@ export default function MessagesPage() {
     } catch (e) {
       setError(getApiErrorMessage(e, "Could not start conversation."));
     }
+  };
+
+  const loadOlder = async () => {
+    if (!selected || loadingMore || !hasMore || !messages.length) return;
+    setLoadingMore(true);
+    try {
+      const r = await messageAPI.history(selected.id, 50, messages[0].id);
+      const older = r?.messages || [];
+      setMessages((current) => [...older, ...current.filter((m) => !older.some((x) => x.id === m.id))]);
+      setHasMore(Boolean(r?.hasMore));
+    } catch (e) { setError(getApiErrorMessage(e, "Unable to load older messages.")); }
+    finally { setLoadingMore(false); }
   };
 
   const send = () => {
@@ -270,7 +284,7 @@ export default function MessagesPage() {
           <div className="flex items-center gap-3"><button type="button" onClick={() => setSelected(null)} className="text-neutral-500 md:hidden">←</button><div><h2 className="font-black">{selected.title || "Conversation"}</h2><p className="text-[10px] text-neutral-600">{selected.type === "GROUP" ? "Group chat" : "Direct message"}</p></div></div>
           <button type="button" onClick={() => void startCall()} className="rounded-xl border border-neutral-800 p-2 text-neutral-400 hover:text-white" title="Start video call"><Video size={18}/></button>
         </header>
-        <div className="flex-1 overflow-y-auto p-4"><div className="mx-auto max-w-2xl space-y-2">{messages.map((m) => <div key={m.id} className={`flex ${String(m.senderId) === String(user?.id) ? "justify-end" : "justify-start"}`}><div className={`max-w-[78%] rounded-2xl px-3.5 py-2.5 text-sm ${String(m.senderId) === String(user?.id) ? "bg-neutral-100 text-neutral-950" : "bg-neutral-900 text-neutral-200"}`}>{m.body}</div></div>)}<div ref={bottomRef}/></div></div>
+        <div className="flex-1 overflow-y-auto p-4">{hasMore && <button type="button" onClick={() => void loadOlder()} disabled={loadingMore} className="mx-auto mb-3 block rounded-xl border border-neutral-800 px-3 py-2 text-[10px] font-bold text-neutral-500 disabled:opacity-40">{loadingMore ? "Loading…" : "Load older messages"}</button>}<div className="mx-auto max-w-2xl space-y-2">{messages.map((m) => <div key={m.id} className={`flex ${String(m.senderId) === String(user?.id) ? "justify-end" : "justify-start"}`}><div className={`max-w-[78%] rounded-2xl px-3.5 py-2.5 text-sm ${String(m.senderId) === String(user?.id) ? "bg-neutral-100 text-neutral-950" : "bg-neutral-900 text-neutral-200"}`}>{m.body}</div></div>)}<div ref={bottomRef}/></div></div>
         <form onSubmit={(e) => { e.preventDefault(); send(); }} className="border-t border-neutral-800 p-3"><div className="mx-auto flex max-w-2xl items-center gap-2"><input value={body} onChange={(e) => setBody(e.target.value)} placeholder="Message your connection…" className="min-w-0 flex-1 rounded-2xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-sm outline-none placeholder:text-neutral-600 focus:border-neutral-600"/><button type="submit" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-neutral-100 text-neutral-950 hover:bg-white"><Send size={17}/></button></div></form>
         </> : <div className="hidden flex-1 flex-col items-center justify-center text-center md:flex"><MessageCircle size={42} className="text-neutral-700"/><h2 className="mt-4 text-lg font-black">Your messages</h2><p className="mt-1 max-w-sm text-xs leading-5 text-neutral-600">Choose someone you follow or who follows you to chat, create a group, or start a video meeting.</p></div>}
       </main>
