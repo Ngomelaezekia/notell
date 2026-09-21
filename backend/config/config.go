@@ -14,6 +14,7 @@ import (
 type Config struct {
 	AppEnv string
 	Port string
+	DatabaseURL string
 	DBHost string
 	DBPort string
 	DBUser string
@@ -41,6 +42,7 @@ func Load() *Config {
 	cfg := &Config{
 		AppEnv: strings.ToLower(strings.TrimSpace(getEnv("APP_ENV", "development"))),
 		Port: strings.TrimSpace(getEnv("PORT", "8080")),
+		DatabaseURL: strings.TrimSpace(getEnv("DATABASE_URL", "")),
 		DBHost: strings.TrimSpace(getEnv("DB_HOST", "localhost")),
 		DBPort: strings.TrimSpace(getEnv("DB_PORT", "5432")),
 		DBUser: strings.TrimSpace(getEnv("DB_USER", "postgres")),
@@ -67,9 +69,10 @@ func Load() *Config {
 func (c *Config) Validate() error {
 	appEnv := strings.ToLower(strings.TrimSpace(c.AppEnv))
 	if appEnv == "" { return errors.New("APP_ENV must not be empty") }
-	if c.Port == "" || c.DBHost == "" || c.DBPort == "" || c.DBUser == "" || c.DBName == "" { return errors.New("database and server configuration must not be empty") }
+	if c.Port == "" { return errors.New("server configuration must not be empty") }
+	if c.DatabaseURL == "" && (c.DBHost == "" || c.DBPort == "" || c.DBUser == "" || c.DBName == "") { return errors.New("database configuration must not be empty") }
 	if port, err := strconv.Atoi(c.Port); err != nil || port < 1 || port > 65535 { return errors.New("PORT must be a valid TCP port") }
-	if port, err := strconv.Atoi(c.DBPort); err != nil || port < 1 || port > 65535 { return errors.New("DB_PORT must be a valid TCP port") }
+	if c.DatabaseURL == "" { if port, err := strconv.Atoi(c.DBPort); err != nil || port < 1 || port > 65535 { return errors.New("DB_PORT must be a valid TCP port") } }
 	storageDriver := strings.ToLower(strings.TrimSpace(c.StorageDriver))
 	if storageDriver == "" { storageDriver = "local" }
 	if storageDriver != "local" && storageDriver != "r2" && storageDriver != "b2" { return errors.New("STORAGE_DRIVER must be local, r2, or b2") }
@@ -77,7 +80,7 @@ func (c *Config) Validate() error {
 	if appEnv == "production" {
 		if c.JWTSecret == "" || c.JWTSecret == "super-secret-key-change-me" { return errors.New("JWT_SECRET must be set to a secure value in production") }
 		if len(c.JWTSecret) < 32 { return errors.New("JWT_SECRET must be at least 32 characters in production") }
-		if c.DBPassword == "" || c.DBPassword == "postgres" { return errors.New("DB_PASSWORD must be set to a secure value in production") }
+		if c.DatabaseURL == "" && (c.DBPassword == "" || c.DBPassword == "postgres") { return errors.New("DB_PASSWORD must be set to a secure value in production") }
 		if c.GoogleClientID == "" || c.GoogleClientSecret == "" || c.GoogleRedirectURL == "" { return errors.New("Google OAuth configuration must be set in production") }
 		if c.FrontendURL == "" { return errors.New("FRONTEND_URL must be set in production") }
 		if err := validateFrontendURL(c.FrontendURL); err != nil { return fmt.Errorf("FRONTEND_URL: %w", err) }
@@ -115,5 +118,5 @@ func validatePublicURL(value string) error {
 	if err := validateAbsoluteURL(value); err != nil { return err }; parsed, _ := url.Parse(strings.TrimSpace(value)); if parsed.Path != "" && parsed.Path != "/" { return errors.New("must not include a URL path") }; if parsed.RawQuery != "" || parsed.Fragment != "" { return errors.New("must not include query or fragment components") }; return nil
 }
 func quoteConninfoValue(value string) string { if value != "" && !strings.ContainsAny(value, " \t\n\r'\\") { return value }; value = strings.ReplaceAll(value, "\\", "\\\\"); value = strings.ReplaceAll(value, "'", "\\'"); return "'" + value + "'" }
-func (c *Config) GetDBDSN() string { sslMode := "disable"; if strings.EqualFold(strings.TrimSpace(c.AppEnv), "production") { sslMode = "require" }; return fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s", quoteConninfoValue(c.DBHost), quoteConninfoValue(c.DBUser), quoteConninfoValue(c.DBPassword), quoteConninfoValue(c.DBName), quoteConninfoValue(c.DBPort), quoteConninfoValue(sslMode)) }
+func (c *Config) GetDBDSN() string { if strings.TrimSpace(c.DatabaseURL) != "" { return c.DatabaseURL }; sslMode := "disable"; if strings.EqualFold(strings.TrimSpace(c.AppEnv), "production") { sslMode = "require" }; return fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s", quoteConninfoValue(c.DBHost), quoteConninfoValue(c.DBUser), quoteConninfoValue(c.DBPassword), quoteConninfoValue(c.DBName), quoteConninfoValue(c.DBPort), quoteConninfoValue(sslMode)) }
 func getEnv(key, fallback string) string { if value, ok := os.LookupEnv(key); ok && value != "" { return value }; return fallback }
