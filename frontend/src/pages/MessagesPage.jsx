@@ -103,6 +103,12 @@ export default function MessagesPage() {
   useEffect(() => () => cleanupCall(), []);
 
   useEffect(() => {
+    return () => {
+      if (callRef.current) cleanupCall();
+    };
+  }, [selected?.id]);
+
+  useEffect(() => {
     if (!selected) return;
     let cancelled = false;
     let reconnectTimer;
