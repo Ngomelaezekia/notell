@@ -96,6 +96,8 @@ export default function MessagesPage() {
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
     setCallState("idle");
     setCall(null);
+    setCallMuted(false);
+    setCameraOff(false);
   };
 
   useEffect(() => { callRef.current = call; }, [call]);
@@ -162,7 +164,7 @@ export default function MessagesPage() {
               setConversations((current) => current.map((item) => item.id === selected.id ? { ...item, unreadCount: 0 } : item));
             }
           }
-          if (data.type === "call_invite") setCall(data);
+          if (data.type === "call_invite" && String(data.from) !== String(user?.id)) setCall(data);
           if (data.type === "call_ended" && data.callId === callRef.current?.callId) cleanupCall();
         } catch {}
       };
