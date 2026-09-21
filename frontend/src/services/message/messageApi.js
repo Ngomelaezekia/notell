@@ -1,7 +1,7 @@
-import axios from "axios";
+import createServiceClient from "../../utils/serviceClient";
 
 const baseURL = import.meta.env.VITE_MESSAGE_SERVICE_URL || "http://localhost:8080";
-const messageClient = axios.create({ baseURL, withCredentials: true, headers: { "Content-Type": "application/json" } });
+const messageClient = createServiceClient(baseURL);
 
 export const messageAPI = {
   listConversations: async () => (await messageClient.get("/v1/conversations")).data,
