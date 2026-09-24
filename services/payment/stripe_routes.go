@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"strings"
@@ -9,7 +10,19 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
+
+var (
+	errPaymentNotRefundable = errors.New("payment is not refundable")
+	errRefundBalance = errors.New("refund balance could not be checked")
+	errNoRefundBalance = errors.New("payment has no refundable balance")
+	errRefundExceedsBalance = errors.New("refund amount exceeds refundable balance")
+	errStripeRefund = errors.New("stripe refund failed")
+	errRefundAlreadyRecorded = errors.New("refund already recorded")
+)
+
+func gormLockUpdate() clause.Locking { return clause.Locking{Strength: "UPDATE"} }
 
 func stripeFromEnv() *StripeProvider {
 	return NewStripeProvider(strings.TrimSpace(getenv("STRIPE_SECRET_KEY", "")))
@@ -174,62 +187,50 @@ func registerStripeRoutes(r *gin.Engine, s *Server) {
 			c.JSON(400, gin.H{"error": "invalid refund request"})
 			return
 		}
-		var p Payment
-		if err := s.db.Where("id = ? AND user_id = ?", c.Param("id"), uid).First(&p).Error; err != nil {
-			c.JSON(404, gin.H{"error": "payment not found"})
-			return
-		}
-		if p.Status != PaymentSucceeded || p.ProviderPaymentID == "" {
-			c.JSON(409, gin.H{"error": "payment is not refundable"})
-			return
-		}
-		var refunded int64
-		if err := s.db.Model(&Refund{}).Where("payment_id = ? AND status IN ?", p.ID, []string{"pending", "succeeded"}).Select("COALESCE(SUM(amount),0)").Scan(&refunded).Error; err != nil {
-			c.JSON(500, gin.H{"error": "refund balance could not be checked"})
-			return
-		}
-		remaining := p.Amount - refunded
-		if remaining <= 0 {
-			c.JSON(409, gin.H{"error": "payment has no refundable balance"})
-			return
-		}
-		if in.Amount <= 0 {
-			in.Amount = remaining
-		}
-		if in.Amount > remaining {
-			c.JSON(400, gin.H{"error": "refund amount exceeds refundable balance"})
-			return
-		}
-		refundID, status, err := stripeFromEnv().RefundPayment(p, in.Amount, strings.TrimSpace(in.Reason), refundKey)
-		if err != nil {
-			c.JSON(502, gin.H{"error": "stripe refund failed"})
-			return
-		}
 		var refund Refund
-		if err := s.db.Where("provider_refund_id = ?", refundID).First(&refund).Error; err == nil {
-			c.JSON(200, gin.H{"refund": refund, "idempotent": true})
-			return
-		} else if err != gorm.ErrRecordNotFound {
-			c.JSON(500, gin.H{"error": "refund record could not be checked"})
-			return
-		}
-		refund = Refund{ID: newID("ref"), PaymentID: p.ID, Amount: in.Amount, Currency: p.Currency, Status: status, ProviderRefundID: refundID, Reason: in.Reason}
-		if err := s.db.Transaction(func(tx *gorm.DB) error {
+		var payment Payment
+		err := s.db.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Where("id = ? AND user_id = ?", c.Param("id"), uid).Clauses(gormLockUpdate()).First(&payment).Error; err != nil {
+				return gorm.ErrRecordNotFound
+			}
+			if payment.Status != PaymentSucceeded || payment.ProviderPaymentID == "" {
+				return errPaymentNotRefundable
+			}
+			var refunded int64
+			if err := tx.Model(&Refund{}).Where("payment_id = ? AND status IN ?", payment.ID, []string{"pending", "succeeded"}).Select("COALESCE(SUM(amount),0)").Scan(&refunded).Error; err != nil {
+				return errRefundBalance
+			}
+			remaining := payment.Amount - refunded
+			if remaining <= 0 { return errNoRefundBalance }
+			if in.Amount <= 0 { in.Amount = remaining }
+			if in.Amount > remaining { return errRefundExceedsBalance }
+			refundID, status, err := stripeFromEnv().RefundPayment(payment, in.Amount, strings.TrimSpace(in.Reason), refundKey)
+			if err != nil { return errStripeRefund }
+			if err := tx.Where("provider_refund_id = ?", refundID).First(&refund).Error; err == nil {
+				return errRefundAlreadyRecorded
+			} else if err != gorm.ErrRecordNotFound { return err }
+			refund = Refund{ID:newID("ref"),PaymentID:payment.ID,Amount:in.Amount,Currency:payment.Currency,Status:status,ProviderRefundID:refundID,Reason:in.Reason}
 			if err := tx.Create(&refund).Error; err != nil { return err }
-			if err := tx.Create(&AuditEvent{ID:newID("aud"),PaymentID:p.ID,UserID:p.UserID,EventType:"refund_created",ToStatus:status,Metadata:"{}"}).Error; err != nil { return err }
+			if err := tx.Create(&AuditEvent{ID:newID("aud"),PaymentID:payment.ID,UserID:payment.UserID,EventType:"refund_created",ToStatus:status,Metadata:"{}"}).Error; err != nil { return err }
 			if status == "succeeded" {
-				var n int64
-				if err := tx.Model(&LedgerEntry{}).Where("payment_id = ? AND entry_type = ? AND reference = ?", p.ID, "payment_refunded", refundID).Count(&n).Error; err != nil { return err }
-				if n == 0 {
-					if err := tx.Create(&LedgerEntry{ID:newID("led"),PaymentID:p.ID,UserID:p.UserID,EntryType:"payment_refunded",Amount:-in.Amount,Currency:p.Currency,Reference:refundID}).Error; err != nil { return err }
-				}
+				if err := tx.Create(&LedgerEntry{ID:newID("led"),PaymentID:payment.ID,UserID:payment.UserID,EntryType:"payment_refunded",Amount:-in.Amount,Currency:payment.Currency,Reference:refundID}).Error; err != nil { return err }
 			}
 			return nil
-		}); err != nil {
-			c.JSON(500, gin.H{"error": "refund record could not be saved"})
+		})
+		if err != nil {
+			switch err {
+			case gorm.ErrRecordNotFound: c.JSON(404, gin.H{"error":"payment not found"})
+			case errPaymentNotRefundable: c.JSON(409, gin.H{"error":"payment is not refundable"})
+			case errRefundBalance: c.JSON(500, gin.H{"error":"refund balance could not be checked"})
+			case errNoRefundBalance: c.JSON(409, gin.H{"error":"payment has no refundable balance"})
+			case errRefundExceedsBalance: c.JSON(400, gin.H{"error":"refund amount exceeds refundable balance"})
+			case errStripeRefund: c.JSON(502, gin.H{"error":"stripe refund failed"})
+			case errRefundAlreadyRecorded: c.JSON(200, gin.H{"refund":refund,"idempotent":true})
+			default: c.JSON(500, gin.H{"error":"refund record could not be saved"})
+			}
 			return
 		}
-		c.JSON(201, gin.H{"refund": refund})
+		c.JSON(201, gin.H{"refund":refund})
 	})
 }
 
