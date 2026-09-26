@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"notell/models"
+	"notell/observability"
 
 	"gorm.io/gorm"
 )
@@ -19,7 +20,7 @@ func ReconcileMediaState(db *gorm.DB) {
 		"uploaded",
 	}
 	if err := db.Where("status IN ?", activeStatuses).Find(&metadata).Error; err != nil {
-		log.Printf("media reconciliation lookup failed: %v", err)
+		log.Printf("media reconciliation lookup failed error_hash=%s", observability.HashError(err))
 		return
 	}
 
@@ -37,13 +38,13 @@ func ReconcileMediaState(db *gorm.DB) {
 				if updateErr := db.Model(&models.MediaMetadata{}).
 					Where("upload_id = ?", item.UploadID).
 					Updates(updates).Error; updateErr != nil {
-					log.Printf("media reconciliation failed-job update failed upload=%d: %v", item.UploadID, updateErr)
+					log.Printf("media reconciliation failed-job update failed upload=%d error_hash=%s", item.UploadID, observability.HashError(updateErr))
 				}
 			}
 			continue
 		}
 		if err != gorm.ErrRecordNotFound {
-			log.Printf("media reconciliation job lookup failed upload=%d: %v", item.UploadID, err)
+			log.Printf("media reconciliation job lookup failed upload=%d error_hash=%s", item.UploadID, observability.HashError(err))
 			continue
 		}
 
