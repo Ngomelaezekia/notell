@@ -43,9 +43,10 @@ export function ProtectedRoute() {
 
   if (!authenticated) {
 
+    const search = location.search || "";
     return (
       <Navigate
-        to="/auth"
+        to={`/auth${search}`}
         replace
         state={{
           from: location,
