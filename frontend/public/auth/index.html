@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Notell</title>
+  </head>
+  <body>
+    <script>
+      const query = window.location.search || "";
+      const hash = window.location.hash || "";
+      window.location.replace("/" + query + hash);
+    </script>
+  </body>
+</html>
