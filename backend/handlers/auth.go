@@ -28,7 +28,7 @@ import (
 type AuthHandler struct { DB *gorm.DB; Config *config.Config }
 func NewAuthHandler(db *gorm.DB, cfg *config.Config) *AuthHandler { return &AuthHandler{DB: db, Config: cfg} }
 const sessionLifetime = 72 * time.Hour
-func (h *AuthHandler) setSessionCookie(c *gin.Context, name, value string, maxAge int) { if h.Config.AppEnv == "production" { c.SetSameSite(http.SameSiteNoneMode) } else { c.SetSameSite(http.SameSiteLaxMode) }; c.SetCookie(name, value, maxAge, "/", "", h.Config.AppEnv == "production", true) }
+func (h *AuthHandler) setSessionCookie(c *gin.Context, name, value string, maxAge int) { c.SetSameSite(http.SameSiteLaxMode); c.SetCookie(name, value, maxAge, "/", "", h.Config.AppEnv == "production", true) }
 func (h *AuthHandler) setOAuthStateCookie(c *gin.Context, value string, maxAge int) { c.SetSameSite(http.SameSiteLaxMode); c.SetCookie("oauth_state", value, maxAge, "/", "", h.Config.AppEnv == "production", true) }
 func (h *AuthHandler) createSession(c *gin.Context, user models.User) error { token, err := services.GenerateToken(user.ID, user.Email, h.Config.JWTSecret); if err != nil { return err }; h.setSessionCookie(c, "auth_token", token, int(sessionLifetime.Seconds())); return nil }
 func (h *AuthHandler) clearSession(c *gin.Context) { h.setSessionCookie(c, "auth_token", "", -1) }
