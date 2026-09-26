@@ -158,16 +158,16 @@ func processNextMediaJob(ctx context.Context, db *gorm.DB, processor *mediaservi
 	var upload models.Upload
 	if err := db.WithContext(ctx).First(&upload, job.UploadID).Error; err != nil {
 		observability.MediaProcessingFailed(job.ID, err)
-		log.Printf("media worker upload lookup failed job=%d: %v", job.ID, err)
+		log.Printf("media worker upload lookup failed job=%d error_hash=%s", job.ID, observability.HashError(err))
 		if failErr := FailMediaJob(db, job.ID, err, &lease); failErr != nil {
-			log.Printf("media worker job failure update failed job=%d: %v", job.ID, failErr)
+			log.Printf("media worker job failure update failed job=%d error_hash=%s", job.ID, observability.HashError(failErr))
 		}
 		return
 	}
 
 	if err := processor.Process(ctx, &upload); err != nil {
 		observability.MediaProcessingFailed(job.ID, err)
-		log.Printf("media worker processing failed job=%d: %v", job.ID, err)
+		log.Printf("media worker processing failed job=%d error_hash=%s", job.ID, observability.HashError(err))
 		if failErr := FailMediaJob(db, job.ID, err, &lease); failErr != nil {
 			log.Printf("media worker job failure update failed job=%d: %v", job.ID, failErr)
 		}
@@ -176,7 +176,7 @@ func processNextMediaJob(ctx context.Context, db *gorm.DB, processor *mediaservi
 
 	if err := CompleteMediaJob(db, job.ID, &lease); err != nil {
 		observability.MediaProcessingFailed(job.ID, err)
-		log.Printf("media worker completion failed job=%d: %v", job.ID, err)
+		log.Printf("media worker completion failed job=%d error_hash=%s", job.ID, observability.HashError(err))
 		return
 	}
 
