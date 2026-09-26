@@ -3,6 +3,8 @@ package services
 import (
 	"context"
 	"log"
+
+	"notell/observability"
 	"time"
 )
 
@@ -20,18 +22,18 @@ func TrackMediaCleanupFailure(key string, err error) {
 	failedMediaCleanupRetries = append(failedMediaCleanupRetries, MediaCleanupRetry{
 		ObjectKey: key,
 		Attempts: 1,
-		LastError: err.Error(),
+		LastError: observability.HashError(err),
 		UpdatedAt: time.Now(),
 	})
-	log.Printf("media cleanup queued key=%s error=%v", key, err)
+	log.Printf("media cleanup queued key_hash=%s error_hash=%s", observability.HashSensitive(key), observability.HashError(err))
 }
 
 func RetryFailedMediaCleanup(ctx context.Context, storage MediaStorage) {
 	for _, item := range failedMediaCleanupRetries {
 		if err := storage.Delete(ctx, item.ObjectKey); err != nil {
-			log.Printf("media cleanup retry failed key=%s error=%v", item.ObjectKey, err)
+			log.Printf("media cleanup retry failed key_hash=%s error_hash=%s", observability.HashSensitive(item.ObjectKey), observability.HashError(err))
 			continue
 		}
-		log.Printf("media cleanup retry completed key=%s", item.ObjectKey)
+		log.Printf("media cleanup retry completed key_hash=%s", observability.HashSensitive(item.ObjectKey))
 	}
 }
