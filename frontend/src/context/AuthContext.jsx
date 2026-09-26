@@ -56,7 +56,11 @@ export function AuthProvider({ children }) {
           session_failed: "Google sign-in completed, but your Notell session could not be created. Please try again.",
         };
         setError(messages[oauthError] || `OAuth Error: ${oauthError}`);
-        window.history.replaceState({}, document.title, window.location.pathname);
+        if (window.location.pathname !== "/auth") {
+          navigate(`/auth?error=${encodeURIComponent(oauthError)}`, { replace: true });
+        } else {
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
       }
       const currentUser = await fetchCurrentUser();
       const gift = pendingGiftCode();
