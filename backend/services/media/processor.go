@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"notell/models"
+	"notell/observability"
 
 	"gorm.io/gorm"
 )
@@ -29,7 +30,7 @@ func (p *Processor) Process(ctx context.Context, upload *models.Upload) error {
 	}
 	fail := func(err error) error {
 		if err == nil { return nil }
-		if markErr := p.MarkFailed(ctx, upload.ID, err.Error()); markErr != nil {
+		if markErr := p.MarkFailed(ctx, upload.ID, observability.HashError(err)); markErr != nil {
 			return fmt.Errorf("%w (also failed to record processing error: %v)", err, markErr)
 		}
 		return err
