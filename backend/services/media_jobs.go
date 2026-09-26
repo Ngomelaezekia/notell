@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"notell/models"
+	"notell/observability"
 
 	"gorm.io/gorm"
 )
@@ -137,7 +138,7 @@ func FailMediaJob(db *gorm.DB, jobID uint, err error, expectedLockedAt *time.Tim
 			Updates(map[string]any{
 				"status":    status,
 				"locked_at": nil,
-				"error":     err.Error(),
+				"error":     observability.HashError(err),
 			})
 		if result.Error != nil {
 			return result.Error
@@ -154,7 +155,7 @@ func FailMediaJob(db *gorm.DB, jobID uint, err error, expectedLockedAt *time.Tim
 			Where("upload_id = ?", job.UploadID).
 			Updates(map[string]any{
 				"status":           metadataStatus,
-				"processing_error": err.Error(),
+				"processing_error": observability.HashError(err),
 			}).Error; updateErr != nil {
 			return updateErr
 		}
