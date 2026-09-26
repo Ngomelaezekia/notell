@@ -48,7 +48,7 @@ func recoverStaleMediaJobs(db *gorm.DB) {
 
 	var jobs []models.MediaJob
 	if err := db.Where("status = ? AND locked_at IS NOT NULL AND locked_at < ?", "processing", cutoff).Limit(20).Find(&jobs).Error; err != nil {
-		log.Printf("media worker stale-job recovery lookup failed: %v", err)
+		log.Printf("media worker stale-job recovery lookup failed error_hash=%s", observability.HashError(err))
 		return
 	}
 
@@ -59,7 +59,7 @@ func recoverStaleMediaJobs(db *gorm.DB) {
 		lease := *job.LockedAt
 
 		if err := recoverStaleMediaJob(db, job, lease); err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-			log.Printf("media worker stale-job recovery failed job=%d: %v", job.ID, err)
+			log.Printf("media worker stale-job recovery failed job=%d error_hash=%s", job.ID, observability.HashError(err))
 		}
 	}
 }
@@ -140,7 +140,7 @@ func processNextMediaJob(ctx context.Context, db *gorm.DB, processor *mediaservi
 	job, err := ClaimPendingMediaJob(db)
 	if err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			log.Printf("media worker claim failed: %v", err)
+			log.Printf("media worker claim failed error_hash=%s", observability.HashError(err))
 		}
 		return
 	}
@@ -169,7 +169,7 @@ func processNextMediaJob(ctx context.Context, db *gorm.DB, processor *mediaservi
 		observability.MediaProcessingFailed(job.ID, err)
 		log.Printf("media worker processing failed job=%d error_hash=%s", job.ID, observability.HashError(err))
 		if failErr := FailMediaJob(db, job.ID, err, &lease); failErr != nil {
-			log.Printf("media worker job failure update failed job=%d: %v", job.ID, failErr)
+			log.Printf("media worker job failure update failed job=%d error_hash=%s", job.ID, observability.HashError(failErr))
 		}
 		return
 	}
