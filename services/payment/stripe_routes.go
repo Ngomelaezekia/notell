@@ -103,7 +103,7 @@ func registerStripeRoutes(r *gin.Engine, s *Server) {
 		}
 		if err := applyStripeEvent(s, event.Type, event.Data.Object); err != nil {
 			now := time.Now()
-			s.db.Model(&wh).Updates(map[string]any{"status": "failed", "error_message": err.Error(), "processed_at": now})
+			s.db.Model(&wh).Updates(map[string]any{"status": "failed", "error_message": "error_hash:" + errorHash(err), "processed_at": now})
 			c.JSON(200, gin.H{"received": true})
 			return
 		}
