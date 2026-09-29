@@ -20,6 +20,7 @@ var (
 	errRefundExceedsBalance = errors.New("refund amount exceeds refundable balance")
 	errStripeRefund = errors.New("stripe refund failed")
 	errRefundAlreadyRecorded = errors.New("refund already recorded")
+	errRefundKeyConflict = errors.New("refund idempotency key conflicts with an existing refund")
 )
 
 func gormLockUpdate() clause.Locking { return clause.Locking{Strength: "UPDATE"} }
@@ -200,8 +201,15 @@ func registerStripeRoutes(r *gin.Engine, s *Server) {
 			}
 			var existing Refund
 			if err := tx.Where("payment_id = ? AND idempotency_key = ?", payment.ID, refundKey).First(&existing).Error; err == nil {
+				if existing.Amount != in.Amount && in.Amount > 0 {
+					return errRefundKeyConflict
+				}
+				if existing.Status == "succeeded" {
+					refund = existing
+					return errRefundAlreadyRecorded
+				}
 				refund = existing
-				return errRefundAlreadyRecorded
+				return nil
 			} else if err != gorm.ErrRecordNotFound {
 				return err
 			}
@@ -227,6 +235,7 @@ func registerStripeRoutes(r *gin.Engine, s *Server) {
 			case errRefundBalance: c.JSON(500, gin.H{"error":"refund balance could not be checked"})
 			case errNoRefundBalance: c.JSON(409, gin.H{"error":"payment has no refundable balance"})
 			case errRefundExceedsBalance: c.JSON(400, gin.H{"error":"refund amount exceeds refundable balance"})
+			case errRefundKeyConflict: c.JSON(409, gin.H{"error":"refund idempotency key conflicts with an existing refund"})
 			default: c.JSON(500, gin.H{"error":"refund could not be reserved"})
 			}
 			return
