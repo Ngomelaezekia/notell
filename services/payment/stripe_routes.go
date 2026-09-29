@@ -189,12 +189,21 @@ func registerStripeRoutes(r *gin.Engine, s *Server) {
 		}
 		var refund Refund
 		var payment Payment
+		// Reserve the refund in a short DB transaction. Never hold a row lock
+		// while waiting on Stripe's network request.
 		err := s.db.Transaction(func(tx *gorm.DB) error {
 			if err := tx.Where("id = ? AND user_id = ?", c.Param("id"), uid).Clauses(gormLockUpdate()).First(&payment).Error; err != nil {
 				return gorm.ErrRecordNotFound
 			}
 			if payment.Status != PaymentSucceeded || payment.ProviderPaymentID == "" {
 				return errPaymentNotRefundable
+			}
+			var existing Refund
+			if err := tx.Where("payment_id = ? AND idempotency_key = ?", payment.ID, refundKey).First(&existing).Error; err == nil {
+				refund = existing
+				return errRefundAlreadyRecorded
+			} else if err != gorm.ErrRecordNotFound {
+				return err
 			}
 			var refunded int64
 			if err := tx.Model(&Refund{}).Where("payment_id = ? AND status IN ?", payment.ID, []string{"pending", "succeeded"}).Select("COALESCE(SUM(amount),0)").Scan(&refunded).Error; err != nil {
@@ -204,32 +213,51 @@ func registerStripeRoutes(r *gin.Engine, s *Server) {
 			if remaining <= 0 { return errNoRefundBalance }
 			if in.Amount <= 0 { in.Amount = remaining }
 			if in.Amount > remaining { return errRefundExceedsBalance }
-			refundID, status, err := stripeFromEnv().RefundPayment(payment, in.Amount, strings.TrimSpace(in.Reason), refundKey)
-			if err != nil { return errStripeRefund }
-			if err := tx.Where("provider_refund_id = ?", refundID).First(&refund).Error; err == nil {
-				return errRefundAlreadyRecorded
-			} else if err != gorm.ErrRecordNotFound { return err }
-			refund = Refund{ID:newID("ref"),PaymentID:payment.ID,Amount:in.Amount,Currency:payment.Currency,Status:status,ProviderRefundID:refundID,Reason:in.Reason}
-			if err := tx.Create(&refund).Error; err != nil { return err }
-			if err := tx.Create(&AuditEvent{ID:newID("aud"),PaymentID:payment.ID,UserID:payment.UserID,EventType:"refund_created",ToStatus:status,Metadata:"{}"}).Error; err != nil { return err }
-			if status == "succeeded" {
-				if err := tx.Create(&LedgerEntry{ID:newID("led"),PaymentID:payment.ID,UserID:payment.UserID,EntryType:"payment_refunded",Amount:-in.Amount,Currency:payment.Currency,Reference:refundID}).Error; err != nil { return err }
-			}
-			return nil
+			refund = Refund{ID:newID("ref"),PaymentID:payment.ID,Amount:in.Amount,Currency:payment.Currency,Status:"pending",IdempotencyKey:refundKey,Reason:in.Reason}
+			return tx.Create(&refund).Error
 		})
 		if err != nil {
+			if errors.Is(err, errRefundAlreadyRecorded) {
+				c.JSON(200, gin.H{"refund":refund,"idempotent":true})
+				return
+			}
 			switch err {
 			case gorm.ErrRecordNotFound: c.JSON(404, gin.H{"error":"payment not found"})
 			case errPaymentNotRefundable: c.JSON(409, gin.H{"error":"payment is not refundable"})
 			case errRefundBalance: c.JSON(500, gin.H{"error":"refund balance could not be checked"})
 			case errNoRefundBalance: c.JSON(409, gin.H{"error":"payment has no refundable balance"})
 			case errRefundExceedsBalance: c.JSON(400, gin.H{"error":"refund amount exceeds refundable balance"})
-			case errStripeRefund: c.JSON(502, gin.H{"error":"stripe refund failed"})
-			case errRefundAlreadyRecorded: c.JSON(200, gin.H{"refund":refund,"idempotent":true})
-			default: c.JSON(500, gin.H{"error":"refund record could not be saved"})
+			default: c.JSON(500, gin.H{"error":"refund could not be reserved"})
 			}
 			return
 		}
+
+		providerRefundID, status, stripeErr := stripeFromEnv().RefundPayment(payment, refund.Amount, strings.TrimSpace(in.Reason), refundKey)
+		if stripeErr != nil {
+			_ = s.db.Model(&Refund{}).Where("id = ? AND status = ?", refund.ID, "pending").Updates(map[string]any{"status":"failed"}).Error
+			c.JSON(502, gin.H{"error":"stripe refund failed"})
+			return
+		}
+		if err := s.db.Transaction(func(tx *gorm.DB) error {
+			var current Refund
+			if err := tx.Where("id = ? AND payment_id = ?", refund.ID, payment.ID).Clauses(gormLockUpdate()).First(&current).Error; err != nil { return err }
+			if current.ProviderRefundID != "" && current.ProviderRefundID != providerRefundID {
+				return errRefundAlreadyRecorded
+			}
+			current.ProviderRefundID = providerRefundID
+			current.Status = status
+			if err := tx.Save(&current).Error; err != nil { return err }
+			if err := tx.Create(&AuditEvent{ID:newID("aud"),PaymentID:payment.ID,UserID:payment.UserID,EventType:"refund_created",ToStatus:status,Metadata:"{}"}).Error; err != nil { return err }
+			if status == "succeeded" {
+				return tx.Create(&LedgerEntry{ID:newID("led"),PaymentID:payment.ID,UserID:payment.UserID,EntryType:"payment_refunded",Amount:-current.Amount,Currency:current.Currency,Reference:providerRefundID}).Error
+			}
+			return nil
+		}); err != nil {
+			c.JSON(500, gin.H{"error":"refund result could not be recorded"})
+			return
+		}
+		refund.ProviderRefundID = providerRefundID
+		refund.Status = status
 		c.JSON(201, gin.H{"refund":refund})
 	})
 }
