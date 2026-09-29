@@ -102,6 +102,21 @@ func registerStripeRoutes(r *gin.Engine, s *Server) {
 			c.JSON(500, gin.H{"error": "webhook lookup failed"})
 			return
 		}
+		// Claim the event before processing so concurrent Stripe retries cannot execute it twice.
+		claimed := false
+		if err := s.db.Model(&WebhookEvent{}).Where("id = ? AND status = ?", wh.ID, "received").Updates(map[string]any{"status": "processing"}).Error; err != nil {
+			c.JSON(500, gin.H{"error": "webhook could not be claimed"})
+			return
+		} else {
+			var current WebhookEvent
+			if err := s.db.Where("id = ?", wh.ID).First(&current).Error; err == nil && current.Status == "processing" {
+				claimed = true
+			}
+		}
+		if !claimed {
+			c.JSON(200, gin.H{"received": true, "duplicate": true})
+			return
+		}
 		if err := applyStripeEvent(s, event.Type, event.Data.Object); err != nil {
 			now := time.Now()
 			s.db.Model(&wh).Updates(map[string]any{"status": "failed", "error_message": "error_hash:" + errorHash(err), "processed_at": now})
@@ -110,7 +125,7 @@ func registerStripeRoutes(r *gin.Engine, s *Server) {
 		}
 		if err := applyStripeSubscriptionEventAndSync(s, event.Type, event.Data.Object); err != nil {
 			now := time.Now()
-			s.db.Model(&wh).Updates(map[string]any{"status": "failed", "error_message": err.Error(), "processed_at": now})
+			s.db.Model(&wh).Updates(map[string]any{"status": "failed", "error_message": "error_hash:" + errorHash(err), "processed_at": now})
 			c.JSON(200, gin.H{"received": true})
 			return
 		}
