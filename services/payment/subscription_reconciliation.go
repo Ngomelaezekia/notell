@@ -58,7 +58,7 @@ func startStripeSubscriptionReconciliation(s *Server) {
 		defer ticker.Stop()
 		for range ticker.C {
 			if err := reconcileStripeSubscriptions(s); err != nil {
-				log.Printf("stripe subscription reconciliation failed: %v", err)
+				log.Printf("stripe subscription reconciliation failed error_hash=%s", errorHash(err))
 			}
 		}
 	}()
