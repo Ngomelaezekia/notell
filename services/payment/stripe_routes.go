@@ -161,7 +161,7 @@ func registerStripeRoutes(r *gin.Engine, s *Server) {
 			c.JSON(409, gin.H{"error": "payment is not ready for Stripe intent"})
 			return
 		}
-		id, clientSecret, err := stripeFromEnv().CreatePaymentIntent(p)
+		id, clientSecret, err := stripeFromEnv().CreatePaymentIntent(p, p.ID)
 		if err != nil {
 			c.JSON(502, gin.H{"error": "stripe payment intent could not be created"})
 			return
