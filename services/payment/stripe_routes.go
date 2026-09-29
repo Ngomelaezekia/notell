@@ -241,6 +241,19 @@ func registerStripeRoutes(r *gin.Engine, s *Server) {
 		if err := s.db.Transaction(func(tx *gorm.DB) error {
 			var current Refund
 			if err := tx.Where("id = ? AND payment_id = ?", refund.ID, payment.ID).Clauses(gormLockUpdate()).First(&current).Error; err != nil { return err }
+			var existing Refund
+			if err := tx.Where("provider_refund_id = ?", providerRefundID).Clauses(gormLockUpdate()).First(&existing).Error; err == nil && existing.ID != current.ID {
+				if existing.PaymentID != payment.ID { return errRefundAlreadyRecorded }
+				if existing.IdempotencyKey == "" {
+					existing.IdempotencyKey = refundKey
+					if err := tx.Save(&existing).Error; err != nil { return err }
+				}
+				if err := tx.Delete(&current).Error; err != nil { return err }
+				refund = existing
+				return nil
+			} else if err != nil && err != gorm.ErrRecordNotFound {
+				return err
+			}
 			if current.ProviderRefundID != "" && current.ProviderRefundID != providerRefundID {
 				return errRefundAlreadyRecorded
 			}
@@ -256,8 +269,10 @@ func registerStripeRoutes(r *gin.Engine, s *Server) {
 			c.JSON(500, gin.H{"error":"refund result could not be recorded"})
 			return
 		}
-		refund.ProviderRefundID = providerRefundID
-		refund.Status = status
+		if refund.ProviderRefundID == "" {
+			refund.ProviderRefundID = providerRefundID
+			refund.Status = status
+		}
 		c.JSON(201, gin.H{"refund":refund})
 	})
 }
