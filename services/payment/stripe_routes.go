@@ -79,13 +79,13 @@ func registerStripeRoutes(r *gin.Engine, s *Server) {
 		var wh WebhookEvent
 		err = s.db.Where("provider = ? AND provider_event_id = ?", "stripe", event.ID).First(&wh).Error
 		if err == nil {
-			if wh.Status == "processed" {
+			if wh.Status == "processed" || wh.Status == "processing" {
 				c.JSON(200, gin.H{"received": true, "duplicate": true})
 				return
 			}
-			// Reuse the existing received/failed record so Stripe retries can
-			// actually reprocess the event instead of colliding with the unique key.
-			if err := s.db.Model(&wh).Updates(map[string]any{
+			// Reuse failed/received records so Stripe retries can reprocess
+			// without colliding with the unique provider event key.
+			if err := s.db.Model(&wh).Where("status IN ?", []string{"received", "failed"}).Updates(map[string]any{
 				"status": "received", "error_message": "", "processed_at": nil,
 				"payload": string(payload), "event_type": event.Type,
 			}).Error; err != nil {
