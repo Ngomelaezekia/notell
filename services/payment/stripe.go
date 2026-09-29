@@ -30,6 +30,12 @@ func NewStripeProvider(secretKey string) *StripeProvider {
 	return &StripeProvider{secretKey: strings.TrimSpace(secretKey), baseURL: "https://api.stripe.com/v1", client: &http.Client{Timeout: 20 * time.Second}}
 }
 func (p *StripeProvider) enabled() bool { return p != nil && p.secretKey != "" }
+
+func errorHash(err error) string {
+	if err == nil { return "" }
+	sum := sha256.Sum256([]byte(err.Error()))
+	return hex.EncodeToString(sum[:])
+}
 func (p *StripeProvider) request(method, path string, form map[string]string) (map[string]any, error) { return p.requestWithHeaders(method, path, form, nil) }
 func (p *StripeProvider) requestWithHeaders(method, path string, form map[string]string, headers map[string]string) (map[string]any, error) {
 	if !p.enabled() { return nil, errors.New("stripe provider is not configured") }
