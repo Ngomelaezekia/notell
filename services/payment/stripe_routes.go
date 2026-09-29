@@ -103,15 +103,14 @@ func registerStripeRoutes(r *gin.Engine, s *Server) {
 			return
 		}
 		// Claim the event before processing so concurrent Stripe retries cannot execute it twice.
-		claimed := false
-		if err := s.db.Model(&WebhookEvent{}).Where("id = ? AND status = ?", wh.ID, "received").Updates(map[string]any{"status": "processing"}).Error; err != nil {
+		claim := s.db.Model(&WebhookEvent{}).Where("id = ? AND status = ?", wh.ID, "received").Updates(map[string]any{"status": "processing"})
+		if claim.Error != nil {
 			c.JSON(500, gin.H{"error": "webhook could not be claimed"})
 			return
-		} else {
-			var current WebhookEvent
-			if err := s.db.Where("id = ?", wh.ID).First(&current).Error; err == nil && current.Status == "processing" {
-				claimed = true
-			}
+		}
+		if claim.RowsAffected != 1 {
+			c.JSON(200, gin.H{"received": true, "duplicate": true})
+			return
 		}
 		if !claimed {
 			c.JSON(200, gin.H{"received": true, "duplicate": true})
