@@ -1,0 +1,19 @@
+# Replace <DOMAIN>. DNS A records for each hostname must point to the Oracle VM.
+api.<DOMAIN> {
+    reverse_proxy 127.0.0.1:8080
+}
+music.<DOMAIN> {
+    reverse_proxy 127.0.0.1:8081
+}
+channel.<DOMAIN> {
+    reverse_proxy 127.0.0.1:8082
+}
+message.<DOMAIN> {
+    reverse_proxy 127.0.0.1:8083
+}
+live.<DOMAIN> {
+    reverse_proxy 127.0.0.1:8084
+}
+payment.<DOMAIN> {
+    reverse_proxy 127.0.0.1:8085
+}
