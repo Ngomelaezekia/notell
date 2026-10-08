@@ -302,10 +302,20 @@ func (h *PostHandler) GetPostByID(c *gin.Context) {
 	err = h.DB.Model(&models.Post{}).Select(postEngagementSelect, userID).Where("posts.id = ?", uint(id)).Scopes(func(db *gorm.DB) *gorm.DB { return postaccess.VisibleTo(db, userID) }).Preload("User", func(db *gorm.DB) *gorm.DB { return db.Select("id", "username", "profile_picture") }).Preload("Music").Preload("Music.Upload").Preload("Music.Upload.MediaMetadata").First(&post).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"message": "post not found"})
+			var candidate models.Post
+			if loadErr := h.DB.Model(&models.Post{}).Where("posts.id = ?", uint(id)).First(&candidate).Error; loadErr == nil && postaccess.CanViewWithSubscriberEntitlement(h.DB, candidate, userID) == nil {
+				post = candidate
+			} else {
+				c.JSON(http.StatusNotFound, gin.H{"message": "post not found"})
+				return
+			}
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to fetch post"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to fetch post"})
+	}
+	if err := postaccess.CanViewWithSubscriberEntitlement(h.DB, post, userID); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"message": "post not found"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": post})
@@ -482,7 +492,7 @@ func (h *PostHandler) AddComment(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to load post"})
 		return
 	}
-	if err := postaccess.CanViewRecordWithDB(h.DB, post, userID); err != nil {
+	if err := postaccess.CanViewWithSubscriberEntitlement(h.DB, post, userID); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"message": "post not found"})
 		return
 	}
