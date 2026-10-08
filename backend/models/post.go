@@ -87,7 +87,7 @@ func (p *Post) BeforeCreate(tx *gorm.DB) error {
 	}
 
 	var upload Upload
-	if err := tx.Select("id, user_id, media_type").Where("filename = ?", filename).First(&upload).Error; err != nil {
+	if err := tx.Select("id, user_id, media_type").Where("filename = ? AND post_id IS NULL", filename).First(&upload).Error; err != nil {
 		return err
 	}
 	if upload.UserID != p.UserID {
