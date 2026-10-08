@@ -33,7 +33,7 @@ func CanViewPost(db *gorm.DB, postID, viewerID uint) error {
 	return ErrAccessDenied
 }
 
-// VisibleTo is the canonical SQL scope for list/search/profile queries.
+// CanViewRecord applies the same visibility policy to an already-loaded post.\nfunc CanViewRecord(post models.Post, viewerID uint) error {\n\tif post.Visibility == "public" || post.UserID == viewerID {\n\t\treturn nil\n\t}\n\treturn ErrAccessDenied\n}\n\n// VisibleTo is the canonical SQL scope for list/search/profile queries.
 func VisibleTo(db *gorm.DB, viewerID uint) *gorm.DB {
 	return db.Where("(posts.visibility = ? OR posts.user_id = ?)", "public", viewerID)
 }
