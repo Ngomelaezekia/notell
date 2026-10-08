@@ -117,8 +117,6 @@ export const PostComposer = () => {
       if (current?.startsWith("blob:")) URL.revokeObjectURL(current);
       return "";
     });
-    setMusicPreviewUrl("");
-    setMusicFile(null);
     setFile(null);
     setKind(null);
     setEdits(DEFAULT_EDITS);
