@@ -82,6 +82,27 @@ func runDatabaseMigrations(db *gorm.DB) error {
 					}
 				}
 
+				if err := tx.Exec(`
+					CREATE TABLE IF NOT EXISTS post_audiences (
+						post_id BIGINT NOT NULL,
+						user_id BIGINT NOT NULL,
+						created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+						PRIMARY KEY (post_id, user_id),
+						CONSTRAINT fk_post_audiences_post
+							FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+						CONSTRAINT fk_post_audiences_user
+							FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+					)
+				`).Error; err != nil {
+					return fmt.Errorf("create post_audiences: %w", err)
+				}
+				if err := tx.Exec(`
+					CREATE INDEX IF NOT EXISTS idx_post_audiences_user_post
+					ON post_audiences (user_id, post_id)
+				`).Error; err != nil {
+					return fmt.Errorf("index post_audiences: %w", err)
+				}
+
 				// Upload.PostID is intentionally non-unique because a post may have
 				// multiple managed uploads. Recreate it as a normal lookup index.
 				if err := tx.Exec(`DROP INDEX IF EXISTS idx_uploads_post_id`).Error; err != nil {
