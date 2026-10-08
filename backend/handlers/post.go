@@ -229,7 +229,7 @@ func (h *PostHandler) GetFeed(c *gin.Context) {
 		limit = 10
 	}
 	var posts []models.Post
-	err := h.DB.Model(&models.Post{}).Select(postEngagementSelect, userID).Joins(`LEFT JOIN user_relationships ON user_relationships.following_id = posts.user_id AND user_relationships.follower_id = ? AND user_relationships.status = ?`, userID, "accepted").Where(`posts.user_id = ? OR user_relationships.follower_id IS NOT NULL`, userID).Scopes(func(db *gorm.DB) *gorm.DB { return postaccess.VisibleTo(db, authUserID) }).Preload("User", func(db *gorm.DB) *gorm.DB { return db.Select("id", "username", "profile_picture") }).Preload("Music").Preload("Music.Upload").Preload("Music.Upload.MediaMetadata").Order("posts.created_at DESC").Order("posts.id DESC").Limit(limit + 1).Offset((page - 1) * limit).Find(&posts).Error
+	err := h.DB.Model(&models.Post{}).Select(postEngagementSelect, userID).Joins(`LEFT JOIN user_relationships ON user_relationships.following_id = posts.user_id AND user_relationships.follower_id = ? AND user_relationships.status = ?`, userID, "accepted").Where(`posts.user_id = ? OR user_relationships.follower_id IS NOT NULL`, userID).Scopes(func(db *gorm.DB) *gorm.DB { return postaccess.VisibleTo(db, userID) }).Preload("User", func(db *gorm.DB) *gorm.DB { return db.Select("id", "username", "profile_picture") }).Preload("Music").Preload("Music.Upload").Preload("Music.Upload.MediaMetadata").Order("posts.created_at DESC").Order("posts.id DESC").Limit(limit + 1).Offset((page - 1) * limit).Find(&posts).Error
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to fetch feed"})
 		return
@@ -405,7 +405,7 @@ func (h *PostHandler) ToggleLike(c *gin.Context) {
 		if err := tx.Select("id,user_id,visibility").First(&post, postIDUint).Error; err != nil {
 			return err
 		}
-		if post.Visibility == "private" && post.UserID != userID {
+		if err := postaccess.CanViewRecord(post, userID); err != nil {
 			return gorm.ErrRecordNotFound
 		}
 		var like models.Like
@@ -482,7 +482,7 @@ func (h *PostHandler) AddComment(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to load post"})
 		return
 	}
-	if post.Visibility == "private" && post.UserID != userID {
+	if err := postaccess.CanViewRecord(post, userID); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"message": "post not found"})
 		return
 	}
@@ -549,7 +549,7 @@ func (h *PostHandler) GetComments(c *gin.Context) {
 			viewerID = id
 		}
 	}
-	if post.Visibility == "private" && post.UserID != viewerID {
+	if err := postaccess.CanViewRecord(post, viewerID); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"message": "post not found"})
 		return
 	}
