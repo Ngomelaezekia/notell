@@ -38,7 +38,7 @@ func NewPostHandler(db *gorm.DB, publicURL string, mediaPublicURL ...string) *Po
 type createPostInput struct {
 	ContentType string `json:"contentType" binding:"required,oneof=image video"`
 	ContentURL  string `json:"contentUrl" binding:"required,url"`
-	Visibility  string `json:"visibility" binding:"omitempty,oneof=public private"`
+	Visibility  string `json:"visibility" binding:"omitempty,oneof=public private followers subscribers selected"`
 	Caption     string `json:"caption" binding:"max=2000"`
 }
 type createCommentInput struct {
