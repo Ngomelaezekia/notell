@@ -85,32 +85,6 @@ func (h *PostHandler) managedMediaPath(value string) (string, bool) {
 	}
 	return filepath.Join("uploads", filename), true
 }
-func validateManagedMedia(path, contentType string) error {
-	info, err := os.Stat(path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return errors.New("uploaded media file not found")
-		}
-		return err
-	}
-	if info.IsDir() {
-		return errors.New("uploaded media path is not a file")
-	}
-	ext := strings.ToLower(filepath.Ext(path))
-	switch contentType {
-	case "image":
-		if ext != ".jpg" && ext != ".png" && ext != ".webp" {
-			return errors.New("media file type does not match image content type")
-		}
-	case "video":
-		if ext != ".mp4" && ext != ".mov" && ext != ".webm" {
-			return errors.New("media file type does not match video content type")
-		}
-	default:
-		return errors.New("unsupported content type")
-	}
-	return nil
-}
 func validateManagedMediaReference(filename, contentType string) error {
 	ext := strings.ToLower(filepath.Ext(filename))
 	switch contentType {
