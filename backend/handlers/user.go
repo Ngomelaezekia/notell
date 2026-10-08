@@ -226,7 +226,7 @@ func (h *UserHandler) GetUserProfile(c *gin.Context) {
 	err = h.DB.Select("id, username, profile_picture, cover_picture, bio, city, country, allow_followers, created_at").Preload("Posts", func(db *gorm.DB) *gorm.DB {
 		q := db.Select("id,user_id,upload_id,content_type,content_url,visibility,caption,created_at,updated_at")
 		if viewerID != targetID {
-			q = q.Where("visibility = ?", "public")
+			q = postaccess.VisibleTo(q, viewerID)
 		}
 		return q.Preload("Upload.MediaMetadata").Order("created_at DESC").Offset((page - 1) * limit).Limit(limit)
 	}).First(&user, targetID).Error
