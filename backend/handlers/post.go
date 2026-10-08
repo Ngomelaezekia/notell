@@ -405,7 +405,7 @@ func (h *PostHandler) ToggleLike(c *gin.Context) {
 		if err := tx.Select("id,user_id,visibility").First(&post, postIDUint).Error; err != nil {
 			return err
 		}
-		if err := postaccess.CanViewRecord(post, userID); err != nil {
+		if err := postaccess.CanViewRecordWithDB(tx, post, userID); err != nil {
 			return gorm.ErrRecordNotFound
 		}
 		var like models.Like
@@ -482,7 +482,7 @@ func (h *PostHandler) AddComment(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to load post"})
 		return
 	}
-	if err := postaccess.CanViewRecord(post, userID); err != nil {
+	if err := postaccess.CanViewRecordWithDB(h.DB, post, userID); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"message": "post not found"})
 		return
 	}
