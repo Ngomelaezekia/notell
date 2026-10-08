@@ -3,6 +3,7 @@ package models
 import (
 	"errors"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -66,8 +67,23 @@ func (p *Post) BeforeCreate(tx *gorm.DB) error {
 	if err != nil || candidate.Scheme == "" || candidate.Host == "" || candidate.Path == "" {
 		return errors.New("invalid post media URL")
 	}
+	if candidate.Scheme != "http" && candidate.Scheme != "https" {
+		return errors.New("invalid post media URL scheme")
+	}
 	if candidate.RawQuery != "" || candidate.Fragment != "" || !strings.HasPrefix(candidate.Path, "/uploads/") {
 		return errors.New("invalid post media URL")
+	}
+	configuredPublicURL := strings.TrimRight(strings.TrimSpace(os.Getenv("MEDIA_PUBLIC_URL")), "/")
+	if configuredPublicURL == "" {
+		configuredPublicURL = strings.TrimRight(strings.TrimSpace(os.Getenv("SERVER_URL")), "/")
+	}
+	if configuredPublicURL != "" {
+		publicURL, parseErr := url.Parse(configuredPublicURL)
+		if parseErr != nil || publicURL.Scheme == "" || publicURL.Host == "" ||
+			!strings.EqualFold(candidate.Scheme, publicURL.Scheme) ||
+			!strings.EqualFold(candidate.Host, publicURL.Host) {
+			return errors.New("post media URL host is not the configured media host")
+		}
 	}
 	relative := strings.TrimPrefix(candidate.Path, "/uploads/")
 	decodedRelative, err := url.PathUnescape(relative)
