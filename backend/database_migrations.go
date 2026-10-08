@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -64,18 +63,36 @@ func runDatabaseMigrations(db *gorm.DB) error {
 				}
 
 				if err := tx.Exec(`
-					ALTER TABLE posts
-					ADD CONSTRAINT chk_posts_visibility
-					CHECK (visibility IN ('public','private','followers','subscribers','selected'))
-				`).Error; err != nil && !strings.Contains(strings.ToLower(err.Error()), "already exists") {
+					DO $
+					BEGIN
+						IF NOT EXISTS (
+							SELECT 1 FROM pg_constraint
+							WHERE conname = 'chk_posts_visibility'
+							AND conrelid = 'posts'::regclass
+						) THEN
+							ALTER TABLE posts
+							ADD CONSTRAINT chk_posts_visibility
+							CHECK (visibility IN ('public','private','followers','subscribers','selected'));
+						END IF;
+					END $;
+				`).Error; err != nil {
 					return fmt.Errorf("add post visibility constraint: %w", err)
 				}
 
 				if err := tx.Exec(`
-					ALTER TABLE user_relationships
-					ADD CONSTRAINT chk_relationships_status
-					CHECK (status IN ('accepted'))
-				`).Error; err != nil && !strings.Contains(strings.ToLower(err.Error()), "already exists") {
+					DO $
+					BEGIN
+						IF NOT EXISTS (
+							SELECT 1 FROM pg_constraint
+							WHERE conname = 'chk_relationships_status'
+							AND conrelid = 'user_relationships'::regclass
+						) THEN
+							ALTER TABLE user_relationships
+							ADD CONSTRAINT chk_relationships_status
+							CHECK (status IN ('accepted'));
+						END IF;
+					END $;
+				`).Error; err != nil {
 					return fmt.Errorf("add relationship status constraint: %w", err)
 				}
 
