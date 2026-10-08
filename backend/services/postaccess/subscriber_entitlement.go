@@ -1,6 +1,8 @@
 package postaccess
 
 import (
+	"notell/models"
+
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 var subscriberHTTPClient = &http.Client{Timeout: 3 * time.Second}
@@ -51,4 +55,40 @@ func subscriberEntitled(ctx context.Context, viewerID, postID uint) (bool, error
 		return false, err
 	}
 	return result.Active, nil
+}
+
+
+func CanViewWithSubscriberEntitlement(db *gorm.DB, post models.Post, viewerID uint) error {
+	if post.UserID == viewerID || post.Visibility == "public" {
+		return nil
+	}
+	switch post.Visibility {
+	case "followers":
+		if viewerID == 0 || db == nil {
+			return ErrAccessDenied
+		}
+		var count int64
+		if err := db.Model(&models.Relationship{}).Where("follower_id = ? AND following_id = ? AND status = ?", viewerID, post.UserID, "accepted").Count(&count).Error; err != nil {
+			return err
+		}
+		if count > 0 {
+			return nil
+		}
+	case "selected":
+		if viewerID == 0 || db == nil {
+			return ErrAccessDenied
+		}
+		var count int64
+		if err := db.Model(&models.PostAudience{}).Where("post_id = ? AND user_id = ?", post.ID, viewerID).Count(&count).Error; err != nil {
+			return err
+		}
+		if count > 0 {
+			return nil
+		}
+	case "subscribers":
+		if hasSubscriberAccess(viewerID, post.ID) {
+			return nil
+		}
+	}
+	return ErrAccessDenied
 }
