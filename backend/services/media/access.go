@@ -33,6 +33,7 @@ func Authorize(db *gorm.DB, filename string, userID uint) (AccessPolicy, error) 
 	var owner mediaOwnerPolicy
 	err := db.Table("uploads").
 		Select("COALESCE(primary_posts.user_id, music_posts.user_id) AS user_id, COALESCE(primary_posts.visibility, music_posts.visibility) AS visibility").
+		Joins("JOIN media_metadata ON media_metadata.upload_id = uploads.id AND media_metadata.status = ?", "ready").
 		Joins("LEFT JOIN posts AS primary_posts ON primary_posts.id = uploads.post_id").
 		Joins("LEFT JOIN post_musics ON post_musics.upload_id = uploads.id").
 		Joins("LEFT JOIN posts AS music_posts ON music_posts.id = post_musics.post_id").
