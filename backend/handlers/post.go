@@ -278,7 +278,7 @@ func (h *PostHandler) SearchPosts(c *gin.Context) {
 		return
 	}
 	var posts []models.Post
-	err := base.Select(postEngagementSelect, authUserID).Scopes(func(db *gorm.DB) *gorm.DB { return postaccess.VisibleTo(db, userID) }).Preload("User", func(db *gorm.DB) *gorm.DB { return db.Select("id", "username", "profile_picture") }).Preload("Music").Preload("Music.Upload").Preload("Music.Upload.MediaMetadata").Order(gorm.Expr(`CASE WHEN LOWER(users.username)=LOWER(?) THEN 0 WHEN LOWER(users.username) LIKE LOWER(?) ESCAPE '\\' THEN 1 WHEN LOWER(posts.caption) LIKE LOWER(?) ESCAPE '\\' THEN 2 ELSE 3 END`, query, prefix, prefix)).Order("posts.created_at DESC").Order("posts.id DESC").Offset((page - 1) * limit).Limit(limit).Find(&posts).Error
+	err := base.Select(postEngagementSelect, authUserID).Preload("User", func(db *gorm.DB) *gorm.DB { return db.Select("id", "username", "profile_picture") }).Preload("Music").Preload("Music.Upload").Preload("Music.Upload.MediaMetadata").Order(gorm.Expr(`CASE WHEN LOWER(users.username)=LOWER(?) THEN 0 WHEN LOWER(users.username) LIKE LOWER(?) ESCAPE '\\' THEN 1 WHEN LOWER(posts.caption) LIKE LOWER(?) ESCAPE '\\' THEN 2 ELSE 3 END`, query, prefix, prefix)).Order("posts.created_at DESC").Order("posts.id DESC").Offset((page - 1) * limit).Limit(limit).Find(&posts).Error
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "database error"})
 		return
