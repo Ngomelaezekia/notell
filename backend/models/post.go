@@ -98,7 +98,7 @@ func (p *Post) BeforeCreate(tx *gorm.DB) error {
 	if strings.TrimSpace(p.Visibility) == "" {
 		p.Visibility = "public"
 	}
-	if p.Visibility != "public" && p.Visibility != "private" {
+	if p.Visibility != "public" && p.Visibility != "private" && p.Visibility != "followers" && p.Visibility != "subscribers" && p.Visibility != "selected" {
 		return errors.New("unsupported post visibility")
 	}
 
