@@ -34,7 +34,7 @@ const ADJUSTMENTS = [
   { key: "saturation", label: "Saturation", icon: SlidersHorizontal, min: 0, max: 160 },
 ];
 
-const ACCEPTED_MEDIA = "image/jpeg,image/png,image/webp,video/mp4,video/quicktime";
+const ACCEPTED_MEDIA = "image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm";
 const ACCEPTED_MUSIC = "audio/mpeg,.mp3";
 const fileKind = (file) => (file?.type?.startsWith("video/") ? "video" : "image");
 const editsChanged = (edits) =>
@@ -507,7 +507,7 @@ export const PostComposer = () => {
           <h2 className="mt-7 text-[21px] font-bold tracking-tight text-slate-950">Pick a photo or video</h2>
           <p className="mt-2 max-w-sm text-sm leading-5 text-slate-500">Select media first. You can then trim a video, add an optional MP3, preview everything, edit the media, and share.</p>
           <button type="button" onClick={() => { setAccept(ACCEPTED_MEDIA); inputRef.current?.click(); }} className={`mt-6 rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white shadow-sm hover:bg-slate-800 ${pressable}`}>Browse device</button>
-          <div className="mt-5 flex flex-wrap justify-center gap-2 text-[11px] font-medium text-slate-400"><span>JPG</span><span>•</span><span>PNG</span><span>•</span><span>WEBP</span><span>•</span><span>MP4</span><span>•</span><span>MOV</span><span>•</span><span>Up to 100MB</span></div>
+          <div className="mt-5 flex flex-wrap justify-center gap-2 text-[11px] font-medium text-slate-400"><span>JPG</span><span>•</span><span>PNG</span><span>•</span><span>WEBP</span><span>•</span><span>MP4</span><span>•</span><span>MOV</span><span>•</span><span>WEBM</span><span>•</span><span>Up to 100MB</span></div>
         </div>
 
         <div className="mt-3 grid grid-cols-2 gap-3">
