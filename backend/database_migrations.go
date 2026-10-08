@@ -62,60 +62,24 @@ func runDatabaseMigrations(db *gorm.DB) error {
 					return fmt.Errorf("cannot add relationship status constraint: %d invalid rows exist", invalidRelationshipStatus)
 				}
 
-				if err := tx.Exec(`
-					DO $
-					BEGIN
-						IF NOT EXISTS (
-							SELECT 1 FROM pg_constraint
-							WHERE conname = 'chk_posts_visibility'
-							AND conrelid = 'posts'::regclass
-						) THEN
-							ALTER TABLE posts
-							ADD CONSTRAINT chk_posts_visibility
-							CHECK (visibility IN ('public','private','followers','subscribers','selected'));
-						END IF;
-					END $;
-				`).Error; err != nil {
-					return fmt.Errorf("add post visibility constraint: %w", err)
+				var visibilityConstraintCount int64
+				if err := tx.Raw(`SELECT COUNT(*) FROM pg_constraint WHERE conname = 'chk_posts_visibility' AND conrelid = 'posts'::regclass`).Scan(&visibilityConstraintCount).Error; err != nil {
+					return fmt.Errorf("check post visibility constraint: %w", err)
+				}
+				if visibilityConstraintCount == 0 {
+					if err := tx.Exec(`ALTER TABLE posts ADD CONSTRAINT chk_posts_visibility CHECK (visibility IN ('public','private','followers','subscribers','selected'))`).Error; err != nil {
+						return fmt.Errorf("add post visibility constraint: %w", err)
+					}
 				}
 
-				if err := tx.Exec(`
-					DO $
-					BEGIN
-						IF NOT EXISTS (
-							SELECT 1 FROM pg_constraint
-							WHERE conname = 'chk_relationships_status'
-							AND conrelid = 'user_relationships'::regclass
-						) THEN
-							ALTER TABLE user_relationships
-							ADD CONSTRAINT chk_relationships_status
-							CHECK (status IN ('accepted'));
-						END IF;
-					END $;
-				`).Error; err != nil {
-					return fmt.Errorf("add relationship status constraint: %w", err)
+				var relationshipConstraintCount int64
+				if err := tx.Raw(`SELECT COUNT(*) FROM pg_constraint WHERE conname = 'chk_relationships_status' AND conrelid = 'user_relationships'::regclass`).Scan(&relationshipConstraintCount).Error; err != nil {
+					return fmt.Errorf("check relationship status constraint: %w", err)
 				}
-
-				if err := tx.Exec(`
-					CREATE TABLE IF NOT EXISTS post_audiences (
-						post_id BIGINT NOT NULL,
-						user_id BIGINT NOT NULL,
-						created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-						PRIMARY KEY (post_id, user_id),
-						CONSTRAINT fk_post_audiences_post
-							FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
-						CONSTRAINT fk_post_audiences_user
-							FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-					)
-				`).Error; err != nil {
-					return fmt.Errorf("create post_audiences: %w", err)
-				}
-
-				if err := tx.Exec(`
-					CREATE INDEX IF NOT EXISTS idx_post_audiences_user_post
-					ON post_audiences (user_id, post_id)
-				`).Error; err != nil {
-					return fmt.Errorf("index post_audiences: %w", err)
+				if relationshipConstraintCount == 0 {
+					if err := tx.Exec(`ALTER TABLE user_relationships ADD CONSTRAINT chk_relationships_status CHECK (status IN ('accepted'))`).Error; err != nil {
+						return fmt.Errorf("add relationship status constraint: %w", err)
+					}
 				}
 
 				// Upload.PostID is intentionally non-unique because a post may have
