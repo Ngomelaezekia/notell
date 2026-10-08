@@ -13,6 +13,11 @@ import (
 
 var subscriberHTTPClient = &http.Client{Timeout: 3 * time.Second}
 
+func hasSubscriberAccess(viewerID, postID uint) bool {
+	active, err := subscriberEntitled(context.Background(), viewerID, postID)
+	return err == nil && active
+}
+
 func subscriberEntitled(ctx context.Context, viewerID, postID uint) (bool, error) {
 	if viewerID == 0 || postID == 0 {
 		return false, nil
