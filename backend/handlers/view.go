@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"notell/models"
+	"notell/services/postaccess"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -30,8 +31,9 @@ func (h *PostHandler) RecordPostView(c *gin.Context) {
 		if err := tx.Select("id, user_id, visibility").First(&post, postIDUint).Error; err != nil {
 			return err
 		}
-		if post.Visibility == "private" && post.UserID != userID {
-			return gorm.ErrRecordNotFound
+		if err := postaccess.CanViewPost(h.DB, postIDUint, userID); err != nil {
+			if errors.Is(err, postaccess.ErrPostNotFound) || errors.Is(err, postaccess.ErrAccessDenied) { return gorm.ErrRecordNotFound }
+			return err
 		}
 
 		result := tx.Clauses(clause.OnConflict{
