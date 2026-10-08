@@ -45,7 +45,7 @@ func (h *PostHandler) GetCategorizedFeed(c *gin.Context) {
 	// restricting candidates to the current user's posts or accepted relationships.
 	// Visibility remains enforced so private posts are never exposed to other users.
 	query := h.DB.Model(&models.Post{}).Select(postEngagementSelect, userID)
-	query = query.Where("(COALESCE(posts.visibility, 'public') = ? OR posts.user_id = ?)", "public", userID)
+	query = query.Where("(posts.visibility = ? OR posts.user_id = ?)", "public", userID)
 
 	switch category {
 	case "following":
