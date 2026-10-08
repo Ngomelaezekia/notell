@@ -26,7 +26,7 @@ type postMusicInput struct {
 	Provider string  `json:"provider"`
 	StartSec float64 `json:"startSec"`
 	EndSec   float64 `json:"endSec"`
-	Volume   float64 `json:"volume"`
+	Volume   *float64 `json:"volume"`
 }
 
 type musicTrackContract struct {
@@ -59,7 +59,7 @@ const maxPostMusicDuration = 600.0
 func validatePostMusicWindow(input postMusicInput, duration float64) error {
 	if math.IsNaN(input.StartSec) || math.IsInf(input.StartSec, 0) ||
 		math.IsNaN(input.EndSec) || math.IsInf(input.EndSec, 0) ||
-		math.IsNaN(input.Volume) || math.IsInf(input.Volume, 0) ||
+		input.Volume == nil || math.IsNaN(*input.Volume) || math.IsInf(*input.Volume, 0) ||
 		math.IsNaN(duration) || math.IsInf(duration, 0) {
 		return errors.New("music timing and volume values must be finite")
 	}
@@ -80,7 +80,7 @@ func validatePostMusicWindow(input postMusicInput, duration float64) error {
 			return errors.New("music end time exceeds track duration")
 		}
 	}
-	if input.Volume < 0 || input.Volume > 1 {
+	if *input.Volume < 0 || *input.Volume > 1 {
 		return errors.New("music volume must be between 0 and 1")
 	}
 	return nil
@@ -157,8 +157,9 @@ func (h *PostHandler) SetPostMusic(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 		return
 	}
-	if input.Volume == 0 {
-		input.Volume = 1
+	if input.Volume == nil {
+		defaultVolume := 1.0
+		input.Volume = &defaultVolume
 	}
 	input.Source = strings.ToLower(strings.TrimSpace(input.Source))
 	if input.Source == "" {
@@ -222,7 +223,7 @@ func (h *PostHandler) SetPostMusic(c *gin.Context) {
 				DurationSec: cloudTrack.DurationSec,
 				StartSec:    input.StartSec,
 				EndSec:      input.EndSec,
-				Volume:      input.Volume,
+				Volume:      *input.Volume,
 			}
 		} else {
 			var upload models.Upload
