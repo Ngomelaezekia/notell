@@ -24,6 +24,7 @@ import { usePostActions } from "../../hooks/usePosts";
 import { postsAPI } from "../../services/post/postsApi";
 import { uploadAPI } from "../../services/post/UploadApi";
 import { CROP_RATIOS, DEFAULT_EDITS, FILTERS, exportEditedImage, getMediaStyle, trimVideo } from "./mediaEditor";
+import { MusicPicker } from "./MusicPicker";
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024;
 const MAX_CAPTION_LENGTH = 2000;
@@ -59,7 +60,6 @@ const editorButton = `${pressable} disabled:opacity-50`;
 export const PostComposer = () => {
   const navigate = useNavigate();
   const inputRef = useRef(null);
-  const musicInputRef = useRef(null);
   const editSnapshotRef = useRef(DEFAULT_EDITS);
   const trimSnapshotRef = useRef({ start: 0, end: 0 });
   const { createPost, loading, error } = usePostActions();
@@ -79,13 +79,13 @@ export const PostComposer = () => {
   const [trimStart, setTrimStart] = useState(0);
   const [trimEnd, setTrimEnd] = useState(0);
   const [videoTrimmed, setVideoTrimmed] = useState(false);
-  const [musicFile, setMusicFile] = useState(null);
-  const [musicPreviewUrl, setMusicPreviewUrl] = useState("");
+  const [music, setMusic] = useState(null);
+  const [visibility, setVisibility] = useState("public");
 
   useEffect(() => () => {
     if (previewUrl?.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
-    if (musicPreviewUrl?.startsWith("blob:")) URL.revokeObjectURL(musicPreviewUrl);
-  }, [musicPreviewUrl, previewUrl]);
+    if (music?.source === "local" && music?.previewUrl?.startsWith("blob:")) URL.revokeObjectURL(music.previewUrl);
+  }, [music, previewUrl]);
 
   const chooseFile = useCallback((nextFile) => {
     if (!nextFile?.type?.startsWith("image/") && !nextFile?.type?.startsWith("video/")) {
@@ -114,44 +114,6 @@ export const PostComposer = () => {
     setLocalError("");
   }, []);
 
-  const chooseMusic = useCallback((nextFile) => {
-    if (!nextFile || nextFile.type !== "audio/mpeg") {
-      setLocalError("Choose an MP3 audio file.");
-      return;
-    }
-    if (nextFile.size > MAX_FILE_SIZE) {
-      setLocalError("Audio file size must be below 100MB.");
-      return;
-    }
-    const nextUrl = URL.createObjectURL(nextFile);
-    setMusicPreviewUrl((current) => {
-      if (current?.startsWith("blob:")) URL.revokeObjectURL(current);
-      return nextUrl;
-    });
-    setMusicFile(nextFile);
-    setLocalError("");
-  }, []);
-
-  const handleInput = (event) => {
-    const nextFile = event.target.files?.[0];
-    if (nextFile) chooseFile(nextFile);
-    event.target.value = "";
-  };
-
-  const handleMusicInput = (event) => {
-    const nextFile = event.target.files?.[0];
-    if (nextFile) chooseMusic(nextFile);
-    event.target.value = "";
-  };
-
-  const removeMusic = () => {
-    setMusicPreviewUrl((current) => {
-      if (current?.startsWith("blob:")) URL.revokeObjectURL(current);
-      return "";
-    });
-    setMusicFile(null);
-  };
-
   const reset = () => {
     setPreviewUrl((current) => {
       if (current?.startsWith("blob:")) URL.revokeObjectURL(current);
@@ -170,6 +132,8 @@ export const PostComposer = () => {
     trimSnapshotRef.current = { start: 0, end: 0 };
     setVideoTrimmed(false);
     setCaption("");
+    setMusic(null);
+    setVisibility("public");
     setAccept(ACCEPTED_MEDIA);
     setLocalError("");
     setStep("select");
@@ -301,14 +265,18 @@ export const PostComposer = () => {
       const mediaUrl = response.url.startsWith("http")
         ? response.url
         : `${import.meta.env.VITE_SERVER_URL ?? "http://localhost:8080"}${response.url}`;
-      const created = await createPost({ contentType: kind, contentUrl: mediaUrl, caption: caption.trim() });
+      const created = await createPost({ contentType: kind, contentUrl: mediaUrl, caption: caption.trim(), visibility });
       createdPostId = created?.data?.postId ?? created?.postId ?? null;
 
-      if (musicFile) {
+      if (music) {
         if (!createdPostId) throw new Error("Post created without a usable ID for music attachment.");
-        const musicResponse = await uploadAPI.uploadMedia(musicFile);
-        if (!musicResponse?.uploadId) throw new Error("Music upload completed without an upload ID.");
-        await postsAPI.setMusic(createdPostId, { uploadId: musicResponse.uploadId, startSec: 0, endSec: 0, volume: 1 });
+        if (music.source === "local" && music.file) {
+          const musicResponse = await uploadAPI.uploadMedia(music.file);
+          if (!musicResponse?.uploadId) throw new Error("Music upload completed without an upload ID.");
+          await postsAPI.setMusic(createdPostId, { uploadId: musicResponse.uploadId, source: "local", startSec: music.startSec ?? 0, endSec: music.endSec ?? 0, volume: music.volume ?? 1 });
+        } else if (music.source === "cloud") {
+          await postsAPI.setMusic(createdPostId, { source: "cloud", trackId: music.id, provider: music.provider, startSec: music.startSec ?? 0, endSec: music.endSec ?? 0, volume: music.volume ?? 1 });
+        }
       }
       navigate("/");
     } catch (shareError) {
@@ -442,6 +410,41 @@ export const PostComposer = () => {
 
           {kind === "video" && <p className="px-3 pt-2 text-center text-[10px] text-white/40 sm:text-[11px]">Video editing currently supports local trimming only. Other image-only tools are disabled so the published file always matches the editor.</p>}
           {kind === "image" && <p className="px-3 pt-2 text-center text-[10px] text-white/35 sm:text-[11px]">Edits are rendered locally only when you press Done. Cancel keeps the current media unchanged.</p>}
+        </section>
+      </main>
+    );
+  }
+
+  if (step === "share") {
+    return (
+      <main className="min-h-[calc(100vh-64px)] bg-white pb-10 text-slate-950">
+        <section className="mx-auto w-full max-w-[760px] px-3 sm:px-5">
+          <header className="sticky top-0 z-20 -mx-3 flex h-16 items-center justify-between border-b border-slate-200/80 bg-white/95 px-4 backdrop-blur-xl sm:-mx-5 sm:px-6">
+            <button type="button" onClick={() => setStep("preview")} disabled={uploading || loading} className={`flex h-10 items-center gap-1 rounded-full px-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 ${pressable}`}><ArrowLeft size={19} /> Back</button>
+            <div className="text-center"><h1 className="text-[17px] font-bold">New post</h1><p className="hidden text-[11px] text-slate-400 sm:block">Final details</p></div>
+            <button type="button" onClick={handleShare} disabled={uploading || loading} className={`flex h-9 items-center gap-1.5 rounded-full bg-blue-600 px-4 text-[13px] font-bold text-white shadow-sm hover:bg-blue-700 ${pressable}`}>{uploading || loading ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} {uploading ? "Uploading" : loading ? "Posting" : "Share"}</button>
+          </header>
+          {displayError && <div role="alert" className="mx-1 mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{displayError}</div>}
+          <div className="mt-4 overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm sm:grid sm:grid-cols-[minmax(280px,0.9fr)_1.1fr]">
+            <div className="relative flex aspect-square items-center justify-center overflow-hidden bg-black sm:aspect-auto sm:min-h-[460px]">
+              {kind === "video" ? <video src={previewUrl} controls playsInline className="h-full w-full object-contain" /> : <img src={previewUrl} alt="Post preview" className="h-full w-full object-contain" />}
+            </div>
+            <div className="flex min-w-0 flex-col p-4 sm:p-5">
+              <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
+                <div className="h-10 w-10 overflow-hidden rounded-full bg-slate-100">{kind === "video" ? <video src={previewUrl} muted playsInline className="h-full w-full object-cover" /> : <img src={previewUrl} alt="" className="h-full w-full object-cover" />}</div>
+                <div><p className="text-sm font-bold">Your post</p><p className="text-[11px] text-slate-400">Choose how you want to share it</p></div>
+              </div>
+              <label htmlFor="post-caption-share" className="mt-4 text-xs font-bold text-slate-600">Caption</label>
+              <textarea id="post-caption-share" value={caption} onChange={(event) => setCaption(event.target.value)} maxLength={MAX_CAPTION_LENGTH} rows={5} placeholder="Write a caption..." className="mt-2 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm leading-6 outline-none placeholder:text-slate-400 focus:border-slate-400" />
+              <div className="mt-1 text-right text-[10px] text-slate-400">{caption.length}/{MAX_CAPTION_LENGTH}</div>
+              <div className="mt-4"><MusicPicker value={music} onChange={setMusic} disabled={uploading || loading} /></div>
+              <label className="mt-4 text-xs font-bold text-slate-600">Audience</label>
+              <select value={visibility} onChange={(event) => setVisibility(event.target.value)} disabled={uploading || loading} className="mt-2 w-full rounded-2xl border border-slate-200 bg-white p-3 text-sm outline-none focus:border-slate-400">
+                <option value="public">Public</option><option value="followers">Followers</option><option value="subscribers">Subscribers</option><option value="selected">Selected users</option><option value="private">Only me</option>
+              </select>
+              <button type="button" onClick={handleShare} disabled={uploading || loading} className={`mt-auto flex h-12 w-full items-center justify-center gap-2 rounded-full bg-blue-600 text-sm font-bold text-white shadow-sm hover:bg-blue-700 ${pressable}`}>{uploading || loading ? <Loader2 size={17} className="animate-spin" /> : <Check size={17} />} {uploading ? "Uploading..." : loading ? "Publishing..." : "Share post"}</button>
+            </div>
+          </div>
         </section>
       </main>
     );
