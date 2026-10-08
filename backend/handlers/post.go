@@ -14,6 +14,7 @@ import (
 
 	"notell/models"
 	"notell/services"
+	"notell/services/postaccess"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -228,7 +229,8 @@ func (h *PostHandler) GetFeed(c *gin.Context) {
 		limit = 10
 	}
 	var posts []models.Post
-	err := h.DB.Model(&models.Post{}).Select(postEngagementSelect, userID).Joins(`LEFT JOIN user_relationships ON user_relationships.following_id = posts.user_id AND user_relationships.follower_id = ? AND user_relationships.status = ?`, userID, "accepted").Where(`(posts.user_id = ? OR user_relationships.follower_id IS NOT NULL) AND (posts.visibility = 'public' OR posts.user_id = ?)`, userID, userID).Preload("User", func(db *gorm.DB) *gorm.DB { return db.Select("id", "username", "profile_picture") }).Preload("Music").Preload("Music.Upload").Preload("Music.Upload.MediaMetadata").Order("posts.created_at DESC").Order("posts.id DESC").Limit(limit + 1).Offset((page - 1) * limit).Find(&posts).Error
+	err := h.DB.Model(&models.Post{}).Select(postEngagementSelect, userID).Joins(`LEFT JOIN user_relationships ON user_relationships.following_id = posts.user_id AND user_relationships.follower_id = ? AND user_relationships.status = ?`, userID, "accepted").Where(`posts.user_id = ? OR user_relationships.follower_id IS NOT NULL`, userID)
+		// Visibility is applied centrally so private/unknown posts cannot leak through the following feed..Preload("User", func(db *gorm.DB) *gorm.DB { return db.Select("id", "username", "profile_picture") }).Preload("Music").Preload("Music.Upload").Preload("Music.Upload.MediaMetadata").Order("posts.created_at DESC").Order("posts.id DESC").Limit(limit + 1).Offset((page - 1) * limit).Find(&posts).Error
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to fetch feed"})
 		return
@@ -277,7 +279,7 @@ func (h *PostHandler) SearchPosts(c *gin.Context) {
 		return
 	}
 	var posts []models.Post
-	err := base.Select(postEngagementSelect, authUserID).Preload("User", func(db *gorm.DB) *gorm.DB { return db.Select("id", "username", "profile_picture") }).Preload("Music").Preload("Music.Upload").Preload("Music.Upload.MediaMetadata").Order(gorm.Expr(`CASE WHEN LOWER(users.username)=LOWER(?) THEN 0 WHEN LOWER(users.username) LIKE LOWER(?) ESCAPE '\\' THEN 1 WHEN LOWER(posts.caption) LIKE LOWER(?) ESCAPE '\\' THEN 2 ELSE 3 END`, query, prefix, prefix)).Order("posts.created_at DESC").Order("posts.id DESC").Offset((page - 1) * limit).Limit(limit).Find(&posts).Error
+	err := base.Select(postEngagementSelect, authUserID).Scopes(func(db *gorm.DB) *gorm.DB { return postaccess.VisibleTo(db, userID) }).Preload("User", func(db *gorm.DB) *gorm.DB { return db.Select("id", "username", "profile_picture") }).Preload("Music").Preload("Music.Upload").Preload("Music.Upload.MediaMetadata").Order(gorm.Expr(`CASE WHEN LOWER(users.username)=LOWER(?) THEN 0 WHEN LOWER(users.username) LIKE LOWER(?) ESCAPE '\\' THEN 1 WHEN LOWER(posts.caption) LIKE LOWER(?) ESCAPE '\\' THEN 2 ELSE 3 END`, query, prefix, prefix)).Order("posts.created_at DESC").Order("posts.id DESC").Offset((page - 1) * limit).Limit(limit).Find(&posts).Error
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "database error"})
 		return
@@ -298,7 +300,7 @@ func (h *PostHandler) GetPostByID(c *gin.Context) {
 		}
 	}
 	var post models.Post
-	err = h.DB.Model(&models.Post{}).Select(postEngagementSelect, userID).Where("posts.id = ? AND (posts.visibility = 'public' OR posts.user_id = ?)", uint(id), userID).Preload("User", func(db *gorm.DB) *gorm.DB { return db.Select("id", "username", "profile_picture") }).Preload("Music").Preload("Music.Upload").Preload("Music.Upload.MediaMetadata").First(&post).Error
+	err = h.DB.Model(&models.Post{}).Select(postEngagementSelect, userID).Where("posts.id = ?", uint(id)).Scopes(func(db *gorm.DB) *gorm.DB { return postaccess.VisibleTo(db, userID) }).Preload("User", func(db *gorm.DB) *gorm.DB { return db.Select("id", "username", "profile_picture") }).Preload("Music").Preload("Music.Upload").Preload("Music.Upload.MediaMetadata").First(&post).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"message": "post not found"})
