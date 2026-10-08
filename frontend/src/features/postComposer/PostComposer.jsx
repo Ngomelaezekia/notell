@@ -8,7 +8,6 @@ import {
   Crop,
   Image as ImageIcon,
   Loader2,
-  Music2,
   Pencil,
   Plus,
   RotateCcw,
@@ -36,7 +35,6 @@ const ADJUSTMENTS = [
 ];
 
 const ACCEPTED_MEDIA = "image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm";
-const ACCEPTED_MUSIC = "audio/mpeg,.mp3";
 const fileKind = (file) => (file?.type?.startsWith("video/") ? "video" : "image");
 const editsChanged = (edits) =>
   edits.filter !== "original" ||
@@ -119,7 +117,6 @@ export const PostComposer = () => {
       if (current?.startsWith("blob:")) URL.revokeObjectURL(current);
       return "";
     });
-    if (musicPreviewUrl?.startsWith("blob:")) URL.revokeObjectURL(musicPreviewUrl);
     setMusicPreviewUrl("");
     setMusicFile(null);
     setFile(null);
@@ -457,7 +454,7 @@ export const PostComposer = () => {
           <header className="sticky top-0 z-20 -mx-3 flex h-16 items-center justify-between border-b border-slate-200/80 bg-white/90 px-4 backdrop-blur-xl sm:-mx-5 sm:px-6">
             <button type="button" onClick={() => { setStep("select"); setAccept(ACCEPTED_MEDIA); }} disabled={uploading || loading} className={`flex h-10 items-center gap-1 rounded-full px-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 ${pressable}`}><ArrowLeft size={19} /> Change</button>
             <div className="text-center"><h1 className="text-[17px] font-bold text-slate-950">Preview</h1><p className="hidden text-[11px] text-slate-400 sm:block">Looks good? Share it.</p></div>
-            <button type="button" onClick={handleShare} disabled={uploading || loading} className={`flex h-9 items-center gap-1.5 rounded-full bg-blue-600 px-4 text-[14px] font-bold text-white shadow-sm hover:bg-blue-700 ${pressable} disabled:opacity-45`}>{uploading || loading ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}{uploading ? "Uploading" : loading ? "Posting" : "Share"}</button>
+            <button type="button" onClick={() => setStep("share")} disabled={uploading || loading} className={`flex h-9 items-center gap-1.5 rounded-full bg-slate-950 px-4 text-[14px] font-bold text-white shadow-sm hover:bg-slate-800 ${pressable}`}>Next <ArrowLeft size={15} className="rotate-180" /></button>
           </header>
 
           {displayError && <div role="alert" className="mx-1 mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{displayError}</div>}
@@ -469,25 +466,17 @@ export const PostComposer = () => {
               <button type="button" onClick={reset} disabled={uploading || loading} className={`absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-black/65 text-white backdrop-blur hover:bg-black/85 ${pressable} disabled:opacity-50`} aria-label="Remove media"><X size={18} /></button>
               <span className="absolute right-4 bottom-4 flex items-center gap-1.5 rounded-full bg-black/60 px-3 py-2 text-[11px] font-bold text-white backdrop-blur">{kind === "video" ? <Video size={13} /> : <ImageIcon size={13} />}{kind === "video" ? "Video" : "Photo"}</span>
             </div>
-            <div className="border-t border-white/10 bg-neutral-950 p-4">
-              {kind === "video" && videoTrimmed && <div className="mb-3 flex items-center gap-2 rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.06] px-3 py-2.5 text-[11px] font-semibold text-emerald-200/80"><Scissors size={14} /> Trimmed clip ready — only this clip will be uploaded.</div>}
-              <label htmlFor="post-caption" className="text-xs font-bold text-white/55">Caption</label>
-              <textarea id="post-caption" value={caption} onChange={(event) => setCaption(event.target.value)} maxLength={MAX_CAPTION_LENGTH} rows={3} placeholder="Tell your community what this moment is about..." className="mt-2 w-full resize-none bg-transparent text-sm leading-6 text-white outline-none placeholder:text-white/30" />
-              <div className="mt-1 text-right text-[10px] text-white/30">{caption.length}/{MAX_CAPTION_LENGTH}</div>
-
-              <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0"><div className="flex items-center gap-2 text-xs font-bold text-white"><Music2 size={15} /> Add music</div><p className="mt-1 truncate text-[11px] text-white/40">Optional MP3 track for this post</p></div>
-                  {musicFile ? <button type="button" onClick={removeMusic} disabled={uploading || loading} className={`flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-white/10 px-3 text-[11px] font-bold text-white hover:bg-white/15 ${pressable}`}>Remove</button> : <button type="button" onClick={() => musicInputRef.current?.click()} disabled={uploading || loading} className={`flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-white px-3 text-[11px] font-bold text-black hover:bg-white/90 ${pressable}`}>Choose MP3</button>}
-                </div>
-                {musicPreviewUrl && <div className="mt-3 rounded-xl bg-black/30 p-2"><audio src={musicPreviewUrl} controls className="h-9 w-full" preload="metadata" /></div>}
-              </div>
-            </div>
+             <div className="border-t border-white/10 bg-neutral-950 p-4">
+               {kind === "video" && videoTrimmed && <div className="mb-3 flex items-center gap-2 rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.06] px-3 py-2.5 text-[11px] font-semibold text-emerald-200/80"><Scissors size={14} /> Trimmed clip ready.</div>}
+               <div className="flex items-center justify-between gap-3">
+                 <div><p className="text-sm font-bold text-white">Your media is ready</p><p className="mt-1 text-[11px] text-white/40">Tap Next to add your caption, sound and audience.</p></div>
+                 <button type="button" onClick={openEditor} disabled={uploading || loading} className={`rounded-full bg-white/10 px-3 py-2 text-[11px] font-bold text-white hover:bg-white/15 ${pressable}`}>Edit</button>
+               </div>
+             </div>
           </div>
           {videoTrimmed && <p className="mt-2 text-center text-[10px] text-slate-400">Your selected video clip has been rendered locally and is ready to upload.</p>}
           {imageHasEdits && <p className="mt-2 text-center text-[10px] text-slate-400">Edited photo ready to share.</p>}
         </section>
-        <input ref={musicInputRef} type="file" accept={ACCEPTED_MUSIC} onChange={handleMusicInput} className="hidden" />
       </main>
     );
   }
