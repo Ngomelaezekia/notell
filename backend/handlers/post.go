@@ -229,8 +229,7 @@ func (h *PostHandler) GetFeed(c *gin.Context) {
 		limit = 10
 	}
 	var posts []models.Post
-	err := h.DB.Model(&models.Post{}).Select(postEngagementSelect, userID).Joins(`LEFT JOIN user_relationships ON user_relationships.following_id = posts.user_id AND user_relationships.follower_id = ? AND user_relationships.status = ?`, userID, "accepted").Where(`posts.user_id = ? OR user_relationships.follower_id IS NOT NULL`, userID)
-		// Visibility is applied centrally so private/unknown posts cannot leak through the following feed..Preload("User", func(db *gorm.DB) *gorm.DB { return db.Select("id", "username", "profile_picture") }).Preload("Music").Preload("Music.Upload").Preload("Music.Upload.MediaMetadata").Order("posts.created_at DESC").Order("posts.id DESC").Limit(limit + 1).Offset((page - 1) * limit).Find(&posts).Error
+	err := h.DB.Model(&models.Post{}).Select(postEngagementSelect, userID).Joins(`LEFT JOIN user_relationships ON user_relationships.following_id = posts.user_id AND user_relationships.follower_id = ? AND user_relationships.status = ?`, userID, "accepted").Where(`posts.user_id = ? OR user_relationships.follower_id IS NOT NULL`, userID).Scopes(func(db *gorm.DB) *gorm.DB { return postaccess.VisibleTo(db, authUserID) }).Preload("User", func(db *gorm.DB) *gorm.DB { return db.Select("id", "username", "profile_picture") }).Preload("Music").Preload("Music.Upload").Preload("Music.Upload.MediaMetadata").Order("posts.created_at DESC").Order("posts.id DESC").Limit(limit + 1).Offset((page - 1) * limit).Find(&posts).Error
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "failed to fetch feed"})
 		return
@@ -273,7 +272,7 @@ func (h *PostHandler) SearchPosts(c *gin.Context) {
 		}
 	}
 	var total int64
-	base := h.DB.Model(&models.Post{}).Joins("JOIN users ON users.id = posts.user_id").Where("(posts.caption ILIKE ? ESCAPE '\\' OR users.username ILIKE ? ESCAPE '\\') AND (posts.visibility = 'public' OR posts.user_id = ?)", pattern, pattern, authUserID)
+	base := h.DB.Model(&models.Post{}).Joins("JOIN users ON users.id = posts.user_id").Where("(posts.caption ILIKE ? ESCAPE '\\' OR users.username ILIKE ? ESCAPE '\\')", pattern, pattern).Scopes(func(db *gorm.DB) *gorm.DB { return postaccess.VisibleTo(db, authUserID) })
 	if err := base.Count(&total).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "database error"})
 		return
