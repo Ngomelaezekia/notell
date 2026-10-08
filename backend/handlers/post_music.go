@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"notell/models"
+	"notell/services/postaccess"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -205,8 +206,9 @@ func (h *PostHandler) SetPostMusic(c *gin.Context) {
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id,user_id").First(&post, uint(postID)).Error; err != nil {
 			return err
 		}
-		if post.UserID != userID {
-			return gorm.ErrRecordNotFound
+		if err := postaccess.CanManageMusic(tx, post.ID, userID); err != nil {
+			if errors.Is(err, postaccess.ErrAccessDenied) || errors.Is(err, postaccess.ErrPostNotFound) { return gorm.ErrRecordNotFound }
+			return err
 		}
 
 		var next models.PostMusic
@@ -309,8 +311,9 @@ func (h *PostHandler) RemovePostMusic(c *gin.Context) {
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id,user_id").First(&post, uint(postID)).Error; err != nil {
 			return err
 		}
-		if post.UserID != userID {
-			return gorm.ErrRecordNotFound
+		if err := postaccess.CanManageMusic(tx, post.ID, userID); err != nil {
+			if errors.Is(err, postaccess.ErrAccessDenied) || errors.Is(err, postaccess.ErrPostNotFound) { return gorm.ErrRecordNotFound }
+			return err
 		}
 		if err := tx.Where("post_id = ?", post.ID).First(&music).Error; err != nil {
 			return err
