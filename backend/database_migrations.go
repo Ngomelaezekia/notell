@@ -118,6 +118,39 @@ func runDatabaseMigrations(db *gorm.DB) error {
 				return nil
 			},
 		},
+		{
+			2,
+			"ensure_post_audience_table_and_indexes",
+			func(tx *gorm.DB) error {
+				if err := tx.Exec(`
+					CREATE TABLE IF NOT EXISTS post_audiences (
+						post_id BIGINT NOT NULL,
+						user_id BIGINT NOT NULL,
+						created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+						PRIMARY KEY (post_id, user_id),
+						CONSTRAINT fk_post_audiences_post
+							FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+						CONSTRAINT fk_post_audiences_user
+							FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+					)
+				`).Error; err != nil {
+					return fmt.Errorf("ensure post_audiences: %w", err)
+				}
+				if err := tx.Exec(`
+					CREATE INDEX IF NOT EXISTS idx_post_audiences_user_post
+					ON post_audiences (user_id, post_id)
+				`).Error; err != nil {
+					return fmt.Errorf("ensure post audience user index: %w", err)
+				}
+				if err := tx.Exec(`
+					CREATE INDEX IF NOT EXISTS idx_uploads_post_id
+					ON uploads (post_id)
+				`).Error; err != nil {
+					return fmt.Errorf("ensure upload post index: %w", err)
+				}
+				return nil
+			},
+		},
 	}
 
 	for _, migration := range migrations {
