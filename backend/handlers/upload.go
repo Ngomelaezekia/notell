@@ -91,11 +91,6 @@ func (h *UploadHandler) cleanupUnclaimedUploads() {
 				return err
 			}
 
-			key := services.MediaObjectKey(claimed.Filename)
-			if err := h.Storage.Delete(context.Background(), key); err != nil {
-				return err
-			}
-
 			result := tx.Where("id = ? AND post_id IS NULL AND created_at < ?", claimed.ID, cutoff).
 				Delete(&models.Upload{})
 			if result.Error != nil {
@@ -103,6 +98,14 @@ func (h *UploadHandler) cleanupUnclaimedUploads() {
 			}
 			if result.RowsAffected != 1 {
 				return gorm.ErrRecordNotFound
+			}
+
+			// Delete the database row first inside the transaction. If storage
+			// deletion fails, the transaction rolls back and the upload remains
+			// claimable only while its media object still exists.
+			key := services.MediaObjectKey(claimed.Filename)
+			if err := h.Storage.Delete(context.Background(), key); err != nil {
+				return err
 			}
 			removedPath = claimed.Path
 			return nil
