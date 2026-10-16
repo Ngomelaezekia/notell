@@ -70,27 +70,47 @@ func (h *UploadHandler) cleanupUnclaimedUploads() {
 	if h.DB == nil || h.Storage == nil {
 		return
 	}
+
 	cutoff := time.Now().Add(-unclaimedUploadRetention)
 	var uploads []models.Upload
-	if err := h.DB.Select("id, path, filename").Where("post_id IS NULL AND created_at < ?", cutoff).Find(&uploads).Error; err != nil {
+	if err := h.DB.Select("id").Where("post_id IS NULL AND created_at < ?", cutoff).Find(&uploads).Error; err != nil {
 		return
 	}
-	for _, upload := range uploads {
-		var claimed models.Upload
-		result := h.DB.Where("id = ? AND post_id IS NULL AND created_at < ?", upload.ID, cutoff).First(&claimed)
-		if result.Error != nil {
+
+	for _, candidate := range uploads {
+		var removedPath string
+		// Serialize cleanup against CreatePost's SELECT ... FOR UPDATE claim.
+		// Keep the row lock until storage deletion and row deletion are complete,
+		// so a post cannot claim an object while cleanup is deleting it.
+		err := h.DB.Transaction(func(tx *gorm.DB) error {
+			var claimed models.Upload
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+				Where("id = ? AND post_id IS NULL AND created_at < ?", candidate.ID, cutoff).
+				First(&claimed).Error; err != nil {
+				return err
+			}
+
+			key := services.MediaObjectKey(claimed.Filename)
+			if err := h.Storage.Delete(context.Background(), key); err != nil {
+				return err
+			}
+
+			result := tx.Where("id = ? AND post_id IS NULL AND created_at < ?", claimed.ID, cutoff).
+				Delete(&models.Upload{})
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected != 1 {
+				return gorm.ErrRecordNotFound
+			}
+			removedPath = claimed.Path
+			return nil
+		})
+		if err != nil {
 			continue
 		}
-		key := services.MediaObjectKey(claimed.Filename)
-		if err := h.Storage.Delete(context.Background(), key); err != nil {
-			continue
-		}
-		deleteResult := h.DB.Where("id = ? AND post_id IS NULL AND created_at < ?", claimed.ID, cutoff).Delete(&models.Upload{})
-		if deleteResult.Error != nil || deleteResult.RowsAffected != 1 {
-			continue
-		}
-		if claimed.Path != "" {
-			_ = os.Remove(claimed.Path)
+		if removedPath != "" {
+			_ = os.Remove(removedPath)
 		}
 	}
 }
