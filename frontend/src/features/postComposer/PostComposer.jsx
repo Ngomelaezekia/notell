@@ -78,6 +78,8 @@ export const PostComposer = () => {
   const [trimEnd, setTrimEnd] = useState(0);
   const [videoTrimmed, setVideoTrimmed] = useState(false);
   const [music, setMusic] = useState(null);
+  const [pendingPostId, setPendingPostId] = useState(null);
+  const [pendingMusicUploadId, setPendingMusicUploadId] = useState(null);
   const [visibility, setVisibility] = useState("public");
 
   useEffect(() => () => {
@@ -128,6 +130,8 @@ export const PostComposer = () => {
     setVideoTrimmed(false);
     setCaption("");
     setMusic(null);
+    setPendingPostId(null);
+    setPendingMusicUploadId(null);
     setVisibility("public");
     setAccept(ACCEPTED_MEDIA);
     setLocalError("");
@@ -250,32 +254,50 @@ export const PostComposer = () => {
   };
 
   const handleShare = async () => {
-    if (!file || uploading || loading) return;
+    if ((!file && !pendingPostId) || uploading || loading) return;
     setLocalError("");
-    let createdPostId = null;
+    let postId = pendingPostId;
     try {
       setUploading(true);
-      const response = await uploadAPI.uploadMedia(file);
-      if (!response?.url) throw new Error("Media upload failed.");
-      const mediaUrl = response.url.startsWith("http")
-        ? response.url
-        : `${import.meta.env.VITE_SERVER_URL ?? "http://localhost:8080"}${response.url}`;
-      const created = await createPost({ contentType: kind, contentUrl: mediaUrl, caption: caption.trim(), visibility });
-      createdPostId = created?.data?.postId ?? created?.postId ?? null;
+
+      // Once the post exists, retries must resume music attachment rather than
+      // uploading the main media and creating a duplicate post.
+      if (!postId) {
+        const response = await uploadAPI.uploadMedia(file);
+        if (!response?.url) throw new Error("Media upload failed.");
+        const mediaUrl = response.url.startsWith("http")
+          ? response.url
+          : `${import.meta.env.VITE_SERVER_URL ?? "http://localhost:8080"}${response.url}`;
+        const created = await createPost({ contentType: kind, contentUrl: mediaUrl, caption: caption.trim(), visibility });
+        postId = created?.data?.postId ?? created?.postId ?? null;
+        if (!postId) {
+          throw new Error("The server response did not include the new post ID. Check your feed before trying to publish again.");
+        }
+        setPendingPostId(postId);
+      }
 
       if (music) {
-        if (!createdPostId) throw new Error("Post created without a usable ID for music attachment.");
         if (music.source === "local" && music.file) {
-          const musicResponse = await uploadAPI.uploadMedia(music.file);
-          if (!musicResponse?.uploadId) throw new Error("Music upload completed without an upload ID.");
-          await postsAPI.setMusic(createdPostId, { uploadId: musicResponse.uploadId, source: "local", startSec: music.startSec ?? 0, endSec: music.endSec ?? 0, volume: music.volume ?? 1 });
+          let uploadId = pendingMusicUploadId;
+          if (!uploadId) {
+            const musicResponse = await uploadAPI.uploadMedia(music.file);
+            if (!musicResponse?.uploadId) throw new Error("Music upload completed without an upload ID.");
+            uploadId = musicResponse.uploadId;
+            setPendingMusicUploadId(uploadId);
+          }
+          await postsAPI.setMusic(postId, { uploadId, source: "local", startSec: music.startSec ?? 0, endSec: music.endSec ?? 0, volume: music.volume ?? 1 });
+          setPendingMusicUploadId(null);
         } else if (music.source === "cloud") {
-          await postsAPI.setMusic(createdPostId, { source: "cloud", trackId: music.id, provider: music.provider, startSec: music.startSec ?? 0, endSec: music.endSec ?? 0, volume: music.volume ?? 1 });
+          await postsAPI.setMusic(postId, { source: "cloud", trackId: music.id, provider: music.provider, startSec: music.startSec ?? 0, endSec: music.endSec ?? 0, volume: music.volume ?? 1 });
         }
       }
+
+      setPendingPostId(null);
       navigate("/");
     } catch (shareError) {
-      setLocalError(createdPostId ? "Post was created, but the music could not be attached. You can try adding it again later." : (shareError.message || "Failed to publish post."));
+      setLocalError(postId
+        ? "Your post is already published, but music attachment did not finish. Tap Share to retry music attachment without creating a duplicate post."
+        : (shareError.message || "Failed to publish post."));
     } finally {
       setUploading(false);
     }
